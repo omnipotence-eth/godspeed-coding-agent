@@ -53,6 +53,7 @@ class Commands:
         self._session_id = session_id
         self._cwd = cwd
         self._handlers: dict[str, CommandHandler] = {}
+        self.max_iterations: int | None = None  # None = use default
         self._register_builtins()
 
     def _register_builtins(self) -> None:
@@ -63,6 +64,8 @@ class Commands:
         self._handlers["/undo"] = self._cmd_undo
         self._handlers["/audit"] = self._cmd_audit
         self._handlers["/permissions"] = self._cmd_permissions
+        self._handlers["/extend"] = self._cmd_extend
+        self._handlers["/context"] = self._cmd_context
         self._handlers["/quit"] = self._cmd_quit
         self._handlers["/exit"] = self._cmd_quit
 
@@ -105,6 +108,8 @@ class Commands:
         table.add_row("/undo", "Undo last git commit (git reset --soft HEAD~1)")
         table.add_row("/audit", "Show audit trail stats and verify chain integrity")
         table.add_row("/permissions", "Show current permission rules")
+        table.add_row("/extend [N]", "Set max iterations per turn (default: 50)")
+        table.add_row("/context", "Show context window usage")
         table.add_row("/quit, /exit", "Exit Godspeed")
 
         console.print(table)
@@ -217,6 +222,47 @@ class Commands:
             table.add_row("[blue]SESSION[/blue]", grant)
 
         console.print(table)
+        return CommandResult(handled=True)
+
+    def _cmd_extend(self, args: str = "") -> CommandResult:
+        """Set or show the max iterations per agent turn."""
+        from godspeed.agent.loop import MAX_ITERATIONS
+
+        if not args.strip():
+            current = self.max_iterations if self.max_iterations is not None else MAX_ITERATIONS
+            console.print(f"  Max iterations: [bold]{current}[/bold] (default: {MAX_ITERATIONS})")
+            return CommandResult(handled=True)
+
+        try:
+            value = int(args.strip())
+        except ValueError:
+            format_error(f"Invalid number: {args.strip()}")
+            return CommandResult(handled=True)
+
+        if value < 1:
+            format_error("Max iterations must be at least 1.")
+            return CommandResult(handled=True)
+
+        self.max_iterations = value
+        console.print(f"  Max iterations set to [bold]{value}[/bold]")
+        return CommandResult(handled=True)
+
+    def _cmd_context(self, _args: str = "") -> CommandResult:
+        """Show context window usage."""
+        tokens = self._conversation.token_count
+        max_tokens = self._conversation.max_tokens
+        pct = (tokens / max_tokens * 100) if max_tokens > 0 else 0
+
+        if pct < 50:
+            color = "green"
+        elif pct < 80:
+            color = "yellow"
+        else:
+            color = "red"
+
+        console.print(f"  [{color}]tokens: {tokens:,} / {max_tokens:,} ({pct:.0f}%)[/{color}]")
+        msg_count = len(self._conversation.messages)
+        console.print(f"  [dim]messages: {msg_count}[/dim]")
         return CommandResult(handled=True)
 
     def _cmd_quit(self, _args: str = "") -> CommandResult:

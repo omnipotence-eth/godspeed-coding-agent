@@ -1,0 +1,124 @@
+"""Tests for TUI slash commands."""
+
+from __future__ import annotations
+
+from pathlib import Path
+from unittest.mock import MagicMock
+
+import pytest
+
+from godspeed.agent.conversation import Conversation
+from godspeed.tui.commands import Commands
+
+
+@pytest.fixture
+def conversation() -> Conversation:
+    return Conversation("You are a coding agent.", max_tokens=100_000)
+
+
+@pytest.fixture
+def commands(conversation: Conversation, tmp_path: Path) -> Commands:
+    llm_client = MagicMock()
+    llm_client.model = "test-model"
+    llm_client.fallback_models = []
+    llm_client.total_input_tokens = 0
+    llm_client.total_output_tokens = 0
+    return Commands(
+        conversation=conversation,
+        llm_client=llm_client,
+        permission_engine=None,
+        audit_trail=None,
+        session_id="test-session",
+        cwd=tmp_path,
+    )
+
+
+class TestExtendCommand:
+    """Test /extend command for setting max iterations."""
+
+    def test_extend_sets_value(self, commands: Commands) -> None:
+        result = commands.dispatch("/extend 100")
+        assert result is not None
+        assert result.handled
+        assert commands.max_iterations == 100
+
+    def test_extend_no_args_shows_current(self, commands: Commands) -> None:
+        result = commands.dispatch("/extend")
+        assert result is not None
+        assert result.handled
+        # Default should be None (uses MAX_ITERATIONS)
+        assert commands.max_iterations is None
+
+    def test_extend_shows_updated_value(self, commands: Commands) -> None:
+        commands.dispatch("/extend 75")
+        assert commands.max_iterations == 75
+
+    def test_extend_invalid_arg(self, commands: Commands) -> None:
+        result = commands.dispatch("/extend abc")
+        assert result is not None
+        assert result.handled
+        assert commands.max_iterations is None  # Unchanged
+
+    def test_extend_zero_rejected(self, commands: Commands) -> None:
+        result = commands.dispatch("/extend 0")
+        assert result is not None
+        assert result.handled
+        assert commands.max_iterations is None  # Unchanged
+
+    def test_extend_negative_rejected(self, commands: Commands) -> None:
+        result = commands.dispatch("/extend -5")
+        assert result is not None
+        assert result.handled
+        assert commands.max_iterations is None  # Unchanged
+
+    def test_extend_minimum_one(self, commands: Commands) -> None:
+        result = commands.dispatch("/extend 1")
+        assert result is not None
+        assert commands.max_iterations == 1
+
+
+class TestContextCommand:
+    """Test /context command for context window usage display."""
+
+    def test_context_shows_usage(self, commands: Commands, conversation: Conversation) -> None:
+        result = commands.dispatch("/context")
+        assert result is not None
+        assert result.handled
+
+    def test_context_after_messages(self, commands: Commands, conversation: Conversation) -> None:
+        conversation.add_user_message("Hello world")
+        conversation.add_assistant_message("Hi there")
+        result = commands.dispatch("/context")
+        assert result is not None
+        assert result.handled
+
+
+class TestCommandDispatch:
+    """Test command dispatch basics."""
+
+    def test_unknown_command(self, commands: Commands) -> None:
+        result = commands.dispatch("/unknown")
+        assert result is not None
+        assert result.handled
+
+    def test_non_command_returns_none(self, commands: Commands) -> None:
+        result = commands.dispatch("hello world")
+        assert result is None
+
+    def test_help_command(self, commands: Commands) -> None:
+        result = commands.dispatch("/help")
+        assert result is not None
+        assert result.handled
+
+    def test_quit_command(self, commands: Commands) -> None:
+        result = commands.dispatch("/quit")
+        assert result is not None
+        assert result.should_quit
+
+    def test_clear_command(self, commands: Commands, conversation: Conversation) -> None:
+        conversation.add_user_message("test")
+        result = commands.dispatch("/clear")
+        assert result is not None
+        assert result.handled
+        # Only system prompt should remain
+        assert len(conversation.messages) == 1

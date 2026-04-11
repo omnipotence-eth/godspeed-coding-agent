@@ -138,3 +138,59 @@ class TestFuzzyFind:
 
     def test_empty_search(self) -> None:
         assert _fuzzy_find("content", "") is None
+
+
+class TestConfidenceReporting:
+    """Test that edit results include match confidence metadata."""
+
+    @pytest.mark.asyncio
+    async def test_exact_match_reports_confidence_1(
+        self, tool: FileEditTool, tool_context: ToolContext
+    ) -> None:
+        f = tool_context.cwd / "test.py"
+        f.write_text("x = 1\n")
+        result = await tool.execute(
+            {"file_path": "test.py", "old_string": "x = 1", "new_string": "x = 2"},
+            tool_context,
+        )
+        assert not result.is_error
+        assert "[match=exact confidence=1.00" in result.output
+
+    @pytest.mark.asyncio
+    async def test_replace_all_reports_count(
+        self, tool: FileEditTool, tool_context: ToolContext
+    ) -> None:
+        f = tool_context.cwd / "test.py"
+        f.write_text("a = 1\nb = 1\nc = 1\n")
+        result = await tool.execute(
+            {
+                "file_path": "test.py",
+                "old_string": "1",
+                "new_string": "2",
+                "replace_all": True,
+            },
+            tool_context,
+        )
+        assert not result.is_error
+        assert "replacements=3" in result.output
+        assert "match=exact" in result.output
+
+    @pytest.mark.asyncio
+    async def test_fuzzy_match_reports_ratio_and_line(
+        self, tool: FileEditTool, tool_context: ToolContext
+    ) -> None:
+        f = tool_context.cwd / "test.py"
+        f.write_text("def foo():\n    return 1\n")
+        # Slight whitespace difference triggers fuzzy match
+        result = await tool.execute(
+            {
+                "file_path": "test.py",
+                "old_string": "def foo():\n   return 1",
+                "new_string": "def foo():\n    return 2",
+            },
+            tool_context,
+        )
+        assert not result.is_error
+        assert "match=fuzzy" in result.output
+        assert "confidence=" in result.output
+        assert "line=" in result.output

@@ -115,11 +115,20 @@ class TUIApp:
             audit_enabled=self._audit_trail is not None,
         )
 
-        session: PromptSession[str] = PromptSession(
-            completer=self._completer,
-            key_bindings=self._key_bindings,
-            multiline=True,
-        )
+        try:
+            session: PromptSession[str] = PromptSession(
+                completer=self._completer,
+                key_bindings=self._key_bindings,
+                multiline=True,
+            )
+        except Exception as exc:
+            # prompt-toolkit fails in non-TTY contexts (piped input, CI, etc.)
+            console.print(
+                f"\n[red]  Cannot create interactive session: {exc}[/red]\n"
+                "  [dim]Godspeed requires a real terminal. Run it directly in your"
+                " terminal, not through a pipe or non-interactive shell.[/dim]"
+            )
+            return
 
         while True:
             try:
@@ -158,6 +167,7 @@ class TUIApp:
                     on_tool_result=_on_tool_result,
                     on_permission_denied=_on_permission_denied,
                     on_assistant_chunk=_on_assistant_chunk,
+                    max_iterations=self._commands.max_iterations,
                 )
                 console.print()  # End streaming output with newline
             except KeyboardInterrupt:

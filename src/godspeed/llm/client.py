@@ -8,12 +8,22 @@ from collections.abc import AsyncGenerator
 from dataclasses import dataclass, field
 from typing import Any
 
-import litellm
-
 logger = logging.getLogger(__name__)
 
-# Suppress litellm's verbose logging
-litellm.suppress_debug_info = True
+# Lazy import — litellm pulls in 2000+ modules (~1.5s cold start).
+# We defer it to first use so the TUI appears instantly.
+_litellm = None
+
+
+def _get_litellm():
+    """Import litellm on first use and cache it."""
+    global _litellm
+    if _litellm is None:
+        import litellm
+
+        litellm.suppress_debug_info = True
+        _litellm = litellm
+    return _litellm
 
 
 @dataclass
@@ -82,6 +92,15 @@ class LLMClient:
             return upgraded
         return self.model
 
+    @staticmethod
+    def _is_connection_error(exc: Exception) -> bool:
+        """Check if the error is a connection failure (server not running)."""
+        exc_str = str(exc).lower()
+        return any(
+            marker in exc_str
+            for marker in ("connection refused", "cannot connect", "connect call failed")
+        )
+
     async def chat(
         self,
         messages: list[dict[str, Any]],
@@ -90,7 +109,8 @@ class LLMClient:
         """Send messages to the LLM and return a parsed response.
 
         Uses LiteLLM's async completion with automatic provider routing.
-        Falls back to alternate models on failure.
+        Falls back to alternate models on failure. Skips retries for
+        connection-refused errors (e.g. Ollama not running).
         """
         models_to_try = [self._effective_model(), *self.fallback_models]
 
@@ -101,9 +121,12 @@ class LLMClient:
             except Exception as exc:
                 logger.warning("LLM call failed model=%s error=%s", model, exc)
                 last_error = exc
+                # Skip retry for connection errors — server is down, retrying is pointless
+                if self._is_connection_error(exc):
+                    continue
                 # Retry primary model once after short delay before trying fallbacks
                 if idx == 0:
-                    await asyncio.sleep(2)
+                    await asyncio.sleep(1)
                     try:
                         return await self._call(model, messages, tools)
                     except Exception as retry_exc:
@@ -114,8 +137,24 @@ class LLMClient:
                         )
                         last_error = retry_exc
 
-        msg = f"All models failed. Last error: {last_error}"
-        raise RuntimeError(msg)
+        raise self._build_failure_error(last_error)
+
+    def _build_failure_error(self, last_error: Exception | None) -> RuntimeError:
+        """Build an actionable error message based on the failure type."""
+        if last_error and self._is_connection_error(last_error):
+            model_lower = self.model.lower()
+            if model_lower.startswith("ollama"):
+                return RuntimeError(
+                    "Ollama is not running. Fix with one of:\n"
+                    "  1. Start Ollama:  ollama serve\n"
+                    "  2. Use a cloud model:  godspeed -m claude-sonnet-4-20250514\n"
+                    "  3. Set a fallback in ~/.godspeed/settings.yaml"
+                )
+            return RuntimeError(
+                f"Cannot connect to LLM provider for model '{self.model}'. "
+                "Check that the server is running and the model name is correct."
+            )
+        return RuntimeError(f"All models failed. Last error: {last_error}")
 
     async def _call(
         self,
@@ -139,7 +178,7 @@ class LLMClient:
                     model,
                 )
 
-        response = await litellm.acompletion(**kwargs)
+        response = await _get_litellm().acompletion(**kwargs)
 
         # Parse response
         choice = response.choices[0]
@@ -204,7 +243,7 @@ class LLMClient:
                 )
 
         try:
-            response = await litellm.acompletion(**kwargs)
+            response = await _get_litellm().acompletion(**kwargs)
             collected_content = ""
             collected_tool_calls: list[dict[str, Any]] = []
 

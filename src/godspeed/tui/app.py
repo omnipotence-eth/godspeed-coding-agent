@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from typing import Any
 
 from prompt_toolkit import PromptSession
@@ -26,11 +27,12 @@ from godspeed.tui.output import (
     format_error,
     format_permission_denied,
     format_permission_prompt,
+    format_session_summary,
     format_tool_call,
     format_tool_result,
     format_welcome,
 )
-from godspeed.tui.theme import BOLD_WARNING, DIM, ERROR, icon_prompt
+from godspeed.tui.theme import BOLD_WARNING, DIM, ERROR, MUTED, icon_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -132,6 +134,11 @@ class TUIApp:
 
     async def run(self) -> None:
         """Run the main TUI loop."""
+        start_time = time.monotonic()
+        tool_calls = 0
+        tool_errors = 0
+        tool_denied = 0
+
         # Collect tool names and deny rules for safety disclosure
         tool_names = [t.name for t in self._tool_registry.list_tools()]
         deny_rules = (
@@ -187,8 +194,40 @@ class TUIApp:
                     break
                 continue
 
-            # Run agent loop with thinking indicator
+            # Run agent loop with context-aware thinking indicator
             spinner = _ThinkingSpinner()
+
+            def _track_tool_call(
+                tool_name: str, args: dict[str, Any], _s: _ThinkingSpinner = spinner
+            ) -> None:
+                nonlocal tool_calls
+                tool_calls += 1
+                _s.update(tool_name, args)
+                _s.stop()
+                format_tool_call(tool_name, args)
+
+            def _track_tool_result(
+                tool_name: str, result: Any, _s: _ThinkingSpinner = spinner
+            ) -> None:
+                nonlocal tool_errors
+                is_error = getattr(result, "is_error", False)
+                if is_error:
+                    tool_errors += 1
+                _s.start()
+                output = getattr(result, "output", str(result))
+                error = getattr(result, "error", None)
+                display_text = str(error) if is_error and error else str(output)
+                _s.stop()
+                format_tool_result(tool_name, display_text, is_error=is_error)
+
+            def _track_permission_denied(
+                tool_name: str, reason: str, _s: _ThinkingSpinner = spinner
+            ) -> None:
+                nonlocal tool_denied
+                tool_denied += 1
+                _s.stop()
+                format_permission_denied(tool_name, reason)
+
             try:
                 spinner.start()
                 await agent_loop(
@@ -198,9 +237,9 @@ class TUIApp:
                     tool_registry=self._tool_registry,
                     tool_context=self._tool_context,
                     on_assistant_text=spinner.wrap(_on_assistant_text),
-                    on_tool_call=spinner.wrap(_on_tool_call),
-                    on_tool_result=spinner.wrap(_on_tool_result),
-                    on_permission_denied=spinner.wrap(_on_permission_denied),
+                    on_tool_call=_track_tool_call,
+                    on_tool_result=_track_tool_result,
+                    on_permission_denied=_track_permission_denied,
                     on_assistant_chunk=spinner.wrap(_on_assistant_chunk),
                     max_iterations=self._commands.max_iterations,
                     pause_event=self._pause_event,
@@ -215,7 +254,17 @@ class TUIApp:
             finally:
                 spinner.stop()
 
-        # Final stats on exit
+        # Session summary on exit
+        duration = time.monotonic() - start_time
+        format_session_summary(
+            duration_secs=duration,
+            input_tokens=self._llm_client.total_input_tokens,
+            output_tokens=self._llm_client.total_output_tokens,
+            tool_calls=tool_calls,
+            tool_errors=tool_errors,
+            tool_denied=tool_denied,
+        )
+
         if self._audit_trail is not None:
             self._audit_trail.record(
                 event_type="session_end",
@@ -225,32 +274,61 @@ class TUIApp:
 
 # -- Thinking spinner -------------------------------------------------------------
 
+_TOOL_LABELS: dict[str, str] = {
+    "file_read": "Reading",
+    "file_write": "Writing",
+    "file_edit": "Editing",
+    "shell": "Running",
+    "grep_search": "Searching",
+    "glob_search": "Searching",
+    "git": "Git",
+    "repo_map": "Mapping",
+}
+
 
 class _ThinkingSpinner:
-    """Shows a Rich Status spinner before the first agent output arrives.
+    """Context-aware Rich Status spinner.
 
-    Call ``start()`` to show the spinner, ``wrap(callback)`` to get a
-    version of the callback that stops the spinner on first invocation,
-    and ``stop()`` for explicit cleanup.
+    Shows what the agent is doing — "Thinking..." when waiting for LLM,
+    tool-specific labels during tool execution.
     """
 
     def __init__(self) -> None:
         self._status: Any | None = None
         self._started = False
 
+    def _make_label(self, text: str) -> str:
+        from godspeed.tui.theme import PROMPT_ICON
+
+        return f"[{MUTED}]{PROMPT_ICON} {text}[/{MUTED}]"
+
     def start(self) -> None:
+        if self._started:
+            return
         from rich.status import Status
 
-        from godspeed.tui.theme import MUTED, PROMPT_ICON
-
         self._status = Status(
-            f"[{MUTED}]{PROMPT_ICON} Thinking...[/{MUTED}]",
+            self._make_label("Thinking..."),
             console=console,
             spinner="dots",
             spinner_style=MUTED,
         )
         self._status.start()
         self._started = True
+
+    def update(self, tool_name: str, args: dict[str, Any]) -> None:
+        """Update spinner text based on current tool call."""
+        if not self._started or self._status is None:
+            return
+        label = _TOOL_LABELS.get(tool_name, tool_name)
+        primary_arg = args.get("file_path") or args.get("command") or args.get("pattern") or ""
+        if primary_arg:
+            # Truncate long args
+            if len(primary_arg) > 50:
+                primary_arg = "..." + primary_arg[-47:]
+            self._status.update(self._make_label(f"{label} {primary_arg}"))
+        else:
+            self._status.update(self._make_label(f"{label}..."))
 
     def stop(self) -> None:
         if self._started and self._status is not None:
@@ -279,25 +357,6 @@ def _on_assistant_chunk(text: str) -> None:
 def _on_assistant_text(text: str) -> None:
     """Callback: render assistant text as Markdown."""
     format_assistant_text(text)
-
-
-def _on_tool_call(tool_name: str, args: dict[str, Any]) -> None:
-    """Callback: display tool call panel."""
-    format_tool_call(tool_name, args)
-
-
-def _on_tool_result(tool_name: str, result: Any) -> None:
-    """Callback: display tool result."""
-    is_error = getattr(result, "is_error", False)
-    output = getattr(result, "output", str(result))
-    error = getattr(result, "error", None)
-    display_text = str(error) if is_error and error else str(output)
-    format_tool_result(tool_name, display_text, is_error=is_error)
-
-
-def _on_permission_denied(tool_name: str, reason: str) -> None:
-    """Callback: display permission denied notice."""
-    format_permission_denied(tool_name, reason)
 
 
 class _InteractivePermissionProxy:

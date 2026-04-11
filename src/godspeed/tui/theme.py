@@ -82,7 +82,14 @@ MARKER_SUCCESS = "\u2713"  # ✓
 MARKER_ERROR = "\u2717"  # ✗
 MARKER_WARNING = "\u26a0"  # ⚠
 MARKER_TOOL = "\u25b8"  # ▸
+MARKER_INFO = "\u25cf"  # ●
 SEPARATOR_DOT = "\u00b7"  # ·
+
+# Structural characters — Crush-inspired decorative elements
+DECORATOR = "\u2571"  # diagonal slash for branding
+RULE_CHAR = "\u2500"  # ─ — horizontal rule
+GUTTER = "\u2502"  # │ — thin gutter for tool content
+GUTTER_STYLE = MUTED
 
 # =============================================================================
 # Markup helpers

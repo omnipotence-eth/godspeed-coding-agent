@@ -8,26 +8,32 @@ from datetime import UTC
 from pathlib import Path
 from typing import Any
 
-from godspeed.tui.output import console, format_error, format_stats
+from godspeed.tui.output import (
+    console,
+    format_error,
+    format_info,
+    format_stats,
+    format_success,
+    format_warning,
+)
 from godspeed.tui.theme import (
     BOLD_PRIMARY,
-    BOLD_SUCCESS,
-    BOLD_WARNING,
     CTX_CRITICAL,
     CTX_OK,
     CTX_WARN,
     DIM,
-    ERROR,
     MUTED,
     PERM_ALLOW,
     PERM_ASK,
     PERM_DENY,
     PERM_SESSION,
+    RULE_CHAR,
     SUCCESS,
     TABLE_BORDER,
     TABLE_KEY,
     TABLE_VALUE,
     WARNING,
+    styled,
 )
 
 logger = logging.getLogger(__name__)
@@ -132,32 +138,60 @@ class Commands:
     # -- Built-in command handlers ------------------------------------------------
 
     def _cmd_help(self, _args: str = "") -> CommandResult:
-        """Show available commands."""
-        from rich.table import Table
+        """Show available commands — grouped by category."""
+        rule = styled(RULE_CHAR * 40, MUTED)
+        console.print()
+        console.print(f"  {styled('Commands', BOLD_PRIMARY)}")
+        console.print(f"  {rule}")
 
-        table = Table(title="Commands", border_style=TABLE_BORDER, expand=False)
-        table.add_column("Command", style=BOLD_PRIMARY)
-        table.add_column("Description")
+        groups: list[tuple[str, list[tuple[str, str]]]] = [
+            (
+                "Session",
+                [
+                    ("/model [name]", "Show or switch the active model"),
+                    ("/clear", "Clear conversation history"),
+                    ("/stats", "Show token usage and estimated cost"),
+                    ("/export [name]", "Export conversation as markdown"),
+                    ("/quit, /exit", "Exit Godspeed"),
+                ],
+            ),
+            (
+                "Agent Control",
+                [
+                    ("/plan", "Toggle plan mode (read-only)"),
+                    ("/extend [N]", "Set max iterations per turn"),
+                    ("/pause", "Pause the agent loop"),
+                    ("/resume", "Resume a paused agent"),
+                    ("/guidance <msg>", "Inject guidance and resume"),
+                ],
+            ),
+            (
+                "Context",
+                [
+                    ("/context", "Show context window usage"),
+                    ("/checkpoint [name]", "Save/list checkpoints"),
+                    ("/restore <name>", "Restore a checkpoint"),
+                    ("/tasks", "Show task list"),
+                    ("/reindex", "Rebuild codebase search index"),
+                ],
+            ),
+            (
+                "Security",
+                [
+                    ("/audit", "Show audit trail and verify chain"),
+                    ("/permissions", "Show permission rules"),
+                    ("/undo", "Undo last git commit"),
+                ],
+            ),
+        ]
 
-        table.add_row("/help", "Show this help message")
-        table.add_row("/model [name]", "Show or switch the active model")
-        table.add_row("/clear", "Clear conversation history")
-        table.add_row("/undo", "Undo last git commit (git reset --soft HEAD~1)")
-        table.add_row("/audit", "Show audit trail stats and verify chain integrity")
-        table.add_row("/permissions", "Show current permission rules")
-        table.add_row("/extend [N]", "Set max iterations per turn (default: 50)")
-        table.add_row("/context", "Show context window usage")
-        table.add_row("/plan", "Toggle plan mode (read-only -- explore and plan only)")
-        table.add_row("/checkpoint [name]", "Save checkpoint, or list if no name")
-        table.add_row("/restore <name>", "Restore a saved checkpoint")
-        table.add_row("/pause", "Pause the agent loop at next iteration")
-        table.add_row("/resume", "Resume a paused agent loop")
-        table.add_row("/guidance <msg>", "Inject guidance and resume paused agent")
-        table.add_row("/stats", "Show token usage and estimated cost")
-        table.add_row("/export [name]", "Export conversation as markdown")
-        table.add_row("/quit, /exit", "Exit Godspeed")
+        for group_name, cmds in groups:
+            console.print()
+            console.print(f"  {styled(group_name, MUTED)}")
+            for cmd_name, desc in cmds:
+                console.print(f"    {styled(cmd_name, BOLD_PRIMARY):28s} {styled(desc, DIM)}")
 
-        console.print(table)
+        console.print()
         return CommandResult(handled=True)
 
     def _cmd_model(self, args: str = "") -> CommandResult:
@@ -166,22 +200,22 @@ class Commands:
             old_model = self._llm_client.model
             self._llm_client.model = args.strip()
             new_model = self._llm_client.model
-            console.print(
-                f"  Model switched: [{MUTED}]{old_model}[/{MUTED}]"
+            format_success(
+                f"Model switched: [{MUTED}]{old_model}[/{MUTED}]"
                 f" -> [{BOLD_PRIMARY}]{new_model}[/{BOLD_PRIMARY}]"
             )
         else:
             model = self._llm_client.model
-            console.print(f"  Active model: [{BOLD_PRIMARY}]{model}[/{BOLD_PRIMARY}]")
+            format_info(f"Active model: [{BOLD_PRIMARY}]{model}[/{BOLD_PRIMARY}]")
             if self._llm_client.fallback_models:
                 fallbacks = ", ".join(self._llm_client.fallback_models)
-                console.print(f"  Fallbacks: [{DIM}]{fallbacks}[/{DIM}]")
+                console.print(f"    [{DIM}]Fallbacks: {fallbacks}[/{DIM}]")
         return CommandResult(handled=True)
 
     def _cmd_clear(self, _args: str = "") -> CommandResult:
         """Clear conversation history."""
         self._conversation.clear()
-        console.print(f"  [{DIM}]Conversation cleared.[/{DIM}]")
+        format_info("Conversation cleared.")
         return CommandResult(handled=True)
 
     def _cmd_undo(self, _args: str = "") -> CommandResult:
@@ -201,7 +235,7 @@ class Commands:
                 return CommandResult(handled=True)
 
             last_commit = result.stdout.strip()
-            console.print(f"  Undoing: [{MUTED}]{last_commit}[/{MUTED}]")
+            format_info(f"Undoing: {last_commit}")
 
             undo_result = subprocess.run(
                 ["git", "reset", "--soft", "HEAD~1"],
@@ -211,9 +245,7 @@ class Commands:
                 timeout=10,
             )
             if undo_result.returncode == 0:
-                console.print(
-                    f"  [{SUCCESS}]Last commit undone (changes preserved in staging).[/{SUCCESS}]"
-                )
+                format_success("Last commit undone (changes preserved in staging).")
             else:
                 format_error(f"git reset failed: {undo_result.stderr.strip()}")
 
@@ -225,7 +257,7 @@ class Commands:
     def _cmd_audit(self, _args: str = "") -> CommandResult:
         """Show audit trail stats and verify chain."""
         if self._audit_trail is None:
-            console.print(f"  [{DIM}]Audit trail is disabled.[/{DIM}]")
+            format_info("Audit trail is disabled.")
             return CommandResult(handled=True)
 
         from rich.table import Table
@@ -242,9 +274,9 @@ class Commands:
         # Verify chain integrity
         is_valid, message = self._audit_trail.verify_chain()
         if is_valid:
-            console.print(f"  [{SUCCESS}]Chain integrity: VALID -- {message}[/{SUCCESS}]")
+            format_success(f"Chain integrity: VALID -- {message}")
         else:
-            console.print(f"  [{ERROR}]Chain integrity: BROKEN -- {message}[/{ERROR}]")
+            format_error(f"Chain integrity: BROKEN -- {message}")
 
         return CommandResult(handled=True)
 
@@ -253,7 +285,7 @@ class Commands:
         from rich.table import Table
 
         if self._permission_engine is None:
-            console.print(f"  [{DIM}]Permission engine not loaded.[/{DIM}]")
+            format_info("Permission engine not loaded.")
             return CommandResult(handled=True)
 
         table = Table(title="Permission Rules", border_style=WARNING, expand=False)
@@ -282,14 +314,9 @@ class Commands:
 
         self._permission_engine.plan_mode = not self._permission_engine.plan_mode
         if self._permission_engine.plan_mode:
-            console.print(
-                f"  [{BOLD_WARNING}]Plan mode ON[/{BOLD_WARNING}] — "
-                "read-only tools only. Use /plan again to exit."
-            )
+            format_warning("Plan mode ON — read-only tools only. Use /plan again to exit.")
         else:
-            console.print(
-                f"  [{BOLD_SUCCESS}]Plan mode OFF[/{BOLD_SUCCESS}] — full tool access restored."
-            )
+            format_success("Plan mode OFF — full tool access restored.")
         return CommandResult(handled=True)
 
     def _cmd_extend(self, args: str = "") -> CommandResult:
@@ -298,8 +325,8 @@ class Commands:
 
         if not args.strip():
             current = self.max_iterations if self.max_iterations is not None else MAX_ITERATIONS
-            console.print(
-                f"  Max iterations: [{BOLD_PRIMARY}]{current}[/{BOLD_PRIMARY}]"
+            format_info(
+                f"Max iterations: [{BOLD_PRIMARY}]{current}[/{BOLD_PRIMARY}]"
                 f" (default: {MAX_ITERATIONS})"
             )
             return CommandResult(handled=True)
@@ -315,7 +342,7 @@ class Commands:
             return CommandResult(handled=True)
 
         self.max_iterations = value
-        console.print(f"  Max iterations set to [{BOLD_PRIMARY}]{value}[/{BOLD_PRIMARY}]")
+        format_success(f"Max iterations set to [{BOLD_PRIMARY}]{value}[/{BOLD_PRIMARY}]")
         return CommandResult(handled=True)
 
     def _cmd_context(self, _args: str = "") -> CommandResult:
@@ -346,7 +373,7 @@ class Commands:
             # List checkpoints
             checkpoints = list_checkpoints(self._cwd)
             if not checkpoints:
-                console.print(f"  [{DIM}]No checkpoints saved yet.[/{DIM}]")
+                format_info("No checkpoints saved yet.")
                 return CommandResult(handled=True)
 
             from datetime import datetime
@@ -387,10 +414,9 @@ class Commands:
             token_count=self._conversation.token_count,
             project_dir=self._cwd,
         )
-        console.print(
-            f"  [{SUCCESS}]Checkpoint saved:[/{SUCCESS}] [{BOLD_PRIMARY}]{name}[/{BOLD_PRIMARY}]"
+        format_success(
+            f"Checkpoint saved: [{BOLD_PRIMARY}]{name}[/{BOLD_PRIMARY}]  [{DIM}]{path}[/{DIM}]"
         )
-        console.print(f"  [{DIM}]{path}[/{DIM}]")
         return CommandResult(handled=True)
 
     def _cmd_restore(self, args: str = "") -> CommandResult:
@@ -426,9 +452,8 @@ class Commands:
 
         token_count = self._conversation.token_count
         msg_count = len(self._conversation.messages) - 1  # exclude system prompt
-        console.print(
-            f"  [{SUCCESS}]Restored checkpoint:[/{SUCCESS}]"
-            f" [{BOLD_PRIMARY}]{name}[/{BOLD_PRIMARY}]"
+        format_success(
+            f"Restored checkpoint: [{BOLD_PRIMARY}]{name}[/{BOLD_PRIMARY}]"
             f" ({msg_count} messages, {token_count:,} tokens)"
         )
         return CommandResult(handled=True)
@@ -440,9 +465,7 @@ class Commands:
             return CommandResult(handled=True)
 
         self._pause_event.clear()
-        console.print(
-            f"  [{BOLD_WARNING}]Agent paused.[/{BOLD_WARNING}] Use /resume or /guidance <msg>."
-        )
+        format_warning("Agent paused. Use /resume or /guidance <msg>.")
         return CommandResult(handled=True)
 
     def _cmd_resume(self, _args: str = "") -> CommandResult:
@@ -452,11 +475,11 @@ class Commands:
             return CommandResult(handled=True)
 
         if self._pause_event.is_set():
-            console.print(f"  [{DIM}]Agent is not paused.[/{DIM}]")
+            format_info("Agent is not paused.")
             return CommandResult(handled=True)
 
         self._pause_event.set()
-        console.print(f"  [{BOLD_SUCCESS}]Agent resumed.[/{BOLD_SUCCESS}]")
+        format_success("Agent resumed.")
         return CommandResult(handled=True)
 
     def _cmd_guidance(self, args: str = "") -> CommandResult:
@@ -467,24 +490,24 @@ class Commands:
 
         # Inject guidance into conversation
         self._conversation.add_user_message(f"[User guidance]: {args.strip()}")
-        console.print(f"  [{DIM}]Guidance injected: {args.strip()}[/{DIM}]")
+        format_info(f"Guidance injected: {args.strip()}")
 
         # Resume if paused
         if self._pause_event is not None and not self._pause_event.is_set():
             self._pause_event.set()
-            console.print(f"  [{BOLD_SUCCESS}]Agent resumed with guidance.[/{BOLD_SUCCESS}]")
+            format_success("Agent resumed with guidance.")
 
         return CommandResult(handled=True)
 
     def _cmd_tasks(self, _args: str = "") -> CommandResult:
         """Show current task list."""
         if self._task_store is None:
-            console.print(f"  [{MUTED}]Task tracking not enabled.[/{MUTED}]")
+            format_info("Task tracking not enabled.")
             return CommandResult()
 
         tasks = self._task_store.list_all()
         if not tasks:
-            console.print(f"  [{MUTED}]No tasks.[/{MUTED}]")
+            format_info("No tasks.")
             return CommandResult()
 
         from rich.table import Table
@@ -509,26 +532,23 @@ class Commands:
     def _cmd_reindex(self, _args: str = "") -> CommandResult:
         """Rebuild the codebase search index."""
         if self._codebase_index is None:
-            console.print(f"  [{MUTED}]Codebase index not available.[/{MUTED}]")
+            format_info("Codebase index not available.")
             console.print(f"  [{DIM}]Install with: pip install godspeed[index][/{DIM}]")
             return CommandResult()
 
         if not self._codebase_index.is_available:
-            console.print(
-                f"  [{ERROR}]ChromaDB not installed.[/{ERROR}] "
-                f"[{DIM}]pip install godspeed[index][/{DIM}]"
-            )
+            format_error(f"ChromaDB not installed. [{DIM}]pip install godspeed[index][/{DIM}]")
             return CommandResult()
 
         if self._codebase_index.is_building:
-            console.print(f"  [{WARNING}]Index is already building...[/{WARNING}]")
+            format_warning("Index is already building...")
             return CommandResult()
 
         import asyncio
 
-        console.print(f"  [{DIM}]Rebuilding codebase index...[/{DIM}]")
+        format_info("Rebuilding codebase index...")
         asyncio.get_event_loop().create_task(self._codebase_index.build_index_async())
-        console.print(f"  [{SUCCESS}]Reindex started in background.[/{SUCCESS}]")
+        format_success("Reindex started in background.")
         return CommandResult()
 
     def _cmd_stats(self, _args: str = "") -> CommandResult:
@@ -594,23 +614,9 @@ class Commands:
                     lines.append(f"*({len(content) - 1000} chars truncated)*\n")
 
         export_path.write_text("\n".join(lines), encoding="utf-8")
-        console.print(f"  [{SUCCESS}]Exported to:[/{SUCCESS}] [{DIM}]{export_path}[/{DIM}]")
+        format_success(f"Exported to: [{DIM}]{export_path}[/{DIM}]")
         return CommandResult(handled=True)
 
     def _cmd_quit(self, _args: str = "") -> CommandResult:
-        """Exit Godspeed."""
-        from godspeed.llm.cost import estimate_cost
-
-        input_tokens = self._llm_client.total_input_tokens
-        output_tokens = self._llm_client.total_output_tokens
-        cost = estimate_cost(self._llm_client.model, input_tokens, output_tokens)
-
-        format_stats(
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-            model=self._llm_client.model,
-            session_id=self._session_id,
-            cost=cost if cost > 0 else None,
-        )
-        console.print(f"  [{DIM}]Goodbye.[/{DIM}]")
+        """Exit Godspeed — session summary shown by app.py."""
         return CommandResult(handled=True, should_quit=True)

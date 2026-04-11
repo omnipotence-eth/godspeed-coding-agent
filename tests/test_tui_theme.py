@@ -119,6 +119,35 @@ class TestMarkerConstants:
 
         assert SEPARATOR_DOT == "\u00b7"
 
+    def test_marker_info(self) -> None:
+        from godspeed.tui.theme import MARKER_INFO
+
+        assert MARKER_INFO == "\u25cf"
+
+
+class TestStructuralConstants:
+    """Test Crush-inspired structural character constants."""
+
+    def test_decorator(self) -> None:
+        from godspeed.tui.theme import DECORATOR
+
+        assert DECORATOR == "\u2571"
+
+    def test_rule_char(self) -> None:
+        from godspeed.tui.theme import RULE_CHAR
+
+        assert RULE_CHAR == "\u2500"
+
+    def test_gutter(self) -> None:
+        from godspeed.tui.theme import GUTTER
+
+        assert GUTTER == "\u2502"
+
+    def test_gutter_style_is_muted(self) -> None:
+        from godspeed.tui.theme import GUTTER_STYLE, MUTED
+
+        assert GUTTER_STYLE == MUTED
+
 
 class TestBrandedStrings:
     """Test branded string constants."""

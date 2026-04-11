@@ -7,22 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-04-11
+
+### Added
+
+- **Stuck-loop detection**: after 3 identical tool errors, injects a replan message forcing the model to try a different approach
+- **Verification cascade**: `VerifyTool` runs `ruff check` on Python files; auto-verifies after every `file_edit`/`file_write` so the agent self-corrects lint errors
+- **`/extend N` command**: override max iterations per agent turn (default: 50)
+- **`/context` command**: show context window usage — tokens, percentage, message count with color-coded thresholds
+- **Audit trail compression**: `compress_session()` rotates `.jsonl` → `.jsonl.gz`; `verify_chain()` transparently handles compressed logs
+- **FileEdit confidence reporting**: output includes `[match=exact confidence=1.00]` or `[match=fuzzy confidence=0.87 line=42]` so the agent can gauge match quality
+- **26 new dangerous command patterns**: iptables, mount/umount, fdisk, shutdown/reboot, docker rm -f, kubectl delete, env exfiltration, Windows destructive ops, supply-chain attacks
+- **Ollama auto-start**: detects when Ollama is not running and starts `ollama serve` as a background process before first LLM call
+- **Lazy LiteLLM import**: deferred import reduces cold startup from ~1.5s to ~300ms
+- **Smart retry for connection errors**: skips retry+sleep when Ollama/server is down, returns actionable error immediately
+- **Non-TTY crash guard**: graceful error message when launched from non-interactive shells
+- `ToolRegistry.has_tool()` method
+- `agent_loop()` accepts `max_iterations` parameter
+- 411 tests, 90% coverage
+
 ### Fixed
 
 - Route logs to stderr and scope verbose mode to `godspeed.*` namespace only — eliminates LiteLLM/httpx/markdown_it debug noise in TUI
 - Add debug logging on tiktoken encoding fallback instead of silent `pass`
 - Add docstrings to `PermissionEvaluator` and `AuditRecorder` protocol methods
 
-### Added
+### Changed
 
 - `godspeed init` command — creates `~/.godspeed/` and default `settings.yaml`
 - `godspeed models` command — shows popular model options with provider, cost, and API key info
 - `settings.yaml.example` — full reference config with free/paid model examples and permission rules
-- Audit trail retention cleanup — expired sessions are purged on startup based on `retention_days` setting
+- Audit trail retention cleanup — expired sessions are purged on startup based on `retention_days` setting; handles both `.jsonl` and `.jsonl.gz`
 - Token counter model mappings for Claude, Gemini, DeepSeek, Ollama models
-
-### Changed
-
 - Default model changed from paid `claude-sonnet-4-20250514` to free `ollama/qwen3:4b` — zero-cost out of the box
 - Expanded pyproject.toml classifiers and keywords for PyPI discoverability
 

@@ -5,7 +5,10 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import shutil
+import subprocess
 import sys
+import time
 from pathlib import Path
 from uuid import uuid4
 
@@ -14,6 +17,9 @@ import click
 from godspeed import __version__
 
 logger = logging.getLogger(__name__)
+
+OLLAMA_URL = "http://localhost:11434/api/tags"
+OLLAMA_STARTUP_TIMEOUT = 15  # seconds to wait for ollama to come up
 
 
 def _setup_logging(verbose: bool) -> None:
@@ -38,6 +44,70 @@ def _setup_logging(verbose: bool) -> None:
     godspeed_logger.setLevel(logging.DEBUG if verbose else logging.WARNING)
 
 
+def _is_ollama_running() -> bool:
+    """Check if Ollama server is reachable."""
+    try:
+        import urllib.request
+
+        req = urllib.request.Request(OLLAMA_URL, method="GET")  # noqa: S310
+        with urllib.request.urlopen(req, timeout=2):  # noqa: S310
+            return True
+    except Exception:
+        return False
+
+
+def _ensure_ollama(console: object | None = None) -> bool:
+    """Start Ollama if it's not running. Returns True if Ollama is available.
+
+    Args:
+        console: Optional Rich Console for status output.
+    """
+    if _is_ollama_running():
+        return True
+
+    ollama_bin = shutil.which("ollama")
+    if ollama_bin is None:
+        if console is not None:
+            console.print(  # type: ignore[union-attr]
+                "[yellow]  Ollama is not installed. "
+                "Install from https://ollama.com or use a cloud model: "
+                "godspeed -m claude-sonnet-4-20250514[/yellow]"
+            )
+        return False
+
+    # Start ollama serve as a detached background process
+    if console is not None:
+        console.print("[dim]  Starting Ollama...[/dim]", end="")  # type: ignore[union-attr]
+
+    try:
+        subprocess.Popen(
+            [ollama_bin, "serve"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    except OSError as exc:
+        logger.warning("Failed to start Ollama: %s", exc)
+        if console is not None:
+            console.print(f" [red]failed: {exc}[/red]")  # type: ignore[union-attr]
+        return False
+
+    # Poll until it's up
+    deadline = time.monotonic() + OLLAMA_STARTUP_TIMEOUT
+    while time.monotonic() < deadline:
+        time.sleep(0.5)
+        if _is_ollama_running():
+            if console is not None:
+                console.print(" [green]ready[/green]")  # type: ignore[union-attr]
+            return True
+
+    if console is not None:
+        console.print(  # type: ignore[union-attr]
+            " [yellow]timed out. Ollama may still be starting.[/yellow]"
+        )
+    return False
+
+
 def _build_tool_registry() -> tuple:
     """Create all tool instances and register them.
 
@@ -57,6 +127,7 @@ def _build_tool_registry() -> tuple:
     from godspeed.tools.glob_search import GlobSearchTool
     from godspeed.tools.grep_search import GrepSearchTool
     from godspeed.tools.shell import ShellTool
+    from godspeed.tools.verify import VerifyTool
 
     tools = [
         FileReadTool(),
@@ -66,6 +137,7 @@ def _build_tool_registry() -> tuple:
         GlobSearchTool(),
         GrepSearchTool(),
         GitTool(),
+        VerifyTool(),
     ]
 
     for tool in tools:
@@ -149,6 +221,12 @@ async def _run_app(
         project_instructions=project_instructions,
         cwd=effective_project_dir,
     )
+
+    # Auto-start Ollama if the model needs it
+    if effective_model.lower().startswith("ollama"):
+        from godspeed.tui.output import console as rich_console
+
+        _ensure_ollama(console=rich_console)
 
     # LLM client
     llm_client = LLMClient(

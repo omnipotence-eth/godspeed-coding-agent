@@ -7,6 +7,7 @@ redacted before writing.
 
 from __future__ import annotations
 
+import gzip
 import hashlib
 import json
 import logging
@@ -111,63 +112,116 @@ class AuditTrail:
         )
         return event
 
-    def verify_chain(self) -> tuple[bool, str]:
-        """Verify the hash chain integrity of the entire session log.
+    def compress_session(self) -> Path | None:
+        """Compress the current session's audit log to gzip.
+
+        Rotates {session}.audit.jsonl → {session}.audit.jsonl.gz.
+        The uncompressed file is removed after successful compression.
+
+        Returns:
+            Path to the compressed file, or None if nothing to compress.
+        """
+        if not self._log_path.exists() or self._log_path.stat().st_size == 0:
+            return None
+
+        gz_path = self._log_path.with_suffix(".jsonl.gz")
+        try:
+            with open(self._log_path, "rb") as f_in, gzip.open(gz_path, "wb") as f_out:
+                f_out.writelines(f_in)
+            self._log_path.unlink()
+            logger.info(
+                "Compressed audit log session=%s records=%d",
+                self._session_id,
+                self._record_count,
+            )
+            return gz_path
+        except OSError as exc:
+            logger.error("Audit compression failed session=%s error=%s", self._session_id, exc)
+            # Clean up partial gz if it exists
+            if gz_path.exists():
+                gz_path.unlink(missing_ok=True)
+            return None
+
+    @staticmethod
+    def _read_log_lines(log_path: Path) -> list[str]:
+        """Read lines from a log file, handling both plain and gzipped formats."""
+        if log_path.suffix == ".gz" or str(log_path).endswith(".jsonl.gz"):
+            with gzip.open(log_path, "rt", encoding="utf-8") as f:
+                return f.readlines()
+        with open(log_path, encoding="utf-8") as f:
+            return f.readlines()
+
+    def verify_chain(self, log_path: Path | None = None) -> tuple[bool, str]:
+        """Verify the hash chain integrity of a session log.
+
+        Supports both plain .jsonl and compressed .jsonl.gz files.
+
+        Args:
+            log_path: Path to verify. Defaults to current session's log.
+                      Checks both uncompressed and compressed paths.
 
         Returns:
             (is_valid, message) tuple.
         """
-        if not self._log_path.exists():
-            return True, "No audit log to verify"
+        target = log_path or self._log_path
+        # If the uncompressed file doesn't exist, try the compressed version
+        if not target.exists():
+            gz_target = target.with_suffix(".jsonl.gz")
+            if gz_target.exists():
+                target = gz_target
+            else:
+                return True, "No audit log to verify"
+
+        try:
+            lines = self._read_log_lines(target)
+        except (OSError, gzip.BadGzipFile) as exc:
+            return False, f"Cannot read log: {exc}"
 
         prev_hash = ""
         line_num = 0
 
-        with open(self._log_path, encoding="utf-8") as f:
-            for line in f:
-                line_num += 1
-                line = line.strip()
-                if not line:
-                    continue
+        for raw_line in lines:
+            line_num += 1
+            raw_line = raw_line.strip()
+            if not raw_line:
+                continue
 
-                try:
-                    data = json.loads(line)
-                except json.JSONDecodeError:
-                    return False, f"Line {line_num}: invalid JSON"
+            try:
+                data = json.loads(raw_line)
+            except json.JSONDecodeError:
+                return False, f"Line {line_num}: invalid JSON"
 
-                record = AuditRecord.model_validate(data)
+            record = AuditRecord.model_validate(data)
 
-                # Verify prev_hash matches
-                if record.prev_hash != prev_hash:
-                    return (
-                        False,
-                        f"Line {line_num}: prev_hash mismatch "
-                        f"(expected {prev_hash[:12]}..., got {record.prev_hash[:12]}...)",
-                    )
-
-                # Verify record_hash
-                record_json = record.model_copy(update={"record_hash": ""}).model_dump_json(
-                    exclude={"record_hash"}
+            if record.prev_hash != prev_hash:
+                return (
+                    False,
+                    f"Line {line_num}: prev_hash mismatch "
+                    f"(expected {prev_hash[:12]}..., got {record.prev_hash[:12]}...)",
                 )
-                expected_hash = hashlib.sha256(record_json.encode()).hexdigest()
 
-                if record.record_hash != expected_hash:
-                    return (
-                        False,
-                        f"Line {line_num}: record_hash mismatch "
-                        f"(expected {expected_hash[:12]}..., got {record.record_hash[:12]}...)",
-                    )
+            record_json = record.model_copy(update={"record_hash": ""}).model_dump_json(
+                exclude={"record_hash"}
+            )
+            expected_hash = hashlib.sha256(record_json.encode()).hexdigest()
 
-                prev_hash = record.record_hash
+            if record.record_hash != expected_hash:
+                return (
+                    False,
+                    f"Line {line_num}: record_hash mismatch "
+                    f"(expected {expected_hash[:12]}..., got {record.record_hash[:12]}...)",
+                )
+
+            prev_hash = record.record_hash
 
         return True, f"Chain verified: {line_num} records"
 
     def cleanup_expired(self, retention_days: int = 30) -> int:
         """Remove audit logs older than retention_days.
 
-        Scans the log directory for session files and deletes those whose
-        last modification time exceeds the retention period. Skips the
-        current session's log file.
+        Scans the log directory for session files (both plain and compressed)
+        and deletes those whose last modification time exceeds the retention
+        period. Skips the current session's log file.
 
         Returns:
             Number of expired log files removed.
@@ -180,17 +234,25 @@ class AuditTrail:
         cutoff = time.time() - (retention_days * 86400)
         removed = 0
 
-        for log_file in self._log_dir.glob("*.audit.jsonl"):
-            # Never delete the current session's log
-            if log_file == self._log_path:
-                continue
-            try:
-                if log_file.stat().st_mtime < cutoff:
-                    log_file.unlink()
-                    removed += 1
-                    logger.info("Removed expired audit log path=%s", log_file.name)
-            except OSError as exc:
-                logger.warning("Failed to remove expired audit log path=%s error=%s", log_file, exc)
+        # Check both .jsonl and .jsonl.gz files
+        patterns = ["*.audit.jsonl", "*.audit.jsonl.gz"]
+        for pattern in patterns:
+            for log_file in self._log_dir.glob(pattern):
+                # Never delete the current session's log (compressed or not)
+                if (
+                    log_file == self._log_path
+                    or log_file.stem.replace(".audit", "") == self._session_id
+                ):
+                    continue
+                try:
+                    if log_file.stat().st_mtime < cutoff:
+                        log_file.unlink()
+                        removed += 1
+                        logger.info("Removed expired audit log path=%s", log_file.name)
+                except OSError as exc:
+                    logger.warning(
+                        "Failed to remove expired audit log path=%s error=%s", log_file, exc
+                    )
 
         if removed:
             logger.info("Audit cleanup removed=%d retention_days=%d", removed, retention_days)

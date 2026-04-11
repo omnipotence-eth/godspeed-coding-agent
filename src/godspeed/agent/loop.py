@@ -6,6 +6,7 @@ and Claude Code. The model decides when to stop. No framework overhead.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import time
@@ -21,6 +22,7 @@ logger = logging.getLogger(__name__)
 
 MAX_ITERATIONS = 50
 MAX_RETRIES = 3
+STUCK_LOOP_THRESHOLD = 3
 
 # Callback type aliases for clarity
 OnAssistantText = Callable[[str], None]
@@ -41,6 +43,7 @@ async def agent_loop(
     on_tool_result: OnToolResult | None = None,
     on_permission_denied: OnPermissionDenied | None = None,
     on_assistant_chunk: OnChunk | None = None,
+    max_iterations: int | None = None,
 ) -> str:
     """Run the agent loop until the model stops calling tools.
 
@@ -63,17 +66,20 @@ async def agent_loop(
         on_permission_denied: Callback(tool_name, reason) when permission denied.
         on_assistant_chunk: Callback(text) for streaming chunks. When provided,
             uses streaming LLM calls instead of batch calls.
+        max_iterations: Override the default iteration limit (MAX_ITERATIONS).
 
     Returns:
         The final assistant text response.
     """
+    iteration_limit = max_iterations if max_iterations is not None else MAX_ITERATIONS
     conversation.add_user_message(user_input)
     tool_schemas = tool_registry.get_schemas()
 
     retries = 0
     final_text = ""
+    recent_error_hashes: list[str] = []
 
-    for iteration in range(MAX_ITERATIONS):
+    for iteration in range(iteration_limit):
         logger.debug("Agent loop iteration=%d tokens=%d", iteration, conversation.token_count)
 
         # Check if we need to compact
@@ -180,6 +186,55 @@ async def agent_loop(
                 tool_call_id=tool_call.call_id,
                 content=result_content or "",
             )
+
+            # Auto-verify after successful file edits/writes
+            if (
+                not result.is_error
+                and tool_call.tool_name in ("file_edit", "file_write")
+                and tool_registry.has_tool("verify")
+            ):
+                file_path = tool_call.arguments.get("file_path", "")
+                if file_path and file_path.endswith((".py", ".pyi")):
+                    verify_call = ToolCall(
+                        tool_name="verify",
+                        arguments={"file_path": file_path},
+                        call_id=f"{tool_call.call_id}_verify",
+                    )
+                    verify_result = await tool_registry.dispatch(verify_call, tool_context)
+                    conversation.add_tool_result(
+                        tool_call_id=verify_call.call_id,
+                        content=verify_result.output or "",
+                    )
+                    logger.debug(
+                        "Auto-verify file=%s passed=%s",
+                        file_path,
+                        "passed" in verify_result.output.lower(),
+                    )
+
+            # Stuck-loop detection: track repeated errors
+            if result.is_error:
+                error_hash = hashlib.sha256((result_content or "").encode()).hexdigest()
+                recent_error_hashes.append(error_hash)
+                if len(recent_error_hashes) > STUCK_LOOP_THRESHOLD:
+                    recent_error_hashes.pop(0)
+
+                if (
+                    len(recent_error_hashes) == STUCK_LOOP_THRESHOLD
+                    and len(set(recent_error_hashes)) == 1
+                ):
+                    logger.warning(
+                        "Stuck loop detected: %d identical errors hash=%s",
+                        STUCK_LOOP_THRESHOLD,
+                        error_hash[:12],
+                    )
+                    conversation.add_user_message(
+                        "You have failed 3 times with the same error. "
+                        "Stop, explain what is wrong, and try a completely "
+                        "different approach."
+                    )
+                    recent_error_hashes.clear()
+            else:
+                recent_error_hashes.clear()
 
     return "Error: Reached maximum iterations. The task may be too complex for a single turn."
 

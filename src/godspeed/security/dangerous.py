@@ -77,6 +77,44 @@ DANGEROUS_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"xargs\s+.*rm"), "xargs with rm"),
     # awk/perl system execution
     (re.compile(r"awk\s+.*system\s*\("), "awk system() call"),
+    # Network/firewall manipulation
+    (re.compile(r"iptables\s+"), "firewall rule modification"),
+    (re.compile(r"nft\s+"), "nftables rule modification"),
+    # Mount/unmount (filesystem manipulation)
+    (re.compile(r"\bmount\s+"), "filesystem mount"),
+    (re.compile(r"\bumount\s+"), "filesystem unmount"),
+    # Disk partitioning
+    (re.compile(r"fdisk\s+"), "disk partitioning"),
+    (re.compile(r"parted\s+"), "disk partitioning"),
+    # System shutdown/reboot
+    (re.compile(r"\bshutdown\b"), "system shutdown"),
+    (re.compile(r"\breboot\b"), "system reboot"),
+    # Download-to-overwrite
+    (re.compile(r"wget\s+.*-O\s*/"), "wget overwrite to root path"),
+    (re.compile(r"curl\s+.*-o\s*/"), "curl download to root path"),
+    # Environment exfiltration via pipe
+    (re.compile(r"\benv\b.*\|\s*curl"), "environment exfiltration via curl"),
+    (re.compile(r"\benv\b.*\|\s*nc"), "environment exfiltration via netcat"),
+    (re.compile(r"cat\s+/etc/passwd.*\|"), "password file exfiltration"),
+    # Pipe to interpreter (broader)
+    (re.compile(r"echo\s.*\|\s*(?:python|perl|ruby|node|sh|bash)"), "echo pipe to interpreter"),
+    # Container destruction
+    (re.compile(r"docker\s+rm\s+-f"), "force remove container"),
+    (re.compile(r"docker\s+system\s+prune"), "docker system prune"),
+    # Kubernetes destructive
+    (re.compile(r"kubectl\s+delete\s+"), "kubernetes resource deletion"),
+    # SSH key overwrite
+    (re.compile(r"ssh-keygen\s+.*-f\s+"), "SSH key generation/overwrite"),
+    # GPG key deletion
+    (re.compile(r"gpg\s+--delete-key"), "GPG key deletion"),
+    # Windows-specific destructive commands
+    (re.compile(r"\bdel\s+/[sS]"), "Windows recursive delete"),
+    (re.compile(r"\bformat\s+[a-zA-Z]:", re.IGNORECASE), "Windows disk format"),
+    (re.compile(r"reg\s+delete", re.IGNORECASE), "Windows registry deletion"),
+    (re.compile(r"powershell\s+.*-[eE]nc"), "PowerShell encoded command execution"),
+    # Supply chain — local install with arbitrary setup.py
+    (re.compile(r"pip\s+install\s+.*--no-verify"), "pip install without verification"),
+    (re.compile(r"npm\s+install\s+.*--ignore-scripts\s*$"), "npm install ignoring scripts"),
 ]
 
 

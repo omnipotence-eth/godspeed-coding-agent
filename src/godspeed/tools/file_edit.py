@@ -112,6 +112,7 @@ class FileEditTool(Tool):
             else:
                 new_content = content.replace(old_string, new_string, 1)
                 replacements = 1
+            match_info = f"[match=exact confidence=1.00 replacements={replacements}]"
         else:
             # Fuzzy matching fallback
             match_result = _fuzzy_find(content, old_string)
@@ -121,11 +122,15 @@ class FileEditTool(Tool):
                     "Read the file first to get the exact content."
                 )
             start, end, ratio = match_result
+            # Find the line number of the match
+            match_line = content[:start].count("\n") + 1
             new_content = content[:start] + new_string + content[end:]
             replacements = 1
+            match_info = f"[match=fuzzy confidence={ratio:.2f} line={match_line} replacements=1]"
             logger.info(
-                "Fuzzy match used ratio=%.2f path=%s",
+                "Fuzzy match used ratio=%.2f line=%d path=%s",
                 ratio,
+                match_line,
                 file_path_str,
             )
 
@@ -135,7 +140,9 @@ class FileEditTool(Tool):
             file_path_str,
             replacements,
         )
-        return ToolResult.success(f"Replaced {replacements} occurrence(s) in {file_path_str}")
+        return ToolResult.success(
+            f"Replaced {replacements} occurrence(s) in {file_path_str} {match_info}"
+        )
 
 
 def _fuzzy_find(content: str, search: str) -> tuple[int, int, float] | None:

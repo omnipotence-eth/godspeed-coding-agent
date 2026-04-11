@@ -191,6 +191,124 @@ class TestAgentLoop:
         assert "Recovered" in result
 
 
+class TestStuckLoopDetection:
+    """Test stuck-loop detection: replan after 3 identical errors."""
+
+    @pytest.mark.asyncio
+    async def test_three_identical_errors_triggers_replan(self, tool_context) -> None:
+        """After 3 identical tool errors, a replan message is injected."""
+        conversation = Conversation("You are a coding agent.", max_tokens=100_000)
+        registry = ToolRegistry()
+        # Tool that always fails with the same error
+        registry.register(MockTool(name="shell", result=ToolResult.failure("Permission denied")))
+
+        client = LLMClient(model="test")
+        client.chat = AsyncMock(
+            side_effect=[
+                # 3 identical tool calls that will all fail identically
+                _make_tool_response("shell", {"command": "rm /etc/hosts"}),
+                _make_tool_response("shell", {"command": "rm /etc/hosts"}),
+                _make_tool_response("shell", {"command": "rm /etc/hosts"}),
+                # After replan injection, model responds with text
+                _make_text_response("I'll try a different approach."),
+            ]
+        )
+
+        result = await agent_loop("Delete hosts", conversation, client, registry, tool_context)
+        assert "different approach" in result
+
+        # Verify the replan message was injected into conversation
+        messages = conversation.messages
+        replan_found = any(
+            msg.get("role") == "user" and "failed 3 times" in msg.get("content", "")
+            for msg in messages
+        )
+        assert replan_found, "Replan message should be injected after 3 identical errors"
+
+    @pytest.mark.asyncio
+    async def test_different_errors_no_replan(self, tool_context) -> None:
+        """Different errors should NOT trigger stuck-loop detection."""
+        conversation = Conversation("You are a coding agent.", max_tokens=100_000)
+        registry = ToolRegistry()
+
+        # We need a tool whose error changes each call
+        call_count = 0
+
+        class VariableErrorTool(MockTool):
+            async def execute(self, arguments, context):
+                nonlocal call_count
+                call_count += 1
+                return ToolResult.failure(f"Error variant {call_count}")
+
+        registry.register(VariableErrorTool(name="shell"))
+
+        client = LLMClient(model="test")
+        client.chat = AsyncMock(
+            side_effect=[
+                _make_tool_response("shell", {"command": "cmd1"}),
+                _make_tool_response("shell", {"command": "cmd2"}),
+                _make_tool_response("shell", {"command": "cmd3"}),
+                _make_text_response("Giving up."),
+            ]
+        )
+
+        result = await agent_loop("Try stuff", conversation, client, registry, tool_context)
+        assert "Giving up" in result
+
+        # No replan message should be present
+        messages = conversation.messages
+        replan_found = any(
+            msg.get("role") == "user" and "failed 3 times" in msg.get("content", "")
+            for msg in messages
+        )
+        assert not replan_found, "No replan for different errors"
+
+    @pytest.mark.asyncio
+    async def test_error_counter_resets_on_success(self, tool_context) -> None:
+        """A successful tool call resets the error counter."""
+        conversation = Conversation("You are a coding agent.", max_tokens=100_000)
+        registry = ToolRegistry()
+
+        call_count = 0
+
+        class AlternatingTool(MockTool):
+            async def execute(self, arguments, context):
+                nonlocal call_count
+                call_count += 1
+                # Fail, fail, succeed, fail, fail, fail — should NOT trigger replan
+                # because the success in the middle resets the counter
+                if call_count in (1, 2, 4, 5, 6):
+                    return ToolResult.failure("Same error")
+                return ToolResult.success("ok")
+
+        registry.register(AlternatingTool(name="shell"))
+
+        client = LLMClient(model="test")
+        client.chat = AsyncMock(
+            side_effect=[
+                _make_tool_response("shell", {"command": "a"}),  # fail 1
+                _make_tool_response("shell", {"command": "b"}),  # fail 2
+                _make_tool_response("shell", {"command": "c"}),  # success — resets
+                _make_tool_response("shell", {"command": "d"}),  # fail 1
+                _make_tool_response("shell", {"command": "e"}),  # fail 2
+                _make_tool_response("shell", {"command": "f"}),  # fail 3 — triggers replan
+                _make_text_response("Done."),
+            ]
+        )
+
+        result = await agent_loop("Try stuff", conversation, client, registry, tool_context)
+        assert "Done" in result
+
+        # Replan SHOULD be triggered after the 3rd consecutive error (calls 4,5,6)
+        messages = conversation.messages
+        replan_msgs = [
+            msg
+            for msg in messages
+            if msg.get("role") == "user" and "failed 3 times" in msg.get("content", "")
+        ]
+        assert len(replan_msgs) == 1, "Exactly one replan after success reset"
+
+
 class TestConversation:
     """Test conversation management."""
 

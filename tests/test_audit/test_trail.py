@@ -168,3 +168,74 @@ class TestAuditRetention:
         trail = AuditTrail(log_dir=audit_dir, session_id="test")
         removed = trail.cleanup_expired(retention_days=0)
         assert removed == 0
+
+    def test_cleanup_removes_compressed_logs(self, audit_dir: Path) -> None:
+        """Expired compressed logs are also cleaned up."""
+        import gzip
+        import os
+        import time
+
+        trail = AuditTrail(log_dir=audit_dir, session_id="current-session")
+        trail.record(AuditEventType.SESSION_START)
+
+        # Create an old compressed log
+        old_gz = audit_dir / "old-session.audit.jsonl.gz"
+        with gzip.open(old_gz, "wt", encoding="utf-8") as f:
+            f.write('{"fake": "record"}\n')
+        old_time = time.time() - (60 * 86400)
+        os.utime(old_gz, (old_time, old_time))
+
+        removed = trail.cleanup_expired(retention_days=30)
+        assert removed == 1
+        assert not old_gz.exists()
+
+
+class TestAuditCompression:
+    """Test audit log compression."""
+
+    def test_compress_creates_gzip(self, trail: AuditTrail) -> None:
+        trail.record(AuditEventType.SESSION_START, {"model": "test"})
+        trail.record(AuditEventType.TOOL_CALL, {"tool": "shell"})
+        trail.record(AuditEventType.SESSION_END)
+
+        gz_path = trail.compress_session()
+        assert gz_path is not None
+        assert gz_path.exists()
+        assert str(gz_path).endswith(".jsonl.gz")
+        # Original removed
+        assert not trail.log_path.exists()
+
+    def test_compressed_log_verifiable(self, trail: AuditTrail) -> None:
+        trail.record(AuditEventType.SESSION_START, {"model": "test"})
+        trail.record(AuditEventType.TOOL_CALL, {"tool": "file_read"})
+        trail.record(AuditEventType.SESSION_END)
+
+        gz_path = trail.compress_session()
+        assert gz_path is not None
+
+        # Verify the compressed log
+        is_valid, msg = trail.verify_chain(gz_path)
+        assert is_valid, msg
+        assert "3 records" in msg
+
+    def test_compress_empty_log_returns_none(self, audit_dir: Path) -> None:
+        trail = AuditTrail(log_dir=audit_dir, session_id="empty-session")
+        result = trail.compress_session()
+        assert result is None
+
+    def test_compress_idempotent(self, trail: AuditTrail) -> None:
+        trail.record(AuditEventType.SESSION_START)
+        trail.compress_session()
+        # Second compress — original is gone, should return None
+        result = trail.compress_session()
+        assert result is None
+
+    def test_verify_chain_finds_compressed(self, trail: AuditTrail) -> None:
+        """verify_chain() transparently finds .gz when .jsonl is missing."""
+        trail.record(AuditEventType.SESSION_START, {"model": "test"})
+        trail.record(AuditEventType.SESSION_END)
+        trail.compress_session()
+
+        # verify_chain with default path should find the .gz
+        is_valid, msg = trail.verify_chain()
+        assert is_valid, msg

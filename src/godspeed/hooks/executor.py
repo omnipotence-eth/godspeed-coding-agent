@@ -108,7 +108,7 @@ class HookExecutor:
         )
 
         try:
-            result = subprocess.run(  # noqa: S602
+            result = subprocess.run(  # noqa: S602  # nosec B602
                 command,
                 shell=True,
                 cwd=self._cwd,

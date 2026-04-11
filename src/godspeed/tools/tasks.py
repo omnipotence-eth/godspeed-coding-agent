@@ -163,19 +163,19 @@ class TaskTool(Tool):
             status = arguments.get("status")
             if task_id is None or status is None:
                 return ToolResult.failure("task_id and status are required for update action")
-            task = self._store.update(int(task_id), status)
-            if task is None:
+            updated = self._store.update(int(task_id), status)
+            if updated is None:
                 return ToolResult.failure(f"Task {task_id} not found")
-            return ToolResult.ok(f"Updated task [{task.id}]: {task.title} → {task.status}")
+            return ToolResult.ok(f"Updated task [{updated.id}]: {updated.title} → {updated.status}")
 
         if action == "complete":
             task_id = arguments.get("task_id")
             if task_id is None:
                 return ToolResult.failure("task_id is required for complete action")
-            task = self._store.complete(int(task_id))
-            if task is None:
+            completed = self._store.complete(int(task_id))
+            if completed is None:
                 return ToolResult.failure(f"Task {task_id} not found")
-            return ToolResult.ok(f"Completed task [{task.id}]: {task.title}")
+            return ToolResult.ok(f"Completed task [{completed.id}]: {completed.title}")
 
         return ToolResult.failure(
             f"Unknown action: {action}. Use create, update, list, or complete."

@@ -136,7 +136,10 @@ def _build_tool_registry() -> tuple:
     from godspeed.tools.grep_search import GrepSearchTool
     from godspeed.tools.repo_map import RepoMapTool
     from godspeed.tools.shell import ShellTool
+    from godspeed.tools.test_runner import TestRunnerTool
     from godspeed.tools.verify import VerifyTool
+    from godspeed.tools.web_fetch import WebFetchTool
+    from godspeed.tools.web_search import WebSearchTool
 
     tools = [
         FileReadTool(),
@@ -148,6 +151,9 @@ def _build_tool_registry() -> tuple:
         GitTool(),
         VerifyTool(),
         RepoMapTool(),
+        TestRunnerTool(),
+        WebSearchTool(),
+        WebFetchTool(),
     ]
 
     for tool in tools:
@@ -512,6 +518,191 @@ def init() -> None:
     c.print(f"    2. Or set an API key:     [{ACCENT}]export ANTHROPIC_API_KEY=sk-...[/{ACCENT}]")
     c.print(f"    3. Edit your settings:    [{ACCENT}]{settings_path}[/{ACCENT}]")
     c.print(f"    4. Launch Godspeed:        [{ACCENT}]godspeed[/{ACCENT}]")
+
+
+@main.command("run")
+@click.argument("task")
+@click.option("--model", "-m", default="", help="Model to use.")
+@click.option(
+    "--project-dir",
+    "-d",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    default=Path("."),
+    help="Project directory.",
+)
+@click.option("--verbose", "-v", is_flag=True, help="Enable debug logging.")
+@click.option(
+    "--auto-approve",
+    type=click.Choice(["reads", "all", "none"]),
+    default="reads",
+    help="Auto-approve permission level (default: reads).",
+)
+@click.option("--max-iterations", type=int, default=50, help="Max agent loop iterations.")
+@click.option("--json-output", is_flag=True, help="Output result as JSON.")
+def headless_run(
+    task: str,
+    model: str,
+    project_dir: Path,
+    verbose: bool,
+    auto_approve: str,
+    max_iterations: int,
+    json_output: bool,
+) -> None:
+    """Run a task non-interactively (headless/CI mode).
+
+    Executes the agent loop without a TUI. Permissions are auto-approved
+    based on --auto-approve level. Outputs the final response to stdout.
+
+    Examples:
+        godspeed run "Fix the failing test in test_auth.py"
+        godspeed run "Add type hints to utils.py" --auto-approve all
+        godspeed run "Explain main.py" --json-output
+    """
+    _setup_logging(verbose)
+    try:
+        result = asyncio.run(
+            _headless_run(task, model, project_dir, auto_approve, max_iterations, json_output)
+        )
+        sys.exit(0 if result else 1)
+    except KeyboardInterrupt:
+        sys.exit(130)
+
+
+async def _headless_run(
+    task: str,
+    model: str,
+    project_dir: Path,
+    auto_approve: str,
+    max_iterations: int,
+    json_output: bool,
+) -> bool:
+    """Execute the headless agent loop."""
+    import json as json_module
+
+    from godspeed.agent.conversation import Conversation
+    from godspeed.agent.loop import agent_loop
+    from godspeed.agent.system_prompt import build_system_prompt
+    from godspeed.config import GodspeedSettings
+    from godspeed.context.project_instructions import load_project_instructions
+    from godspeed.llm.client import LLMClient, ModelRouter
+    from godspeed.security.permissions import ALLOW, PermissionDecision, PermissionEngine
+    from godspeed.tools.base import RiskLevel, ToolContext
+
+    overrides: dict = {}
+    if model:
+        overrides["model"] = model
+    settings = GodspeedSettings(**overrides)
+
+    effective_model = model or settings.model
+    effective_project_dir = project_dir.resolve()
+    session_id = str(uuid4())
+
+    # Tools
+    registry, risk_levels = _build_tool_registry()
+
+    # Permission engine with headless auto-approve
+    permission_engine = PermissionEngine(
+        deny_patterns=settings.permissions.deny,
+        allow_patterns=settings.permissions.allow,
+        ask_patterns=settings.permissions.ask,
+        tool_risk_levels=risk_levels,
+    )
+
+    # Wrap with headless auto-approve proxy
+    class _HeadlessPermissionProxy:
+        """Auto-approve permissions based on configured level."""
+
+        def __init__(self, engine: PermissionEngine, level: str) -> None:
+            self._engine = engine
+            self._level = level
+
+        def evaluate(self, tool_call: Any) -> PermissionDecision:
+            decision = self._engine.evaluate(tool_call)
+            if decision == "deny":
+                return decision
+            if self._level == "all":
+                return PermissionDecision(ALLOW, "headless: auto-approved (all)")
+            if self._level == "reads":
+                tool_risk = risk_levels.get(tool_call.tool_name, RiskLevel.HIGH)
+                if tool_risk == RiskLevel.READ_ONLY:
+                    return PermissionDecision(ALLOW, "headless: auto-approved (reads)")
+                return PermissionDecision(ALLOW, "headless: auto-approved (reads+low)")
+            return decision
+
+    # Auto-start Ollama if needed
+    if effective_model.lower().startswith("ollama"):
+        _ensure_ollama()
+
+    # Build components
+    tool_context = ToolContext(
+        cwd=effective_project_dir,
+        session_id=session_id,
+        permissions=_HeadlessPermissionProxy(permission_engine, auto_approve),
+        audit=None,
+    )
+
+    project_instructions = load_project_instructions(
+        effective_project_dir,
+        settings.context.project_instructions,
+    )
+    system_prompt = build_system_prompt(
+        tools=registry.list_tools(),
+        project_instructions=project_instructions,
+        cwd=effective_project_dir,
+    )
+
+    router = ModelRouter(routing=settings.routing) if settings.routing else None
+    llm_client = LLMClient(
+        model=effective_model,
+        fallback_models=settings.fallback_models,
+        router=router,
+    )
+
+    conversation = Conversation(
+        system_prompt=system_prompt,
+        model=effective_model,
+        max_tokens=settings.max_context_tokens,
+        compaction_threshold=settings.compaction_threshold,
+    )
+
+    # Callbacks — write to stderr for tool activity, keep stdout for result
+    def on_tool_call(name: str, args: dict) -> None:
+        logger.info("Tool call: %s", name)
+        if not json_output:
+            sys.stderr.write(f"[tool] {name}\n")
+
+    def on_tool_result(name: str, result: Any) -> None:
+        is_error = getattr(result, "is_error", False)
+        if is_error:
+            logger.warning("Tool error: %s", name)
+
+    # Run agent loop
+    final_text = await agent_loop(
+        user_input=task,
+        conversation=conversation,
+        llm_client=llm_client,
+        tool_registry=registry,
+        tool_context=tool_context,
+        on_tool_call=on_tool_call,
+        on_tool_result=on_tool_result,
+        max_iterations=max_iterations,
+    )
+
+    # Output result to stdout
+    if json_output:
+        output = {
+            "task": task,
+            "model": effective_model,
+            "session_id": session_id,
+            "response": final_text,
+            "input_tokens": llm_client.total_input_tokens,
+            "output_tokens": llm_client.total_output_tokens,
+        }
+        sys.stdout.write(json_module.dumps(output, indent=2) + "\n")
+    else:
+        sys.stdout.write(final_text + "\n")
+
+    return not final_text.startswith("Error:")
 
 
 @main.command()

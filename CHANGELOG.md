@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-04-11
+
+### Added
+
+- **Token cost tracking**: `llm/cost.py` — model-aware pricing table for 20+ models (Claude, GPT, Gemini, DeepSeek). `/stats` command shows token usage and estimated cost. Quit screen includes session cost. Ollama/local models always show "free".
+- **Enhanced diff previews**: Permission prompts now show unified diff format with `@@ hunk` headers, line change stats (`+5 -3 lines`), and up to 30 context lines. File write prompts show line count and overwrite warning.
+- **Multi-file project instructions**: Loads GODSPEED.md, AGENTS.md (Linux Foundation AAIF standard), CLAUDE.md, and .cursorrules. Priority: GODSPEED.md > AGENTS.md > CLAUDE.md > .cursorrules. Zero-friction migration from other agents.
+- **Prompt caching**: System prompt marked with `cache_control: ephemeral` for Anthropic/OpenAI models. ~50% cost reduction on repeated prefixes via LiteLLM.
+- **Conversation export**: `/export [name]` command writes session as formatted markdown to `.godspeed/exports/`. Includes system prompt, messages, tool calls, and results.
+- **Multi-language verify**: Auto-verify now supports Python (ruff), JS/TS (biome/eslint), Go (go vet), Rust (cargo check), and C/C++ (clang-tidy). Linters detected dynamically. Shared `_run_linter()` helper.
+- **Test runner tool**: `test_runner` tool auto-detects project framework (pytest, jest, vitest, go test, cargo test). Runs targeted or full test suites. Available to the agent for edit-test-fix loops.
+- **Headless/CI mode**: `godspeed run "task" --headless` for non-interactive execution. `--auto-approve` levels (reads/all/none), `--json-output` for structured results, `--max-iterations` control. Exit code reflects success/failure.
+- **Web search tool**: `web_search` — DuckDuckGo HTML search, no API key required. Returns titles, URLs, snippets. Agent can look up docs and error messages.
+- **Web fetch tool**: `web_fetch` — HTTP GET with HTML-to-text extraction. Blocks local/private network access. 10K char limit. Agent can read documentation pages.
+- 12 new built-in tools (total: 12 built-in + MCP + sub-agents)
+- 92 new tests (total: 806+ passing), all new features tested
+- `/stats` and `/export` slash commands with tab completion
+
+### Changed
+
+- Auto-verify triggers on .js, .jsx, .ts, .tsx, .go, .rs, .c, .cpp, .h, .hpp (was Python-only)
+- Quit screen shows estimated session cost for paid models
+- Permission prompt diff uses `difflib.unified_diff` (was basic -/+ prefix)
+- File write permission prompt shows line count and create/overwrite indicator
+
 ## [0.9.0] - 2026-04-11
 
 ### Added

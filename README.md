@@ -39,7 +39,7 @@ If you want a coding agent you can actually point at a production codebase, this
 ### Capability
 
 - **200+ LLM providers** -- Claude, GPT, Gemini, Ollama, and everything else LiteLLM supports. Configure fallback chains so work never stops.
-- **8 built-in tools** -- `file_read`, `file_write`, `file_edit` (with fuzzy matching + confidence reporting), `shell`, `glob`, `grep`, `git`, and `verify`. Everything a coding agent needs, nothing it doesn't.
+- **12 built-in tools** -- `file_read`, `file_write`, `file_edit` (fuzzy matching), `shell`, `glob`, `grep`, `git`, `verify` (6 languages), `test_runner` (5 frameworks), `web_search`, `web_fetch`, and `repo_map`. Everything a coding agent needs.
 - **Sub-agent coordinator** -- spawn isolated sub-agents for parallel tasks, each with their own conversation context. Depth limit 3, reuses the same async agent loop.
 - **MCP client** -- connect to Model Context Protocol servers via stdio transport. Remote tools are auto-adapted to Godspeed's Tool ABC with HIGH risk level.
 - **Model routing** -- route LLM calls by task type (plan/edit/chat) to different models. Use a cheap model for edits and a frontier model for planning.
@@ -47,8 +47,15 @@ If you want a coding agent you can actually point at a production codebase, this
 - **Conversation compaction** -- model-aware summarization when approaching the token limit. Small models get aggressive compaction, frontier models get detailed preservation.
 - **Checkpoint save/restore** -- `/checkpoint name` saves conversation state, `/restore name` loads it back. Never lose context again.
 - **Memory** -- SQLite-backed persistent preferences, session event logging, and automatic correction tracking across sessions.
-- **GODSPEED.md project instructions** -- drop a `GODSPEED.md` in any project root to give the agent persistent context about your codebase, conventions, and constraints.
-- **Rich TUI** -- syntax highlighting, diff rendering, streaming output, and slash commands via Rich and prompt-toolkit.
+- **Cross-agent project instructions** -- loads `GODSPEED.md`, `AGENTS.md` (Linux Foundation standard), `CLAUDE.md`, and `.cursorrules`. Zero-friction migration from any agent.
+- **Token cost tracking** -- real-time token usage and estimated cost per session. `/stats` command. Supports 20+ model pricing tiers. Local models always show "free".
+- **Prompt caching** -- system prompt marked with `cache_control` for Anthropic/OpenAI. ~50% cost reduction on repeated prefixes.
+- **Headless/CI mode** -- `godspeed run "task" --headless` for non-interactive execution. Auto-approve levels, JSON output, exit codes for CI/CD integration.
+- **Web tools** -- `web_search` (DuckDuckGo, no API key) and `web_fetch` (HTML-to-text extraction) let the agent look up documentation and error messages.
+- **Multi-language verify** -- auto-verification after edits supports Python (ruff), JS/TS (biome/eslint), Go (go vet), Rust (cargo check), C/C++ (clang-tidy).
+- **Test runner** -- auto-detect pytest, jest, vitest, go test, cargo test. Run targeted or full test suites. Agent-accessible for edit-test-fix loops.
+- **Conversation export** -- `/export` saves the full session as formatted markdown for sharing or review.
+- **Rich TUI** -- syntax highlighting, unified diff rendering, streaming output, and slash commands via Rich and prompt-toolkit.
 
 ## Architecture
 
@@ -74,7 +81,7 @@ flowchart LR
 
 **How it works:**
 
-The agent loop is hand-rolled (no framework) following the same pattern proven by top-performing coding agents. The LLM decides when to stop. On each turn, the LLM either responds with text (done) or requests tool calls. Every tool call passes through the **permission engine** before execution: deny rules are evaluated first and always win, then dangerous command detection (72+ regex patterns) blocks destructive operations, then session grants and allow rules, and finally the tool's risk level determines the default. If anything is ambiguous, it fails closed. After execution, the tool call, its result, and the permission decision are recorded in the **audit trail** -- a hash-chained JSONL file where each record includes the SHA-256 hash of the previous record. Secrets are redacted at four layers: file access deny rules, context cleaning before the LLM sees content, output filtering on LLM responses, and audit log redaction. The loop also includes **stuck-loop detection** (3 identical errors triggers a replan), **auto-verification** (ruff check after Python file edits), **auto-stash** (git stash after 3+ consecutive writes), and **pause/resume** for human-in-the-loop intervention.
+The agent loop is hand-rolled (no framework) following the same pattern proven by top-performing coding agents. The LLM decides when to stop. On each turn, the LLM either responds with text (done) or requests tool calls. Every tool call passes through the **permission engine** before execution: deny rules are evaluated first and always win, then dangerous command detection (72+ regex patterns) blocks destructive operations, then session grants and allow rules, and finally the tool's risk level determines the default. If anything is ambiguous, it fails closed. After execution, the tool call, its result, and the permission decision are recorded in the **audit trail** -- a hash-chained JSONL file where each record includes the SHA-256 hash of the previous record. Secrets are redacted at four layers: file access deny rules, context cleaning before the LLM sees content, output filtering on LLM responses, and audit log redaction. The loop also includes **stuck-loop detection** (3 identical errors triggers a replan), **auto-verification** (linter check after file edits in 6 languages), **auto-stash** (git stash after 3+ consecutive writes), and **pause/resume** for human-in-the-loop intervention.
 
 **Key modules:**
 
@@ -83,7 +90,7 @@ The agent loop is hand-rolled (no framework) following the same pattern proven b
 | Agent loop | `src/godspeed/agent/` | Conversation management, LLM interaction, tool dispatch, sub-agent coordinator |
 | Security | `src/godspeed/security/` | Permission engine, dangerous command detection, secret scanning |
 | Audit | `src/godspeed/audit/` | Hash-chained event logging, redaction, verification, compression |
-| Tools | `src/godspeed/tools/` | 8 built-in tools with Pydantic schemas |
+| Tools | `src/godspeed/tools/` | 12 built-in tools with JSON schemas |
 | LLM | `src/godspeed/llm/` | LiteLLM client wrapper, model routing, token counting |
 | Context | `src/godspeed/context/` | Project instructions, compaction, checkpoints, repo map |
 | MCP | `src/godspeed/mcp/` | Model Context Protocol client and tool adapter |
@@ -133,7 +140,7 @@ Switch models at any time with `/model <name>` inside the TUI, or run `godspeed 
 
 Godspeed auto-upgrades `ollama/` to `ollama_chat/` for tool-capable models (Qwen, Llama, Gemma, Mistral, etc.).
 
-Godspeed reads `GODSPEED.md` from the project root for persistent instructions -- similar to how other agents use `CLAUDE.md`.
+Godspeed reads `GODSPEED.md`, `AGENTS.md`, `CLAUDE.md`, and `.cursorrules` from the project root for persistent instructions. Bring your existing config from any agent.
 
 ### First session
 
@@ -162,6 +169,8 @@ The agent will read your code, answer questions, write files, and run commands -
 | `/pause` | Pause the agent loop at next iteration |
 | `/resume` | Resume a paused agent loop |
 | `/guidance <msg>` | Inject guidance and resume paused agent |
+| `/stats` | Show token usage and estimated cost |
+| `/export [name]` | Export conversation as markdown |
 | `/quit` | Exit Godspeed |
 
 ## Configuration
@@ -222,21 +231,25 @@ Permission rules use glob-style matching against `ToolName(argument)` strings. D
 
 ## How Godspeed Compares
 
-| Feature | Godspeed | Claude Code | Cursor | Aider | OpenClaw |
+| Feature | Godspeed | Claude Code | Cursor | Aider | OpenCode |
 |---------|----------|-------------|--------|-------|----------|
 | Deny-first permission engine | **Yes** (4-tier, 72+ dangerous patterns) | Proprietary | No | No | No |
 | Hash-chained audit trail | **Yes** (SHA-256 JSONL, verifiable) | No | No | No | No |
 | Secret protection | **4 layers** (deny, context clean, output filter, audit redact) | Limited | No | No | No |
+| Multi-language verify | **6 languages** (Python, JS/TS, Go, Rust, C/C++) | Python | No | Python | LSP |
+| Test runner (auto-detect) | **5 frameworks** (pytest, jest, vitest, go, cargo) | Yes | No | Yes | No |
+| Web search & fetch | **Yes** (DuckDuckGo, no API key) | Yes | No | No | No |
+| Headless/CI mode | **Yes** (JSON output, auto-approve) | Yes | No | No | Yes |
+| Token cost tracking | **Yes** (20+ models, per-session) | No | No | No | No |
+| Cross-agent config | **Yes** (GODSPEED.md, AGENTS.md, CLAUDE.md, .cursorrules) | CLAUDE.md only | .cursorrules only | No | AGENTS.md |
+| Prompt caching | **Yes** (Anthropic/OpenAI) | Yes | No | No | No |
 | Sub-agents | **Yes** (isolated, parallel, depth 3) | Yes | No | No | No |
-| MCP support | **Yes** (stdio transport) | Yes | No | No | No |
-| Model routing | **Yes** (per-task-type) | No | No | No | No |
-| Human-in-the-loop | **Yes** (pause/resume/guidance) | Yes | No | No | No |
-| Memory | **Yes** (SQLite, corrections) | Yes | No | No | No |
+| MCP support | **Yes** (stdio transport) | Yes | Yes | No | No |
 | Free by default | **Yes** (Ollama, zero API cost) | No (paid API) | No (subscription) | Yes | Yes |
-| 200+ LLM providers | **Yes** (LiteLLM) | Claude only | OpenAI/Claude | ~15 | Limited |
+| 200+ LLM providers | **Yes** (LiteLLM) | Claude only | OpenAI/Claude | ~75 | 75+ |
 | Open source | **MIT** | No | No | Apache 2.0 | MIT |
 
-Godspeed is the only open-source coding agent that ships with production security primitives out of the box. Others expect you to bolt security on yourself or trust the model not to run destructive commands.
+Godspeed is the only open-source coding agent that ships with production security primitives, multi-language verification, and cost tracking out of the box.
 
 ## Development
 

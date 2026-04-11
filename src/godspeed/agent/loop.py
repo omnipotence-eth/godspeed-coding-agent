@@ -25,6 +25,20 @@ MAX_ITERATIONS = 50
 MAX_RETRIES = 3
 STUCK_LOOP_THRESHOLD = 3
 AUTO_STASH_THRESHOLD = 3
+VERIFIABLE_EXTENSIONS = (
+    ".py",
+    ".pyi",
+    ".js",
+    ".jsx",
+    ".ts",
+    ".tsx",
+    ".go",
+    ".rs",
+    ".c",
+    ".cpp",
+    ".h",
+    ".hpp",
+)
 
 # Callback type aliases for clarity
 OnAssistantText = Callable[[str], None]
@@ -228,7 +242,7 @@ async def agent_loop(
                 and tool_registry.has_tool("verify")
             ):
                 file_path = tool_call.arguments.get("file_path", "")
-                if file_path and file_path.endswith((".py", ".pyi")):
+                if file_path and file_path.endswith(VERIFIABLE_EXTENSIONS):
                     verify_call = ToolCall(
                         tool_name="verify",
                         arguments={"file_path": file_path},

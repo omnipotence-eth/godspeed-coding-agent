@@ -218,6 +218,45 @@ class LLMClient:
             )
         return RuntimeError(f"All models failed. Last error: {last_error}")
 
+    @staticmethod
+    def _apply_prompt_caching(
+        model: str,
+        messages: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """Apply prompt caching markers for supported providers.
+
+        Marks the system prompt with cache_control for Anthropic/OpenAI models,
+        giving ~50% cost reduction on repeated prefixes.
+        """
+        model_lower = model.lower()
+        # Only apply for providers that support cache_control
+        supports_caching = any(
+            prefix in model_lower
+            for prefix in ("claude", "anthropic", "gpt-4o", "gpt-4-turbo", "o3")
+        )
+        if not supports_caching:
+            return messages
+
+        cached = []
+        for msg in messages:
+            if msg.get("role") == "system" and isinstance(msg.get("content"), str):
+                # Convert string content to content block with cache_control
+                cached.append(
+                    {
+                        "role": "system",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": msg["content"],
+                                "cache_control": {"type": "ephemeral"},
+                            }
+                        ],
+                    }
+                )
+            else:
+                cached.append(msg)
+        return cached
+
     async def _call(
         self,
         model: str,
@@ -225,9 +264,12 @@ class LLMClient:
         tools: list[dict[str, Any]] | None,
     ) -> ChatResponse:
         """Make a single LLM API call."""
+        # Apply prompt caching for supported providers
+        cached_messages = self._apply_prompt_caching(model, messages)
+
         kwargs: dict[str, Any] = {
             "model": model,
-            "messages": messages,
+            "messages": cached_messages,
             "timeout": self.timeout,
         }
         if tools:

@@ -106,7 +106,7 @@ def _search_ddg(query: str, max_results: int) -> list[dict[str, str]]:
         method="POST",
     )
 
-    with urllib.request.urlopen(req, timeout=SEARCH_TIMEOUT) as resp:  # noqa: S310
+    with urllib.request.urlopen(req, timeout=SEARCH_TIMEOUT) as resp:  # noqa: S310  # nosec B310
         html = resp.read().decode("utf-8", errors="replace")
 
     return _parse_ddg_html(html, max_results)

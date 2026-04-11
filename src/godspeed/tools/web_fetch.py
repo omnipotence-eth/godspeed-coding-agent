@@ -104,7 +104,7 @@ class WebFetchTool(Tool):
                 headers={"User-Agent": "Godspeed-Agent/1.0"},
                 method="GET",
             )
-            with urllib.request.urlopen(req, timeout=FETCH_TIMEOUT) as resp:  # noqa: S310
+            with urllib.request.urlopen(req, timeout=FETCH_TIMEOUT) as resp:  # noqa: S310  # nosec B310
                 content_type = resp.headers.get("Content-Type", "")
                 raw = resp.read(MAX_CONTENT_BYTES)
 
@@ -146,6 +146,6 @@ def _is_local_url(url: str) -> bool:
 
     parsed = urlparse(url)
     hostname = parsed.hostname or ""
-    return hostname in ("localhost", "127.0.0.1", "0.0.0.0", "::1") or hostname.startswith(  # noqa: S104
+    return hostname in ("localhost", "127.0.0.1", "0.0.0.0", "::1") or hostname.startswith(  # noqa: S104  # nosec B104
         ("192.168.", "10.", "172.16.", "172.17.", "172.18.", "172.19.")
     )

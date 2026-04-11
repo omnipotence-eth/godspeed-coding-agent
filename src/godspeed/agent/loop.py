@@ -122,7 +122,8 @@ async def agent_loop(
             final_text = response.content
             if final_text:
                 conversation.add_assistant_message(content=final_text)
-                if on_assistant_text:
+                # Skip Markdown re-render if we already streamed the text
+                if on_assistant_text and on_assistant_chunk is None:
                     on_assistant_text(final_text)
             return final_text
 

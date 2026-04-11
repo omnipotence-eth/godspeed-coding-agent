@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-04-11
+
+### Added
+
+- **Midnight Gold visual identity**: `tui/theme.py` — single source of truth for all colors, styles, and branded strings. Electric gold primary, steel blue structure, mint green success, warm red errors, amber warnings, slate gray muted.
+- **Branded prompt**: lightning bolt (`⚡`) icon with `icon_prompt()` supporting normal, plan, and paused states via prompt-toolkit HTML
+- **Thinking spinner**: Rich Status spinner shown while waiting for LLM response; auto-clears on first output callback
+- **Semantic color constants**: `CTX_OK/WARN/CRITICAL`, `PERM_ALLOW/DENY/ASK/SESSION`, `TABLE_KEY/VALUE/BORDER/HEADER` — no hardcoded Rich color strings remain in `src/godspeed/`
+- **Theme test suite**: 24 tests covering all helpers (`styled()`, `brand()`, `icon_prompt()`), Rich rendering compatibility, and constant validation
+- 626 tests, ~90% coverage
+
+### Changed
+
+- All TUI modules (`output.py`, `commands.py`, `app.py`) and CLI (`cli.py`) import colors from `tui/theme.py` instead of hardcoding Rich markup
+- Permission prompt input uses themed `BOLD_WARNING` style
+- `godspeed version` command uses `brand()` helper for consistent rendering
+- `godspeed models` and `godspeed init` commands use themed table and text styles
+
 ## [0.5.0] - 2026-04-11
 
 ### Added

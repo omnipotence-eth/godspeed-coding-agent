@@ -160,19 +160,21 @@ class TUIApp:
                     break
                 continue
 
-            # Run agent loop
+            # Run agent loop with thinking indicator
+            spinner = _ThinkingSpinner()
             try:
+                spinner.start()
                 await agent_loop(
                     user_input=user_input,
                     conversation=self._conversation,
                     llm_client=self._llm_client,
                     tool_registry=self._tool_registry,
                     tool_context=self._tool_context,
-                    on_assistant_text=_on_assistant_text,
-                    on_tool_call=_on_tool_call,
-                    on_tool_result=_on_tool_result,
-                    on_permission_denied=_on_permission_denied,
-                    on_assistant_chunk=_on_assistant_chunk,
+                    on_assistant_text=spinner.wrap(_on_assistant_text),
+                    on_tool_call=spinner.wrap(_on_tool_call),
+                    on_tool_result=spinner.wrap(_on_tool_result),
+                    on_permission_denied=spinner.wrap(_on_permission_denied),
+                    on_assistant_chunk=spinner.wrap(_on_assistant_chunk),
                     max_iterations=self._commands.max_iterations,
                     pause_event=self._pause_event,
                 )
@@ -182,6 +184,8 @@ class TUIApp:
             except Exception as exc:
                 logger.error("Agent loop error: %s", exc, exc_info=True)
                 format_error(f"Agent error: {exc}")
+            finally:
+                spinner.stop()
 
         # Final stats on exit
         if self._audit_trail is not None:
@@ -189,6 +193,51 @@ class TUIApp:
                 event_type="session_end",
                 detail={"reason": "user_quit"},
             )
+
+
+# -- Thinking spinner -------------------------------------------------------------
+
+
+class _ThinkingSpinner:
+    """Shows a Rich Status spinner before the first agent output arrives.
+
+    Call ``start()`` to show the spinner, ``wrap(callback)`` to get a
+    version of the callback that stops the spinner on first invocation,
+    and ``stop()`` for explicit cleanup.
+    """
+
+    def __init__(self) -> None:
+        self._status: Any | None = None
+        self._started = False
+
+    def start(self) -> None:
+        from rich.status import Status
+
+        from godspeed.tui.theme import MUTED, PROMPT_ICON
+
+        self._status = Status(
+            f"[{MUTED}]{PROMPT_ICON} Thinking...[/{MUTED}]",
+            console=console,
+            spinner="dots",
+            spinner_style=MUTED,
+        )
+        self._status.start()
+        self._started = True
+
+    def stop(self) -> None:
+        if self._started and self._status is not None:
+            self._status.stop()
+            self._started = False
+
+    def wrap(self, fn: Any) -> Any:
+        """Return a wrapper that stops the spinner before calling *fn*."""
+        spinner = self
+
+        def _wrapped(*args: Any, **kwargs: Any) -> Any:
+            spinner.stop()
+            return fn(*args, **kwargs)
+
+        return _wrapped
 
 
 # -- Callbacks for the agent loop -------------------------------------------------

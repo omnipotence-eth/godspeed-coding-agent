@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-04-11
+
+### Added
+
+- **Skill framework**: Markdown `.md` files with YAML frontmatter define reusable prompt skills. `discover_skills()` scans `~/.godspeed/skills/` and `.godspeed/skills/`, project overrides global. `/{trigger}` commands inject skill content into conversation. `/skills` lists available skills. Tab-completion for skill triggers.
+- **Auto-permission learning**: `ApprovalTracker` counts repeated user approvals per pattern. After 3 approvals, suggests adding as permanent allow rule. `append_allow_rule()` persists to `.godspeed/settings.yaml`. Thread-safe, session-scoped.
+- **Hook system**: `HookDefinition` pydantic model with 4 event types (`pre_tool_call`, `post_tool_call`, `pre_session`, `post_session`). `HookExecutor` runs shell commands with template variables (`{tool_name}`, `{session_id}`, `{cwd}`). Pre-tool hooks can block execution. Configurable timeout (1-300s). Wired into agent loop and CLI lifecycle.
+- **Task tracking**: `TaskStore` (in-memory, sequential IDs) + `TaskTool` (create/update/list/complete). `/tasks` command shows themed Rich table. Registered as built-in LOW-risk tool.
+- **Codebase index**: Optional ChromaDB-backed semantic search (`[index]` extra). AST-based chunking for Python, sliding window for other languages. `CodeSearchTool` for natural language code queries. Background indexing, `/reindex` command, stale detection.
+- **Architecture document**: `GODSPEED_ARCHITECTURE.md` — 6-part reference covering core loop, security model, tool system, intelligence, autonomy, and memory/TUI. Mermaid diagrams. HTML comment delimiters for chunk loading.
+- `hooks` field in `GodspeedSettings` for YAML hook configuration
+- `chromadb` optional dependency under `[index]` extra
+- 734 tests, ~90% coverage
+
 ## [0.6.0] - 2026-04-11
 
 ### Added

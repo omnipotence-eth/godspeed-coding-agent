@@ -31,8 +31,13 @@ class GodspeedCompleter(Completer):
     - File paths as arguments to certain commands
     """
 
-    def __init__(self, cwd: Path | None = None) -> None:
+    def __init__(
+        self,
+        cwd: Path | None = None,
+        extra_commands: list[tuple[str, str]] | None = None,
+    ) -> None:
         self._cwd = cwd or Path(".")
+        self._extra_commands = extra_commands or []
 
     def get_completions(
         self, document: Document, complete_event: CompleteEvent
@@ -52,8 +57,9 @@ class GodspeedCompleter(Completer):
             yield from self._complete_file_paths(parts[1])
 
     def _complete_slash_commands(self, text: str) -> Iterable[Completion]:
-        """Complete slash commands."""
-        for cmd, description in SLASH_COMMANDS:
+        """Complete slash commands (built-in + dynamic skill commands)."""
+        all_commands = SLASH_COMMANDS + self._extra_commands
+        for cmd, description in all_commands:
             if cmd.startswith(text):
                 yield Completion(
                     cmd,

@@ -187,6 +187,14 @@ async def _run_app(
     # Tools
     registry, risk_levels = _build_tool_registry()
 
+    # Task tracking
+    from godspeed.tools.tasks import TaskStore, TaskTool
+
+    task_store = TaskStore()
+    task_tool = TaskTool(task_store)
+    registry.register(task_tool)
+    risk_levels[task_tool.name] = task_tool.risk_level
+
     # Permission engine
     permission_engine = PermissionEngine(
         deny_patterns=settings.permissions.deny,
@@ -291,6 +299,47 @@ async def _run_app(
     registry.register(spawn_tool)
     risk_levels[spawn_tool.name] = spawn_tool.risk_level
 
+    # Codebase index (optional — requires chromadb)
+    codebase_index = None
+    from godspeed.context.codebase_index import CodebaseIndex
+
+    codebase_index = CodebaseIndex(project_dir=effective_project_dir)
+    if codebase_index.is_available:
+        from godspeed.tools.code_search import CodeSearchTool
+
+        code_search_tool = CodeSearchTool(codebase_index)
+        registry.register(code_search_tool)
+        risk_levels[code_search_tool.name] = code_search_tool.risk_level
+
+        # Auto-reindex in background if stale
+        if codebase_index.needs_reindex():
+            logger.info("Codebase index is stale, rebuilding in background")
+            asyncio.get_event_loop().create_task(codebase_index.build_index_async())
+
+    # Discover skills
+    from godspeed.skills.loader import discover_skills
+
+    skill_dirs = [
+        settings.global_dir / "skills",
+        effective_project_dir / ".godspeed" / "skills",
+    ]
+    skills = discover_skills(skill_dirs)
+    skill_completions = [(f"/{s.trigger}", s.description) for s in skills]
+
+    # Hook executor
+    hook_executor = None
+    if settings.hooks:
+        from godspeed.hooks.config import HookDefinition
+        from godspeed.hooks.executor import HookExecutor
+
+        hook_defs = [HookDefinition(**h) for h in settings.hooks]
+        hook_executor = HookExecutor(
+            hooks=hook_defs,
+            cwd=effective_project_dir,
+            session_id=session_id,
+        )
+        hook_executor.run_pre_session()
+
     # Launch TUI
     app = TUIApp(
         llm_client=llm_client,
@@ -300,8 +349,17 @@ async def _run_app(
         permission_engine=permission_engine,
         audit_trail=audit_trail,
         session_id=session_id,
+        skills=skills,
+        extra_completions=skill_completions,
+        hook_executor=hook_executor,
+        task_store=task_store,
+        codebase_index=codebase_index,
     )
     await app.run()
+
+    # Post-session hooks
+    if hook_executor is not None:
+        hook_executor.run_post_session()
 
 
 @click.group(invoke_without_command=True)

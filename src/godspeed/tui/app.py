@@ -72,6 +72,11 @@ class TUIApp:
         permission_engine: PermissionEngine | None,
         audit_trail: AuditTrail | None,
         session_id: str,
+        skills: list[Any] | None = None,
+        extra_completions: list[tuple[str, str]] | None = None,
+        hook_executor: Any | None = None,
+        task_store: Any | None = None,
+        codebase_index: Any | None = None,
     ) -> None:
         self._llm_client = llm_client
         self._tool_registry = tool_registry
@@ -95,13 +100,35 @@ class TUIApp:
             pause_event=self._pause_event,
         )
 
-        self._completer = GodspeedCompleter(cwd=tool_context.cwd)
+        # Wire task store and codebase index for commands
+        if task_store is not None:
+            self._commands._task_store = task_store
+        if codebase_index is not None:
+            self._commands._codebase_index = codebase_index
+
+        # Register skill commands
+        if skills:
+            from godspeed.skills.commands import register_skill_commands
+
+            register_skill_commands(self._commands, conversation, skills)
+
+        self._completer = GodspeedCompleter(
+            cwd=tool_context.cwd,
+            extra_commands=extra_completions,
+        )
         self._key_bindings = _build_key_bindings()
+        self._hook_executor = hook_executor
 
         # Patch the permission check to handle ASK interactively
         self._original_permissions = tool_context.permissions
         if permission_engine is not None:
-            tool_context.permissions = _InteractivePermissionProxy(permission_engine)
+            from godspeed.security.approval_tracker import ApprovalTracker
+
+            self._approval_tracker = ApprovalTracker()
+            tool_context.permissions = _InteractivePermissionProxy(
+                permission_engine,
+                approval_tracker=self._approval_tracker,
+            )
 
     async def run(self) -> None:
         """Run the main TUI loop."""
@@ -177,6 +204,7 @@ class TUIApp:
                     on_assistant_chunk=spinner.wrap(_on_assistant_chunk),
                     max_iterations=self._commands.max_iterations,
                     pause_event=self._pause_event,
+                    hook_executor=self._hook_executor,
                 )
                 console.print()  # End streaming output with newline
             except KeyboardInterrupt:
@@ -277,10 +305,18 @@ class _InteractivePermissionProxy:
 
     When the permission engine returns ASK, this proxy prompts the user
     via the terminal and either grants, denies, or creates a session-scoped grant.
+
+    Optionally tracks repeated approvals via ApprovalTracker and suggests
+    adding patterns as permanent allow rules after a configurable threshold.
     """
 
-    def __init__(self, engine: PermissionEngine) -> None:
+    def __init__(
+        self,
+        engine: PermissionEngine,
+        approval_tracker: Any | None = None,
+    ) -> None:
         self._engine = engine
+        self._tracker = approval_tracker
 
     def evaluate(self, tool_call: Any) -> PermissionDecision:
         """Evaluate permissions, prompting the user for ASK decisions."""
@@ -297,6 +333,12 @@ class _InteractivePermissionProxy:
             answer = "n"
 
         if answer in ("y", "yes"):
+            # Track approval for auto-permission suggestion
+            pattern = tool_call.format_for_permission()
+            if self._tracker is not None:
+                self._tracker.record_approval(pattern)
+                if self._tracker.should_suggest(pattern):
+                    self._suggest_auto_permission(pattern)
             return PermissionDecision(ALLOW, "user approved")
         if answer in ("a", "always"):
             pattern = tool_call.format_for_permission()
@@ -304,3 +346,38 @@ class _InteractivePermissionProxy:
             return PermissionDecision(ALLOW, f"session grant: {pattern}")
 
         return PermissionDecision("deny", "user denied")
+
+    def _suggest_auto_permission(self, pattern: str) -> None:
+        """Suggest adding a pattern as a permanent allow rule."""
+        # Skip if already in allow rules
+        for rule in self._engine.allow_rules:
+            if rule == pattern:
+                return
+
+        from godspeed.tui.theme import ACCENT, SUCCESS
+
+        console.print(
+            f"\n  [{ACCENT}]You've approved [{SUCCESS}]{pattern}"
+            f"[/{SUCCESS}] multiple times.[/{ACCENT}]"
+        )
+        console.print(f"  [{ACCENT}]Add to permanent allow rules? (y/n)[/{ACCENT}]")
+        try:
+            answer = console.input(f"[{BOLD_WARNING}]  > [/{BOLD_WARNING}]").strip().lower()
+        except (KeyboardInterrupt, EOFError):
+            answer = "n"
+
+        if answer in ("y", "yes"):
+            from godspeed.config import append_allow_rule
+
+            success = append_allow_rule(pattern)
+            if success:
+                # Also update engine in-memory
+                self._engine.allow_rules.append(pattern)
+                console.print(f"  [{SUCCESS}]Added to allow rules.[/{SUCCESS}]")
+            else:
+                from godspeed.tui.theme import WARNING
+
+                console.print(
+                    f"  [{WARNING}]Could not persist rule. Added for this session only.[/{WARNING}]"
+                )
+                self._engine.grant_session_permission(pattern)

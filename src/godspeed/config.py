@@ -159,6 +159,9 @@ class GodspeedSettings(BaseSettings):
     # MCP servers
     mcp_servers: list[dict[str, Any]] = Field(default_factory=list)
 
+    # Memory
+    memory_enabled: bool = True
+
     # Nested settings
     permissions: PermissionSettings = Field(default_factory=PermissionSettings)
     audit: AuditSettings = Field(default_factory=AuditSettings)

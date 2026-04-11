@@ -77,7 +77,6 @@ class TestPathTraversal:
         except (ValueError, OSError):
             pass  # Expected on most platforms
 
-    @pytest.mark.skipif(platform.system() != "Windows", reason="Windows-only path behavior")
     def test_windows_drive_escape(self, tmp_path: Path) -> None:
         """Windows drive letter absolute paths should be caught."""
         with pytest.raises(ValueError, match="outside the project"):

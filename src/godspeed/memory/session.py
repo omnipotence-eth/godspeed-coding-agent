@@ -55,9 +55,10 @@ class SessionMemory:
             db_path = Path.home() / ".godspeed" / "memory.db"
         self._db_path = db_path
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._conn = sqlite3.connect(str(self._db_path), check_same_thread=False)
-        self._conn.row_factory = sqlite3.Row
-        self._conn.executescript(_INIT_SQL)
+        conn = sqlite3.connect(str(self._db_path), check_same_thread=False)
+        conn.row_factory = sqlite3.Row
+        conn.executescript(_INIT_SQL)
+        self._conn: sqlite3.Connection | None = conn
         logger.info("session_memory.init db_path=%s", self._db_path)
 
     def _get_conn(self) -> sqlite3.Connection:

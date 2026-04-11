@@ -8,31 +8,12 @@ from pathlib import Path
 from typing import Any
 
 from godspeed.tools.base import RiskLevel, Tool, ToolContext, ToolResult
+from godspeed.tools.excludes import is_excluded
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_EXCLUDES = frozenset(
-    {
-        "node_modules",
-        ".venv",
-        "__pycache__",
-        ".git",
-        ".mypy_cache",
-        ".ruff_cache",
-        ".pytest_cache",
-        "dist",
-        "build",
-        ".eggs",
-    }
-)
-
 DEFAULT_CONTEXT_LINES = 2
 MAX_MATCHES = 200
-
-
-def _is_excluded(path: Path, excludes: frozenset[str]) -> bool:
-    """Check if any path component matches an exclude pattern."""
-    return any(part in excludes for part in path.parts)
 
 
 def _search_file(
@@ -149,7 +130,13 @@ class GrepSearchTool(Tool):
         except re.error as exc:
             return ToolResult.failure(f"Invalid regex pattern: {exc}")
 
-        context_lines = max(0, arguments.get("context_lines", DEFAULT_CONTEXT_LINES))
+        raw_context = arguments.get("context_lines", DEFAULT_CONTEXT_LINES)
+        if not isinstance(raw_context, int):
+            try:
+                raw_context = int(raw_context)
+            except (TypeError, ValueError):
+                return ToolResult.failure("context_lines must be an integer")
+        context_lines = max(0, raw_context)
         file_glob = arguments.get("glob", "")
 
         # Resolve search path
@@ -181,7 +168,7 @@ class GrepSearchTool(Tool):
             files = [
                 p
                 for p in search_path.glob(glob_pattern)
-                if p.is_file() and not _is_excluded(p.relative_to(search_path), DEFAULT_EXCLUDES)
+                if p.is_file() and not is_excluded(p.relative_to(search_path))
             ]
 
         # Search files and collect results

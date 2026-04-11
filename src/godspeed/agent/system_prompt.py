@@ -76,12 +76,5 @@ def build_system_prompt(
     return "\n".join(parts)
 
 
-def load_project_instructions(cwd: Path, filename: str = "GODSPEED.md") -> str | None:
-    """Load project instructions from GODSPEED.md if it exists."""
-    instructions_path = cwd / filename
-    if instructions_path.exists():
-        content = instructions_path.read_text(encoding="utf-8").strip()
-        if content:
-            logger.info("Loaded project instructions from %s", instructions_path)
-            return content
-    return None
+# Note: load_project_instructions lives in context/project_instructions.py
+# which supports walk-up-tree loading for nested projects.

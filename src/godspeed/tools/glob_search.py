@@ -7,30 +7,11 @@ from pathlib import Path
 from typing import Any
 
 from godspeed.tools.base import RiskLevel, Tool, ToolContext, ToolResult
+from godspeed.tools.excludes import is_excluded
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_EXCLUDES = frozenset(
-    {
-        "node_modules",
-        ".venv",
-        "__pycache__",
-        ".git",
-        ".mypy_cache",
-        ".ruff_cache",
-        ".pytest_cache",
-        "dist",
-        "build",
-        ".eggs",
-    }
-)
-
 MAX_RESULTS = 500
-
-
-def _is_excluded(path: Path, excludes: frozenset[str]) -> bool:
-    """Check if any path component matches an exclude pattern."""
-    return any(part in excludes for part in path.parts)
 
 
 class GlobSearchTool(Tool):
@@ -106,7 +87,7 @@ class GlobSearchTool(Tool):
             matches = [
                 p
                 for p in search_root.glob(pattern)
-                if p.is_file() and not _is_excluded(p.relative_to(search_root), DEFAULT_EXCLUDES)
+                if p.is_file() and not is_excluded(p.relative_to(search_root))
             ]
         except ValueError as exc:
             return ToolResult.failure(f"Invalid glob pattern: {exc}")

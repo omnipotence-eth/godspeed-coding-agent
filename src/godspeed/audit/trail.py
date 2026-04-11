@@ -11,6 +11,7 @@ import hashlib
 import json
 import logging
 import os
+import threading
 from pathlib import Path
 
 from godspeed.audit.events import AuditEventType, AuditRecord
@@ -22,6 +23,9 @@ logger = logging.getLogger(__name__)
 class AuditTrail:
     """Append-only, hash-chained JSONL audit log.
 
+    Thread-safe: all writes are serialized through a lock to protect
+    the hash chain (_sequence and _prev_hash) from concurrent mutations.
+
     One file per session: {session_id}.audit.jsonl
     """
 
@@ -31,6 +35,7 @@ class AuditTrail:
         self._prev_hash = ""
         self._record_count = 0
         self._sequence = 0
+        self._lock = threading.Lock()
 
         # Ensure log directory exists
         self._log_dir.mkdir(parents=True, exist_ok=True)
@@ -52,37 +57,50 @@ class AuditTrail:
     ) -> AuditRecord:
         """Append a record to the audit trail.
 
-        Redacts secrets, computes hash chain, writes to JSONL.
-        Uses fsync for durable writes.
+        Thread-safe. Redacts secrets, computes hash chain, writes to JSONL.
+        Uses fsync for durable writes. On I/O failure, logs error but does
+        not crash the agent — the audit chain will be broken for this session.
         """
         # Redact secrets from detail
         safe_detail = redact_audit_detail(detail or {})
 
-        # Create record with sequence number
-        event = AuditRecord(
-            session_id=self._session_id,
-            sequence=self._sequence,
-            action_type=AuditEventType(event_type) if isinstance(event_type, str) else event_type,
-            action_detail=safe_detail,
-            outcome=outcome,
-            prev_hash=self._prev_hash,
-        )
+        with self._lock:
+            # Create record with sequence number
+            event = AuditRecord(
+                session_id=self._session_id,
+                sequence=self._sequence,
+                action_type=AuditEventType(event_type)
+                if isinstance(event_type, str)
+                else event_type,
+                action_detail=safe_detail,
+                outcome=outcome,
+                prev_hash=self._prev_hash,
+            )
 
-        # Compute this record's hash before writing
-        record_json = event.model_dump_json(exclude={"record_hash"})
-        event.record_hash = hashlib.sha256(record_json.encode()).hexdigest()
+            # Compute this record's hash before writing
+            record_json = event.model_dump_json(exclude={"record_hash"})
+            event.record_hash = hashlib.sha256(record_json.encode()).hexdigest()
 
-        # Atomic write: write then fsync for durability
-        line = event.model_dump_json() + "\n"
-        with open(self._log_path, "a", encoding="utf-8") as f:
-            f.write(line)
-            f.flush()
-            os.fsync(f.fileno())
+            # Write with durability guarantees
+            try:
+                line = event.model_dump_json() + "\n"
+                with open(self._log_path, "a", encoding="utf-8") as f:
+                    f.write(line)
+                    f.flush()
+                    os.fsync(f.fileno())
+            except OSError as exc:
+                logger.error(
+                    "Audit write failed path=%s error=%s — chain may be broken",
+                    self._log_path,
+                    exc,
+                )
+                # Still update chain state so subsequent records link correctly
+                # to the record we attempted (even if it didn't persist)
 
-        # Update chain
-        self._prev_hash = event.record_hash
-        self._sequence += 1
-        self._record_count += 1
+            # Update chain
+            self._prev_hash = event.record_hash
+            self._sequence += 1
+            self._record_count += 1
 
         logger.debug(
             "Audit record type=%s outcome=%s seq=%d hash=%s",

@@ -186,7 +186,8 @@ def _on_tool_result(tool_name: str, result: Any) -> None:
     is_error = getattr(result, "is_error", False)
     output = getattr(result, "output", str(result))
     error = getattr(result, "error", None)
-    format_tool_result(tool_name, error if is_error else output, is_error=is_error)
+    display_text = str(error) if is_error and error else str(output)
+    format_tool_result(tool_name, display_text, is_error=is_error)
 
 
 def _on_permission_denied(tool_name: str, reason: str) -> None:

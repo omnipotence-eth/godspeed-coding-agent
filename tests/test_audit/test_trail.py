@@ -108,3 +108,63 @@ class TestAuditRedaction:
         )
         content = trail.log_path.read_text()
         assert "README.md" in content
+
+
+class TestAuditRetention:
+    """Test audit log retention cleanup."""
+
+    def test_cleanup_removes_old_logs(self, audit_dir: Path) -> None:
+        """Expired session logs are removed by cleanup."""
+        import os
+        import time
+
+        # Create a "current" trail
+        trail = AuditTrail(log_dir=audit_dir, session_id="current-session")
+        trail.record(AuditEventType.SESSION_START)
+
+        # Create an "old" log file manually
+        old_log = audit_dir / "old-session.audit.jsonl"
+        old_log.write_text('{"fake": "record"}\n')
+        # Backdate modification time to 60 days ago
+        old_time = time.time() - (60 * 86400)
+        os.utime(old_log, (old_time, old_time))
+
+        removed = trail.cleanup_expired(retention_days=30)
+        assert removed == 1
+        assert not old_log.exists()
+        assert trail.log_path.exists()  # current session untouched
+
+    def test_cleanup_preserves_recent_logs(self, audit_dir: Path) -> None:
+        """Recent session logs are preserved by cleanup."""
+        trail = AuditTrail(log_dir=audit_dir, session_id="current-session")
+        trail.record(AuditEventType.SESSION_START)
+
+        # Create a "recent" log file (created just now)
+        recent_log = audit_dir / "recent-session.audit.jsonl"
+        recent_log.write_text('{"fake": "record"}\n')
+
+        removed = trail.cleanup_expired(retention_days=30)
+        assert removed == 0
+        assert recent_log.exists()
+
+    def test_cleanup_never_deletes_current_session(self, audit_dir: Path) -> None:
+        """Current session log is never deleted even if old."""
+        import os
+        import time
+
+        trail = AuditTrail(log_dir=audit_dir, session_id="current-session")
+        trail.record(AuditEventType.SESSION_START)
+
+        # Backdate the current session's log
+        old_time = time.time() - (90 * 86400)
+        os.utime(trail.log_path, (old_time, old_time))
+
+        removed = trail.cleanup_expired(retention_days=30)
+        assert removed == 0
+        assert trail.log_path.exists()
+
+    def test_cleanup_with_zero_retention_is_noop(self, audit_dir: Path) -> None:
+        """retention_days=0 disables cleanup."""
+        trail = AuditTrail(log_dir=audit_dir, session_id="test")
+        removed = trail.cleanup_expired(retention_days=0)
+        assert removed == 0

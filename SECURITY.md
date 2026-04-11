@@ -27,9 +27,9 @@ days indicating next steps.
 Godspeed is built with a security-first architecture:
 
 - **4-tier permission engine**: deny-first evaluation (deny > ask > allow)
-- **Dangerous command detection**: 15+ regex patterns for destructive operations
+- **Dangerous command detection**: 46 regex patterns for destructive operations
 - **Secret protection**: 4-layer defense (access control, context cleaning, output
-  filtering, audit redaction)
+  filtering, audit redaction) with 27 regex patterns + Shannon entropy analysis
 - **Hash-chained audit trail**: tamper-evident JSONL logs with SHA-256 chain
 - **Fail-closed defaults**: permission timeouts result in denial
 

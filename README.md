@@ -30,9 +30,9 @@ If you want a coding agent you can actually point at a production codebase, this
 
 ### Security
 
-- **4-tier permission engine** -- deny-first evaluation with pattern matching, dangerous command detection (25+ patterns), and fail-closed defaults. No tool call executes without explicit permission.
+- **4-tier permission engine** -- deny-first evaluation with pattern matching, dangerous command detection (46 patterns), and fail-closed defaults. No tool call executes without explicit permission.
 - **Hash-chained audit trail** -- SHA-256 JSONL log where each entry chains to the previous. Tamper-evident and verifiable with `godspeed audit verify`.
-- **Secret protection** -- 4 layers of defense: file deny-listing, context cleaning, output filtering, and audit redaction. 18+ regex patterns plus Shannon entropy analysis catch API keys, tokens, and credentials before they leak.
+- **Secret protection** -- 4 layers of defense: file deny-listing, context cleaning, output filtering, and audit redaction. 27 regex patterns plus Shannon entropy analysis catch API keys, tokens, and credentials before they leak.
 
 ### Capability
 
@@ -60,6 +60,10 @@ flowchart LR
     style Perm fill:#e74c3c,color:#fff
     style Audit fill:#2ecc71,color:#fff
 ```
+
+**How it works:**
+
+The agent loop is hand-rolled (no framework) following the same pattern proven by top-performing coding agents. The LLM decides when to stop. On each turn, the LLM either responds with text (done) or requests tool calls. Every tool call passes through the **permission engine** before execution: deny rules are evaluated first and always win, then dangerous command detection (25+ regex patterns) blocks destructive operations, then session grants and allow rules, and finally the tool's risk level determines the default. If anything is ambiguous, it fails closed. After execution, the tool call, its result, and the permission decision are recorded in the **audit trail** -- a hash-chained JSONL file where each record includes the SHA-256 hash of the previous record. Secrets are redacted at four layers: file access deny rules, context cleaning before the LLM sees content, output filtering on LLM responses, and audit log redaction.
 
 **Key modules:**
 
@@ -98,16 +102,37 @@ cd your-project/
 godspeed
 ```
 
+Or use a local model with [Ollama](https://ollama.com/) -- zero cost, full privacy:
+
+```bash
+ollama pull qwen3:4b
+godspeed -m ollama/qwen3:4b
+```
+
+Godspeed auto-upgrades `ollama/` to `ollama_chat/` for tool-capable models (Qwen, Llama, Gemma, Mistral, etc.).
+
 Godspeed reads `GODSPEED.md` from the project root for persistent instructions -- similar to how other agents use `CLAUDE.md`.
 
 ### First session
 
 ```
 $ godspeed
-> Explain the authentication flow in this codebase
+godspeed> Explain the authentication flow in this codebase
 ```
 
 The agent will read your code, answer questions, write files, and run commands -- all gated by the permission engine.
+
+### Slash commands
+
+| Command | Description |
+|---------|-------------|
+| `/help` | Show available commands |
+| `/model [name]` | Show or switch the active model |
+| `/clear` | Clear conversation history |
+| `/undo` | Undo last git commit (`git reset --soft HEAD~1`) |
+| `/audit` | Show audit trail stats and verify chain integrity |
+| `/permissions` | Show current permission rules and session grants |
+| `/quit` | Exit Godspeed |
 
 ## Configuration
 
@@ -122,9 +147,25 @@ model: claude-sonnet-4-20250514
 fallback_models:
   - gpt-4o
   - gemini-2.0-flash
-permission_mode: ask  # ask | auto-allow | deny
-audit_dir: ~/.godspeed/audit/
+
+permissions:
+  deny:
+    - "FileRead(.env)"
+    - "FileRead(*.pem)"
+    - "FileRead(.ssh/*)"
+  allow:
+    - "Bash(git *)"
+    - "Bash(ruff *)"
+    - "Bash(pytest *)"
+  ask:
+    - "Bash(*)"
+
+audit:
+  enabled: true
+  retention_days: 30
 ```
+
+Permission rules use glob-style matching against `ToolName(argument)` strings. Deny rules are additive across config levels -- a project config cannot weaken global denies.
 
 ### Environment variables
 

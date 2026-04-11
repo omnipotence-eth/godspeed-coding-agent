@@ -72,12 +72,16 @@ class FileReadTool(Tool):
             try:
                 raw_offset = int(raw_offset)
             except (TypeError, ValueError):
-                return ToolResult.failure("offset must be an integer")
+                return ToolResult.failure(
+                    f"offset must be an integer, got {type(raw_offset).__name__}"
+                )
         if not isinstance(raw_limit, int):
             try:
                 raw_limit = int(raw_limit)
             except (TypeError, ValueError):
-                return ToolResult.failure("limit must be an integer")
+                return ToolResult.failure(
+                    f"limit must be an integer, got {type(raw_limit).__name__}"
+                )
         offset = max(1, raw_offset)
         limit = min(raw_limit, MAX_LINES)
 

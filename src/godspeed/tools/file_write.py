@@ -56,7 +56,7 @@ class FileWriteTool(Tool):
         if not isinstance(file_path_str, str) or not file_path_str:
             return ToolResult.failure("file_path must be a non-empty string")
         if not isinstance(content, str):
-            return ToolResult.failure("content must be a string")
+            return ToolResult.failure(f"content must be a string, got {type(content).__name__}")
 
         try:
             resolved = resolve_tool_path(file_path_str, context.cwd)

@@ -1,23 +1,47 @@
 # Project Instructions for Godspeed
 
 Place this file as `GODSPEED.md` in your project root. Godspeed loads it
-automatically as part of the system prompt.
+automatically as part of the system prompt on every session. It walks up the
+directory tree, so parent directories can have their own `GODSPEED.md` for
+shared instructions (parent first, child overrides).
 
-## Example
+## Template
 
 ```markdown
 # GODSPEED.md
 
 ## Project
-This is a Python web application using FastAPI and PostgreSQL.
+<!-- What this project is, in one sentence. -->
+This is a Python web API using FastAPI, PostgreSQL, and Alembic.
 
-## Guidelines
-- Use pytest for all tests
-- Run `make lint` before committing
-- Never modify migration files directly
-- Use alembic for database migrations
+## Stack
+<!-- Key frameworks, versions, and tools so the agent picks the right patterns. -->
+- Python 3.12, FastAPI 0.115, SQLAlchemy 2.0, Alembic
+- pytest + httpx for testing, ruff for linting
+- Docker Compose for local dev, deployed on Railway
 
-## Permissions
-Allow: npm, docker, pytest, ruff, make
-Deny: rm -rf, DROP TABLE
+## Coding Standards
+<!-- Rules the agent should follow when writing code. -->
+- Type hints on all public functions (`from __future__ import annotations`)
+- No print() in production code — use `logging.getLogger(__name__)`
+- Structured logging: `logger.info("event key=%s", value)`, never f-strings
+- Tests live in `tests/` and mirror the `src/` structure
+
+## Architecture Decisions
+<!-- Non-obvious choices the agent should know about. -->
+- We use repository pattern — never query the database directly in routes
+- All background jobs go through Celery, not FastAPI BackgroundTasks
+- Never modify migration files directly — always `alembic revision --autogenerate`
+
+## Off-Limits
+<!-- Things the agent should never do. -->
+- Do not modify `alembic/versions/` files
+- Do not run `DROP TABLE` or `DELETE FROM` without a WHERE clause
+- Do not commit `.env` or any file matching `*.secret.*`
 ```
+
+## Tips
+
+- Keep it concise — this is injected into every LLM prompt, so every token counts.
+- Focus on what the LLM wouldn't know from reading the code alone.
+- Update it as your project evolves — stale instructions are worse than none.

@@ -85,10 +85,12 @@ class ShellTool(Tool):
             try:
                 raw_timeout = int(raw_timeout)
             except (TypeError, ValueError):
-                return ToolResult.failure("timeout must be an integer")
-        timeout = min(raw_timeout, MAX_TIMEOUT)
-        if timeout <= 0:
+                return ToolResult.failure(
+                    f"timeout must be an integer, got {type(raw_timeout).__name__}"
+                )
+        if raw_timeout <= 0:
             return ToolResult.failure("timeout must be positive")
+        timeout = min(raw_timeout, MAX_TIMEOUT)
 
         shell_prefix = _detect_shell()
         logger.info("shell.execute command=%r timeout=%d", command, timeout)

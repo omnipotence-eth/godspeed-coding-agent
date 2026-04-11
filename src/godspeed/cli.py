@@ -130,6 +130,8 @@ async def _run_app(
                 "project_dir": str(effective_project_dir),
             },
         )
+        # Purge expired audit logs on startup
+        audit_trail.cleanup_expired(settings.audit.retention_days)
 
     # Tool context
     tool_context = ToolContext(

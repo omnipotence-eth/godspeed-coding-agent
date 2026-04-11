@@ -159,6 +159,9 @@ class GodspeedSettings(BaseSettings):
     # MCP servers
     mcp_servers: list[dict[str, Any]] = Field(default_factory=list)
 
+    # Hooks — shell commands at lifecycle events
+    hooks: list[dict[str, Any]] = Field(default_factory=list)
+
     # Memory
     memory_enabled: bool = True
 

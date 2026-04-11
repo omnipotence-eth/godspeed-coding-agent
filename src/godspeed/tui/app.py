@@ -74,6 +74,8 @@ class TUIApp:
         session_id: str,
         skills: list[Any] | None = None,
         extra_completions: list[tuple[str, str]] | None = None,
+        hook_executor: Any | None = None,
+        task_store: Any | None = None,
     ) -> None:
         self._llm_client = llm_client
         self._tool_registry = tool_registry
@@ -97,6 +99,10 @@ class TUIApp:
             pause_event=self._pause_event,
         )
 
+        # Wire task store for /tasks command
+        if task_store is not None:
+            self._commands._task_store = task_store
+
         # Register skill commands
         if skills:
             from godspeed.skills.commands import register_skill_commands
@@ -108,6 +114,7 @@ class TUIApp:
             extra_commands=extra_completions,
         )
         self._key_bindings = _build_key_bindings()
+        self._hook_executor = hook_executor
 
         # Patch the permission check to handle ASK interactively
         self._original_permissions = tool_context.permissions
@@ -194,6 +201,7 @@ class TUIApp:
                     on_assistant_chunk=spinner.wrap(_on_assistant_chunk),
                     max_iterations=self._commands.max_iterations,
                     pause_event=self._pause_event,
+                    hook_executor=self._hook_executor,
                 )
                 console.print()  # End streaming output with newline
             except KeyboardInterrupt:

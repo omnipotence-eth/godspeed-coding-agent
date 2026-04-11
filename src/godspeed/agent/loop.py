@@ -47,6 +47,7 @@ async def agent_loop(
     on_assistant_chunk: OnChunk | None = None,
     max_iterations: int | None = None,
     pause_event: asyncio.Event | None = None,
+    hook_executor: Any | None = None,
 ) -> str:
     """Run the agent loop until the model stops calling tools.
 
@@ -172,10 +173,29 @@ async def agent_loop(
             if on_tool_call:
                 on_tool_call(tool_call.tool_name, tool_call.arguments)
 
+            # Pre-tool hook: can block execution
+            if hook_executor is not None:
+                hook_ok = await asyncio.get_event_loop().run_in_executor(
+                    None, hook_executor.run_pre_tool, tool_call.tool_name
+                )
+                if not hook_ok:
+                    logger.info("Pre-tool hook blocked tool=%s", tool_call.tool_name)
+                    conversation.add_tool_result(
+                        tool_call_id=tool_call.call_id,
+                        content="BLOCKED: Pre-tool hook returned non-zero exit.",
+                    )
+                    continue
+
             # Execute tool with latency tracking
             t0 = time.monotonic()
             result = await tool_registry.dispatch(tool_call, tool_context)
             latency_ms = (time.monotonic() - t0) * 1000
+
+            # Post-tool hook
+            if hook_executor is not None:
+                await asyncio.get_event_loop().run_in_executor(
+                    None, hook_executor.run_post_tool, tool_call.tool_name
+                )
 
             if on_tool_result:
                 on_tool_result(tool_call.tool_name, result)

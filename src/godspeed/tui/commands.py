@@ -95,8 +95,12 @@ class Commands:
         self._handlers["/pause"] = self._cmd_pause
         self._handlers["/resume"] = self._cmd_resume
         self._handlers["/guidance"] = self._cmd_guidance
+        self._handlers["/tasks"] = self._cmd_tasks
         self._handlers["/quit"] = self._cmd_quit
         self._handlers["/exit"] = self._cmd_quit
+
+    # Task store reference — set externally after Commands init
+    _task_store: Any | None = None
 
     def register(self, name: str, handler: CommandHandler) -> None:
         """Register a custom slash command."""
@@ -465,6 +469,36 @@ class Commands:
             console.print(f"  [{BOLD_SUCCESS}]Agent resumed with guidance.[/{BOLD_SUCCESS}]")
 
         return CommandResult(handled=True)
+
+    def _cmd_tasks(self, _args: str = "") -> CommandResult:
+        """Show current task list."""
+        if self._task_store is None:
+            console.print(f"  [{MUTED}]Task tracking not enabled.[/{MUTED}]")
+            return CommandResult()
+
+        tasks = self._task_store.list_all()
+        if not tasks:
+            console.print(f"  [{MUTED}]No tasks.[/{MUTED}]")
+            return CommandResult()
+
+        from rich.table import Table
+
+        table = Table(title="Tasks", border_style=TABLE_BORDER, expand=False)
+        table.add_column("ID", style=BOLD_PRIMARY, width=4)
+        table.add_column("Title")
+        table.add_column("Status")
+
+        for t in tasks:
+            if t.status == "completed":
+                status_style = f"[{SUCCESS}]{t.status}[/{SUCCESS}]"
+            elif t.status == "in_progress":
+                status_style = f"[{WARNING}]{t.status}[/{WARNING}]"
+            else:
+                status_style = f"[{MUTED}]{t.status}[/{MUTED}]"
+            table.add_row(str(t.id), t.title, status_style)
+
+        console.print(table)
+        return CommandResult()
 
     def _cmd_quit(self, _args: str = "") -> CommandResult:
         """Exit Godspeed."""

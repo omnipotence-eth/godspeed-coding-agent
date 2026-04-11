@@ -20,37 +20,37 @@ class TestAPIKeyDetection:
     def test_openai_key(self) -> None:
         text = "api_key = 'sk-proj-1234567890abcdefghijklmnopqrstuv'"
         findings = detect_secrets(text)
-        assert any(f["type"] == "openai_api_key" for f in findings)
+        assert any(f.secret_type == "openai_api_key" for f in findings)
 
     def test_anthropic_key(self) -> None:
         text = "key = 'sk-ant-api03-abcdefghijklmnopqrstuvwxyz1234'"
         findings = detect_secrets(text)
-        assert any(f["type"] == "anthropic_api_key" for f in findings)
+        assert any(f.secret_type == "anthropic_api_key" for f in findings)
 
     def test_aws_access_key(self) -> None:
         text = "AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE"
         findings = detect_secrets(text)
-        assert any(f["type"] == "aws_access_key" for f in findings)
+        assert any(f.secret_type == "aws_access_key" for f in findings)
 
     def test_github_pat(self) -> None:
         text = "token = 'ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghij'"
         findings = detect_secrets(text)
-        assert any(f["type"] == "github_pat" for f in findings)
+        assert any(f.secret_type == "github_pat" for f in findings)
 
     def test_gitlab_pat(self) -> None:
         text = "GITLAB_TOKEN=glpat-xxxxxxxxxxxxxxxxxxxx1234"
         findings = detect_secrets(text)
-        assert any(f["type"] == "gitlab_pat" for f in findings)
+        assert any(f.secret_type == "gitlab_pat" for f in findings)
 
     def test_slack_bot_token(self) -> None:
         text = "SLACK_TOKEN=xoxb-1234567890-abcdefghij"
         findings = detect_secrets(text)
-        assert any(f["type"] == "slack_bot_token" for f in findings)
+        assert any(f.secret_type == "slack_bot_token" for f in findings)
 
     def test_sendgrid_key(self) -> None:
         text = "SG.abcdefghijklmnopqrstuv.ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnop"
         findings = detect_secrets(text)
-        assert any(f["type"] == "sendgrid_api_key" for f in findings)
+        assert any(f.secret_type == "sendgrid_api_key" for f in findings)
 
 
 class TestPrivateKeyDetection:
@@ -59,17 +59,17 @@ class TestPrivateKeyDetection:
     def test_rsa_private_key(self) -> None:
         text = "-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAK..."
         findings = detect_secrets(text)
-        assert any(f["type"] == "private_key" for f in findings)
+        assert any(f.secret_type == "private_key" for f in findings)
 
     def test_ec_private_key(self) -> None:
         text = "-----BEGIN EC PRIVATE KEY-----\nMHQCAQ..."
         findings = detect_secrets(text)
-        assert any(f["type"] == "private_key" for f in findings)
+        assert any(f.secret_type == "private_key" for f in findings)
 
     def test_openssh_private_key(self) -> None:
         text = "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC..."
         findings = detect_secrets(text)
-        assert any(f["type"] == "openssh_private_key" for f in findings)
+        assert any(f.secret_type == "openssh_private_key" for f in findings)
 
 
 class TestGenericPatterns:
@@ -78,22 +78,22 @@ class TestGenericPatterns:
     def test_password_assignment(self) -> None:
         text = "password = 'super_secret_password_123'"
         findings = detect_secrets(text)
-        assert any(f["type"] == "password_assignment" for f in findings)
+        assert any(f.secret_type == "password_assignment" for f in findings)
 
     def test_api_key_assignment(self) -> None:
         text = "api_key = 'my-secret-api-key-value-here'"
         findings = detect_secrets(text)
-        assert any(f["type"] == "api_key_assignment" for f in findings)
+        assert any(f.secret_type == "api_key_assignment" for f in findings)
 
     def test_bearer_token(self) -> None:
         text = "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.test.signature"
         findings = detect_secrets(text)
-        assert any(f["type"] == "bearer_token" for f in findings)
+        assert any(f.secret_type == "bearer_token" for f in findings)
 
     def test_database_connection_string(self) -> None:
         text = "DATABASE_URL=postgres://user:password@host:5432/db"
         findings = detect_secrets(text)
-        assert any(f["type"] == "database_connection_string" for f in findings)
+        assert any(f.secret_type == "database_connection_string" for f in findings)
 
 
 class TestEntropyDetection:
@@ -110,7 +110,7 @@ class TestEntropyDetection:
         # Repetitive string with low entropy
         text = "value = aaaaaaaaaaaaaaaaaaaaaaaaa"
         findings = detect_secrets(text)
-        entropy_findings = [f for f in findings if f["type"] == "high_entropy_string"]
+        entropy_findings = [f for f in findings if f.secret_type == "high_entropy_string"]
         assert len(entropy_findings) == 0
 
 

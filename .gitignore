@@ -1,0 +1,54 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+build/
+dist/
+wheels/
+*.egg-info/
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment / Secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Godspeed
+.godspeed/audit/
+.godspeed/sessions/
+
+# Testing
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+
+# Distribution
+*.tar.gz
+*.whl
+
+# Logs
+*.log
+
+# Learning guides (gitignored per CLAUDE.md)
+PROJECT_GUIDE.md
+EXPERIMENT_GUIDE.md
+RESEARCH_LOG.md

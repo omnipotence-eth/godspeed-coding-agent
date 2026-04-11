@@ -1,0 +1,23 @@
+# Project Instructions for Godspeed
+
+Place this file as `GODSPEED.md` in your project root. Godspeed loads it
+automatically as part of the system prompt.
+
+## Example
+
+```markdown
+# GODSPEED.md
+
+## Project
+This is a Python web application using FastAPI and PostgreSQL.
+
+## Guidelines
+- Use pytest for all tests
+- Run `make lint` before committing
+- Never modify migration files directly
+- Use alembic for database migrations
+
+## Permissions
+Allow: npm, docker, pytest, ruff, make
+Deny: rm -rf, DROP TABLE
+```

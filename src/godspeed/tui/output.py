@@ -1,0 +1,135 @@
+"""Rich output formatting for the Godspeed TUI."""
+
+from __future__ import annotations
+
+import json
+import logging
+from typing import Any
+
+from rich.console import Console
+from rich.markdown import Markdown
+from rich.panel import Panel
+from rich.syntax import Syntax
+from rich.table import Table
+from rich.text import Text
+
+logger = logging.getLogger(__name__)
+
+console = Console()
+
+
+def format_tool_call(name: str, args: dict[str, Any]) -> None:
+    """Display a tool call as a Rich Panel with the tool name as header."""
+    try:
+        args_text = json.dumps(args, indent=2, default=str)
+    except (TypeError, ValueError):
+        args_text = str(args)
+
+    syntax = Syntax(args_text, "json", theme="monokai", word_wrap=True)
+    panel = Panel(
+        syntax,
+        title=f"[bold cyan]{name}[/bold cyan]",
+        border_style="cyan",
+        expand=False,
+    )
+    console.print(panel)
+
+
+def format_tool_result(name: str, result: str, is_error: bool = False) -> None:
+    """Display a tool result with color based on success/error."""
+    if is_error:
+        style = "red"
+        title = f"[bold red]{name} (error)[/bold red]"
+    else:
+        style = "green"
+        title = f"[bold green]{name}[/bold green]"
+
+    # Truncate very long outputs for display
+    max_display = 2000
+    display_text = result
+    if len(result) > max_display:
+        display_text = result[:max_display] + f"\n... ({len(result) - max_display} chars truncated)"
+
+    panel = Panel(
+        Text(display_text, style="dim" if not is_error else "red"),
+        title=title,
+        border_style=style,
+        expand=False,
+    )
+    console.print(panel)
+
+
+def format_assistant_text(text: str) -> None:
+    """Render assistant text as Rich Markdown."""
+    if not text.strip():
+        return
+    md = Markdown(text)
+    console.print(md)
+
+
+def format_permission_prompt(tool_name: str, reason: str) -> str:
+    """Display a permission request and return user input (y/n/always)."""
+    console.print()
+    panel = Panel(
+        Text.from_markup(
+            f"[bold]{tool_name}[/bold]\n\n"
+            f"[dim]{reason}[/dim]\n\n"
+            "[yellow]Allow this tool call?[/yellow] "
+            "[dim](y)es / (n)o / (a)lways for this session[/dim]"
+        ),
+        title="[bold yellow]Permission Required[/bold yellow]",
+        border_style="yellow",
+        expand=False,
+    )
+    console.print(panel)
+    return ""
+
+
+def format_permission_denied(tool_name: str, reason: str) -> None:
+    """Display a permission denied notice."""
+    console.print(
+        Text(f"  Blocked: {tool_name} -- {reason}", style="bold red"),
+    )
+
+
+def format_stats(
+    input_tokens: int,
+    output_tokens: int,
+    model: str,
+    session_id: str,
+) -> None:
+    """Display session statistics."""
+    table = Table(show_header=False, border_style="dim", expand=False)
+    table.add_column("Key", style="dim")
+    table.add_column("Value", style="bold")
+    table.add_row("Model", model)
+    table.add_row("Session", session_id[:12] + "...")
+    table.add_row("Input tokens", f"{input_tokens:,}")
+    table.add_row("Output tokens", f"{output_tokens:,}")
+    table.add_row("Total tokens", f"{input_tokens + output_tokens:,}")
+
+    panel = Panel(table, title="[bold]Session Stats[/bold]", border_style="blue", expand=False)
+    console.print(panel)
+
+
+def format_welcome(model: str, project_dir: str) -> None:
+    """Display welcome banner."""
+    console.print()
+    console.print(
+        Panel(
+            Text.from_markup(
+                "[bold]Godspeed[/bold] -- Security-first coding agent\n\n"
+                f"[dim]Model:[/dim]   {model}\n"
+                f"[dim]Project:[/dim] {project_dir}\n\n"
+                "[dim]Type /help for commands, Ctrl+C to interrupt, /quit to exit.[/dim]"
+            ),
+            border_style="bright_blue",
+            expand=False,
+        )
+    )
+    console.print()
+
+
+def format_error(message: str) -> None:
+    """Display an error message."""
+    console.print(Text(f"Error: {message}", style="bold red"))

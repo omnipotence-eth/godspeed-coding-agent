@@ -19,11 +19,11 @@ from __future__ import annotations
 # =============================================================================
 
 PRIMARY = "gold1"  # Electric gold — brand color
-SECONDARY = "steel_blue"  # Cool trust — panels, structure
+SECONDARY = "steel_blue1"  # Cool trust — panels, structure
 SUCCESS = "green3"  # Mint green — success states
 ERROR = "indian_red1"  # Warm red — errors
 WARNING = "dark_orange"  # Amber — caution
-MUTED = "grey58"  # Slate — secondary text
+MUTED = "grey50"  # Slate — secondary text, dimmer for contrast
 ACCENT = "cornflower_blue"  # Accent for interactive elements
 
 # =============================================================================
@@ -72,7 +72,17 @@ PROMPT_TEXT = "godspeed"
 BRAND_TAGLINE = "Security-first coding agent"
 
 # Syntax theme for all code blocks
-SYNTAX_THEME = "monokai"
+SYNTAX_THEME = "one-dark"
+
+# =============================================================================
+# Unicode markers — consistent iconography
+# =============================================================================
+
+MARKER_SUCCESS = "\u2713"  # ✓
+MARKER_ERROR = "\u2717"  # ✗
+MARKER_WARNING = "\u26a0"  # ⚠
+MARKER_TOOL = "\u25b8"  # ▸
+SEPARATOR_DOT = "\u00b7"  # ·
 
 # =============================================================================
 # Markup helpers

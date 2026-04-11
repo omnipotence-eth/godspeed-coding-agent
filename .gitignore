@@ -35,6 +35,7 @@ Thumbs.db
 .godspeed/sessions/
 
 # Testing
+.hypothesis/
 htmlcov/
 .coverage
 .coverage.*

@@ -8,18 +8,26 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from collections.abc import Callable
 from typing import Any
 
 from godspeed.agent.conversation import Conversation
 from godspeed.llm.client import ChatResponse, LLMClient
-from godspeed.tools.base import ToolCall, ToolContext
+from godspeed.tools.base import ToolCall, ToolContext, ToolResult
 from godspeed.tools.registry import ToolRegistry
 
 logger = logging.getLogger(__name__)
 
 MAX_ITERATIONS = 50
 MAX_RETRIES = 3
+
+# Callback type aliases for clarity
+OnAssistantText = Callable[[str], None]
+OnToolCall = Callable[[str, dict[str, Any]], None]
+OnToolResult = Callable[[str, ToolResult], None]
+OnPermissionDenied = Callable[[str, str], None]
+OnChunk = Callable[[str], None]
 
 
 async def agent_loop(
@@ -28,11 +36,11 @@ async def agent_loop(
     llm_client: LLMClient,
     tool_registry: ToolRegistry,
     tool_context: ToolContext,
-    on_assistant_text: Any | None = None,
-    on_tool_call: Any | None = None,
-    on_tool_result: Any | None = None,
-    on_permission_denied: Any | None = None,
-    on_assistant_chunk: Any | None = None,
+    on_assistant_text: OnAssistantText | None = None,
+    on_tool_call: OnToolCall | None = None,
+    on_tool_result: OnToolResult | None = None,
+    on_permission_denied: OnPermissionDenied | None = None,
+    on_assistant_chunk: OnChunk | None = None,
 ) -> str:
     """Run the agent loop until the model stops calling tools.
 
@@ -144,13 +152,15 @@ async def agent_loop(
             if on_tool_call:
                 on_tool_call(tool_call.tool_name, tool_call.arguments)
 
-            # Execute tool
+            # Execute tool with latency tracking
+            t0 = time.monotonic()
             result = await tool_registry.dispatch(tool_call, tool_context)
+            latency_ms = (time.monotonic() - t0) * 1000
 
             if on_tool_result:
                 on_tool_result(tool_call.tool_name, result)
 
-            # Record audit event
+            # Record audit event with latency
             if tool_context.audit is not None:
                 tool_context.audit.record(
                     event_type="tool_call",
@@ -159,6 +169,7 @@ async def agent_loop(
                         "arguments": tool_call.arguments,
                         "output_length": len(result.output),
                         "is_error": result.is_error,
+                        "latency_ms": round(latency_ms, 1),
                     },
                     outcome="error" if result.is_error else "success",
                 )

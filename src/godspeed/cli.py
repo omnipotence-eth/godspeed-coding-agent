@@ -291,6 +291,16 @@ async def _run_app(
     registry.register(spawn_tool)
     risk_levels[spawn_tool.name] = spawn_tool.risk_level
 
+    # Discover skills
+    from godspeed.skills.loader import discover_skills
+
+    skill_dirs = [
+        settings.global_dir / "skills",
+        effective_project_dir / ".godspeed" / "skills",
+    ]
+    skills = discover_skills(skill_dirs)
+    skill_completions = [(f"/{s.trigger}", s.description) for s in skills]
+
     # Launch TUI
     app = TUIApp(
         llm_client=llm_client,
@@ -300,6 +310,8 @@ async def _run_app(
         permission_engine=permission_engine,
         audit_trail=audit_trail,
         session_id=session_id,
+        skills=skills,
+        extra_completions=skill_completions,
     )
     await app.run()
 

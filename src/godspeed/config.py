@@ -215,6 +215,47 @@ class GodspeedSettings(BaseSettings):
         return merged
 
 
+def append_allow_rule(pattern: str, project_dir: Path | None = None) -> bool:
+    """Append an allow rule to the project or global settings.yaml.
+
+    Reads existing YAML, adds the pattern to permissions.allow, writes back.
+    Preserves existing content. Returns True on success.
+
+    Args:
+        pattern: Permission pattern to add (e.g. "Shell(git status)").
+        project_dir: Project directory for .godspeed/settings.yaml.
+            Falls back to global settings if None or project config missing.
+    """
+    # Determine which settings file to write to
+    if project_dir is not None:
+        settings_path = project_dir / ".godspeed" / "settings.yaml"
+    else:
+        settings_path = DEFAULT_GLOBAL_DIR / "settings.yaml"
+
+    try:
+        if settings_path.exists():
+            with open(settings_path, encoding="utf-8") as f:
+                data = yaml.safe_load(f) or {}
+        else:
+            settings_path.parent.mkdir(parents=True, exist_ok=True)
+            data = {}
+
+        permissions = data.setdefault("permissions", {})
+        allow_list = permissions.setdefault("allow", [])
+
+        if pattern not in allow_list:
+            allow_list.append(pattern)
+
+        with open(settings_path, "w", encoding="utf-8") as f:
+            yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)
+
+        logger.info("Appended allow rule '%s' to %s", pattern, settings_path)
+        return True
+    except OSError as exc:
+        logger.warning("Failed to write allow rule: %s", exc)
+        return False
+
+
 def _merge_configs(base: dict[str, Any], override: dict[str, Any]) -> None:
     """Merge override into base. Deny rules are additive (project can't weaken global denies)."""
     for key, value in override.items():

@@ -94,8 +94,9 @@ class ContextSettings(BaseSettings):
 class GodspeedSettings(BaseSettings):
     """Root configuration for Godspeed."""
 
-    # LLM
-    model: str = "claude-sonnet-4-20250514"
+    # LLM — default to free local Ollama model; override via settings.yaml,
+    # GODSPEED_MODEL env var, or `godspeed -m <model>`
+    model: str = "ollama/qwen3:4b"
     fallback_models: list[str] = Field(default_factory=list)
 
     # Paths

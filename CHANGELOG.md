@@ -15,11 +15,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `godspeed init` command — creates `~/.godspeed/` and default `settings.yaml`
+- `godspeed models` command — shows popular model options with provider, cost, and API key info
+- `settings.yaml.example` — full reference config with free/paid model examples and permission rules
 - Audit trail retention cleanup — expired sessions are purged on startup based on `retention_days` setting
 - Token counter model mappings for Claude, Gemini, DeepSeek, Ollama models
 
 ### Changed
 
+- Default model changed from paid `claude-sonnet-4-20250514` to free `ollama/qwen3:4b` — zero-cost out of the box
 - Expanded pyproject.toml classifiers and keywords for PyPI discoverability
 
 ## [0.1.0] - 2026-04-10

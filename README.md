@@ -88,26 +88,35 @@ pip install godspeed
 Or with [uv](https://github.com/astral-sh/uv):
 
 ```bash
-uv add godspeed
+uv tool install godspeed     # installs globally — run 'godspeed' from anywhere
+```
+
+### Setup
+
+```bash
+# One-time setup — creates ~/.godspeed/ and default settings
+godspeed init
+
+# Pull a free local model (default, no API key needed)
+ollama pull qwen3:4b
 ```
 
 ### Run
 
 ```bash
-# Set your LLM API key (example: Claude)
-export ANTHROPIC_API_KEY="sk-..."
-
-# Launch in any project directory
+# Launch in any project directory — uses free local model by default
 cd your-project/
 godspeed
 ```
 
-Or use a local model with [Ollama](https://ollama.com/) -- zero cost, full privacy:
+Or use a paid cloud model:
 
 ```bash
-ollama pull qwen3:4b
-godspeed -m ollama/qwen3:4b
+export ANTHROPIC_API_KEY="sk-..."
+godspeed -m claude-sonnet-4-20250514
 ```
+
+Switch models at any time with `/model <name>` inside the TUI, or run `godspeed models` to see all options.
 
 Godspeed auto-upgrades `ollama/` to `ollama_chat/` for tool-capable models (Qwen, Llama, Gemma, Mistral, etc.).
 

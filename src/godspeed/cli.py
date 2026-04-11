@@ -23,8 +23,6 @@ def _setup_logging(verbose: bool) -> None:
     libraries stay at WARNING so they don't drown the TUI output.
     Logs go to stderr to avoid interleaving with Rich's stdout streaming.
     """
-    import sys
-
     handler = logging.StreamHandler(sys.stderr)
     handler.setFormatter(
         logging.Formatter("%(asctime)s %(name)s %(levelname)s %(message)s", datefmt="%H:%M:%S")
@@ -283,3 +281,84 @@ def audit_verify(session_id: str | None, audit_dir: Path | None) -> None:
 
         if not found:
             c.print("[dim]No audit logs found.[/dim]")
+
+
+@main.command()
+def init() -> None:
+    """Set up Godspeed — create ~/.godspeed/ and default settings.yaml."""
+
+    from rich.console import Console as RichConsole
+
+    from godspeed.config import DEFAULT_GLOBAL_DIR
+
+    c = RichConsole()
+    global_dir = DEFAULT_GLOBAL_DIR
+    settings_path = global_dir / "settings.yaml"
+    audit_dir = global_dir / "audit"
+
+    global_dir.mkdir(parents=True, exist_ok=True)
+    audit_dir.mkdir(parents=True, exist_ok=True)
+
+    if settings_path.exists():
+        c.print(f"  [dim]Settings already exist:[/dim] {settings_path}")
+    else:
+        # Copy the example settings
+        example = Path(__file__).parent.parent.parent / "settings.yaml.example"
+        if example.exists():
+            settings_path.write_text(example.read_text(encoding="utf-8"), encoding="utf-8")
+        else:
+            # Inline minimal config if example not bundled
+            settings_path.write_text(
+                "# Godspeed settings — see https://github.com/omnipotence-eth/godspeed-coding-agent\n"
+                "model: ollama/qwen3:4b\n"
+                "fallback_models: []\n",
+                encoding="utf-8",
+            )
+        c.print(f"  [green]Created settings:[/green] {settings_path}")
+
+    c.print(f"  [green]Audit directory:[/green] {audit_dir}")
+    c.print()
+    c.print("  [bold]Next steps:[/bold]")
+    c.print("    1. Install a local model: [cyan]ollama pull qwen3:4b[/cyan]")
+    c.print("    2. Or set an API key:     [cyan]export ANTHROPIC_API_KEY=sk-...[/cyan]")
+    c.print(f"    3. Edit your settings:    [cyan]{settings_path}[/cyan]")
+    c.print("    4. Launch Godspeed:        [cyan]godspeed[/cyan]")
+
+
+@main.command()
+def models() -> None:
+    """Show popular model options and how to configure them."""
+    from rich.console import Console as RichConsole
+    from rich.table import Table
+
+    c = RichConsole()
+
+    table = Table(title="Popular Models", border_style="blue", expand=False)
+    table.add_column("Model", style="bold cyan")
+    table.add_column("Provider", style="dim")
+    table.add_column("Cost")
+    table.add_column("API Key Env Var", style="dim")
+
+    # Free local models
+    table.add_row("ollama/qwen3:4b", "Ollama", "[green]Free[/green]", "None (local)")
+    table.add_row("ollama/qwen3:8b", "Ollama", "[green]Free[/green]", "None (local)")
+    table.add_row("ollama/gemma4:e4b", "Ollama", "[green]Free[/green]", "None (local)")
+    table.add_row("ollama/llama3.3:8b", "Ollama", "[green]Free[/green]", "None (local)")
+    table.add_row("ollama/deepseek-r1:8b", "Ollama", "[green]Free[/green]", "None (local)")
+    table.add_row("ollama/mistral:7b", "Ollama", "[green]Free[/green]", "None (local)")
+
+    # Paid cloud models
+    table.add_row("claude-sonnet-4-20250514", "Anthropic", "Paid", "ANTHROPIC_API_KEY")
+    table.add_row("claude-opus-4-20250514", "Anthropic", "Paid", "ANTHROPIC_API_KEY")
+    table.add_row("gpt-4o", "OpenAI", "Paid", "OPENAI_API_KEY")
+    table.add_row("gpt-4o-mini", "OpenAI", "Paid", "OPENAI_API_KEY")
+    table.add_row("gemini/gemini-2.0-flash", "Google", "Paid", "GEMINI_API_KEY")
+    table.add_row("deepseek/deepseek-chat", "DeepSeek", "Paid", "DEEPSEEK_API_KEY")
+
+    c.print(table)
+    c.print()
+    c.print("  [bold]Switch models:[/bold]")
+    c.print("    [dim]CLI flag:[/dim]     godspeed -m claude-sonnet-4-20250514")
+    c.print("    [dim]Env var:[/dim]      GODSPEED_MODEL=gpt-4o godspeed")
+    c.print("    [dim]Settings:[/dim]     Edit ~/.godspeed/settings.yaml")
+    c.print("    [dim]At runtime:[/dim]   /model claude-sonnet-4-20250514")

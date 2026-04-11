@@ -205,15 +205,15 @@ class Commands:
         table.add_column("Action", style="bold")
         table.add_column("Pattern")
 
-        for rule in self._permission_engine._deny_rules:
+        for rule in self._permission_engine.deny_rules:
             table.add_row("[red]DENY[/red]", rule.pattern)
-        for rule in self._permission_engine._allow_rules:
+        for rule in self._permission_engine.allow_rules:
             table.add_row("[green]ALLOW[/green]", rule.pattern)
-        for rule in self._permission_engine._ask_rules:
+        for rule in self._permission_engine.ask_rules:
             table.add_row("[yellow]ASK[/yellow]", rule.pattern)
 
         # Session grants
-        for grant in self._permission_engine._session_grants:
+        for grant in self._permission_engine.session_grants:
             table.add_row("[blue]SESSION[/blue]", grant)
 
         console.print(table)

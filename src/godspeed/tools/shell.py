@@ -80,7 +80,13 @@ class ShellTool(Tool):
         if not isinstance(command, str) or not command.strip():
             return ToolResult.failure("command must be a non-empty string")
 
-        timeout = min(arguments.get("timeout", DEFAULT_TIMEOUT), MAX_TIMEOUT)
+        raw_timeout = arguments.get("timeout", DEFAULT_TIMEOUT)
+        if not isinstance(raw_timeout, int):
+            try:
+                raw_timeout = int(raw_timeout)
+            except (TypeError, ValueError):
+                return ToolResult.failure("timeout must be an integer")
+        timeout = min(raw_timeout, MAX_TIMEOUT)
         if timeout <= 0:
             return ToolResult.failure("timeout must be positive")
 

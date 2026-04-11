@@ -59,7 +59,14 @@ class Conversation:
         if content:
             msg["content"] = content
         if tool_calls:
-            msg["tool_calls"] = tool_calls
+            # Ensure each tool call has 'type' — required by some providers
+            # (e.g. LiteLLM's ollama_chat transformation)
+            normalized = []
+            for tc in tool_calls:
+                entry = dict(tc)
+                entry.setdefault("type", "function")
+                normalized.append(entry)
+            msg["tool_calls"] = normalized
         self._messages.append(msg)
 
     def add_tool_result(self, tool_call_id: str, content: str) -> None:

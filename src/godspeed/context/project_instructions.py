@@ -1,7 +1,11 @@
-"""GODSPEED.md project instructions loader.
+"""Project instructions loader — GODSPEED.md, AGENTS.md, CLAUDE.md, .cursorrules.
 
-Walks up the directory tree loading applicable instruction files,
-similar to Claude Code's CLAUDE.md pattern.
+Walks up the directory tree loading applicable instruction files.
+Supports the cross-agent AGENTS.md standard (Linux Foundation AAIF) and
+reads CLAUDE.md / .cursorrules for zero-friction migration from other agents.
+
+Priority: GODSPEED.md > AGENTS.md > CLAUDE.md > .cursorrules
+All found files are merged (parent-first, most-specific-last).
 """
 
 from __future__ import annotations
@@ -13,29 +17,28 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_FILENAME = "GODSPEED.md"
 
+# Cross-agent instruction files, in priority order.
+# GODSPEED.md is always loaded first and takes highest priority.
+# Others are loaded as supplementary context if GODSPEED.md is absent
+# or to capture project-level conventions from other agent configs.
+INSTRUCTION_FILES = (
+    "GODSPEED.md",
+    "AGENTS.md",
+    "CLAUDE.md",
+    ".cursorrules",
+)
 
-def load_project_instructions(
+
+def _load_single_file(
     cwd: Path,
-    filename: str = DEFAULT_FILENAME,
+    filename: str,
     walk_parents: bool = True,
-) -> str | None:
-    """Load project instructions from GODSPEED.md.
+) -> list[tuple[Path, str]]:
+    """Load a single instruction filename from cwd upward.
 
-    Searches from cwd upward through parent directories.
-    If multiple files found, they are concatenated (parent first, child last)
-    so the most specific instructions take precedence.
-
-    Args:
-        cwd: Starting directory to search from.
-        filename: Instruction file name (default: GODSPEED.md).
-        walk_parents: Whether to walk up the directory tree.
-
-    Returns:
-        Combined instructions text, or None if no files found.
+    Returns list of (path, content) tuples found, child-first order.
     """
-    found_files: list[tuple[Path, str]] = []
-
-    # Walk up directory tree
+    found: list[tuple[Path, str]] = []
     current = cwd.resolve()
     root = current.anchor
 
@@ -45,7 +48,7 @@ def load_project_instructions(
             try:
                 content = instructions_path.read_text(encoding="utf-8").strip()
                 if content:
-                    found_files.append((instructions_path, content))
+                    found.append((instructions_path, content))
                     logger.info("Found project instructions at %s", instructions_path)
             except OSError as exc:
                 logger.warning(
@@ -61,16 +64,64 @@ def load_project_instructions(
             break
         current = parent
 
+    # Reverse so parent instructions come first (most general → most specific)
+    found.reverse()
+    return found
+
+
+def load_project_instructions(
+    cwd: Path,
+    filename: str = DEFAULT_FILENAME,
+    walk_parents: bool = True,
+) -> str | None:
+    """Load project instructions from GODSPEED.md and cross-agent config files.
+
+    Searches from cwd upward through parent directories. Loads:
+    1. GODSPEED.md (primary — always loaded)
+    2. AGENTS.md (Linux Foundation standard)
+    3. CLAUDE.md (Claude Code format)
+    4. .cursorrules (Cursor format)
+
+    If filename is explicitly set to something other than the default,
+    only that filename is loaded (backward-compatible behavior).
+
+    Files are concatenated (parent first, child last) with source headers.
+
+    Args:
+        cwd: Starting directory to search from.
+        filename: Instruction file name (default: GODSPEED.md).
+        walk_parents: Whether to walk up the directory tree.
+
+    Returns:
+        Combined instructions text, or None if no files found.
+    """
+    # If caller specified a non-default filename, use single-file mode
+    if filename != DEFAULT_FILENAME:
+        found_files = _load_single_file(cwd, filename, walk_parents)
+        return _merge_found_files(found_files)
+
+    # Multi-file mode: load all recognized instruction files
+    all_found: list[tuple[Path, str]] = []
+    seen_paths: set[Path] = set()
+
+    for instruction_file in INSTRUCTION_FILES:
+        found = _load_single_file(cwd, instruction_file, walk_parents)
+        for path, content in found:
+            if path not in seen_paths:
+                seen_paths.add(path)
+                all_found.append((path, content))
+
+    return _merge_found_files(all_found)
+
+
+def _merge_found_files(found_files: list[tuple[Path, str]]) -> str | None:
+    """Merge found instruction files into a single string."""
     if not found_files:
         return None
-
-    # Reverse so parent instructions come first (most general → most specific)
-    found_files.reverse()
 
     if len(found_files) == 1:
         return found_files[0][1]
 
-    # Concatenate with source headers
     parts = []
     for path, content in found_files:
         parts.append(f"# From: {path}\n\n{content}")

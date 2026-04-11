@@ -1,10 +1,19 @@
-"""Verify tool — run linter checks on files after edits."""
+"""Verify tool — run linter checks on files after edits.
+
+Supports multiple languages with automatic linter detection:
+- Python: ruff
+- JavaScript/TypeScript: biome, eslint
+- Go: go vet
+- Rust: cargo check (via clippy)
+- C/C++: clang-tidy
+"""
 
 from __future__ import annotations
 
 import logging
 import shutil
 import subprocess
+from pathlib import Path
 from typing import Any
 
 from godspeed.tools.base import RiskLevel, Tool, ToolContext, ToolResult
@@ -12,19 +21,33 @@ from godspeed.tools.path_utils import resolve_tool_path
 
 logger = logging.getLogger(__name__)
 
-# File extensions that support verification
-PYTHON_EXTENSIONS = {".py", ".pyi"}
-
 # Timeout for linter subprocess
-VERIFY_TIMEOUT = 15
+VERIFY_TIMEOUT = 30
+
+# Extension → verifier function mapping
+_EXTENSION_MAP: dict[str, str] = {
+    ".py": "python",
+    ".pyi": "python",
+    ".js": "javascript",
+    ".jsx": "javascript",
+    ".ts": "typescript",
+    ".tsx": "typescript",
+    ".go": "go",
+    ".rs": "rust",
+    ".c": "c_cpp",
+    ".cpp": "c_cpp",
+    ".h": "c_cpp",
+    ".hpp": "c_cpp",
+}
 
 
 class VerifyTool(Tool):
     """Run linter verification on a file.
 
-    Currently supports Python files via ruff. Returns lint errors/warnings
+    Supports Python (ruff), JS/TS (biome/eslint), Go (go vet),
+    Rust (cargo check), C/C++ (clang-tidy). Returns lint errors/warnings
     so the agent can self-correct. Gracefully returns success for
-    unsupported file types.
+    unsupported file types or missing linters.
     """
 
     @property
@@ -35,7 +58,8 @@ class VerifyTool(Tool):
     def description(self) -> str:
         return (
             "Run linter checks on a file to catch syntax errors and style issues. "
-            "Currently supports Python files (via ruff). Returns clean or error details."
+            "Supports Python (ruff), JS/TS (biome/eslint), Go (go vet), "
+            "Rust (cargo check), C/C++ (clang-tidy). Returns clean or error details."
         )
 
     @property
@@ -69,26 +93,29 @@ class VerifyTool(Tool):
             return ToolResult.failure(f"File not found: {file_path_str}")
 
         suffix = resolved.suffix.lower()
+        lang = _EXTENSION_MAP.get(suffix)
 
-        if suffix in PYTHON_EXTENSIONS:
+        if lang == "python":
             return _verify_python(resolved, file_path_str)
+        if lang in ("javascript", "typescript"):
+            return _verify_js_ts(resolved, file_path_str, context.cwd)
+        if lang == "go":
+            return _verify_go(resolved, file_path_str)
+        if lang == "rust":
+            return _verify_rust(resolved, file_path_str)
+        if lang == "c_cpp":
+            return _verify_c_cpp(resolved, file_path_str)
 
         return ToolResult.success(
             f"No linter configured for {suffix} files. Skipping verification."
         )
 
 
-def _verify_python(resolved: Any, display_path: str) -> ToolResult:
-    """Run ruff check on a Python file."""
-    ruff_bin = shutil.which("ruff")
-    if ruff_bin is None:
-        return ToolResult.success(
-            "ruff not found — skipping verification. Install with: pip install ruff"
-        )
-
+def _run_linter(cmd: list[str], display_path: str, linter_name: str) -> ToolResult:
+    """Run a linter command and return a ToolResult."""
     try:
         result = subprocess.run(
-            [ruff_bin, "check", "--select=E,W,F", "--no-fix", str(resolved)],
+            cmd,
             capture_output=True,
             text=True,
             timeout=VERIFY_TIMEOUT,
@@ -96,11 +123,119 @@ def _verify_python(resolved: Any, display_path: str) -> ToolResult:
     except subprocess.TimeoutExpired:
         return ToolResult.failure(f"Verification timed out after {VERIFY_TIMEOUT}s: {display_path}")
     except OSError as exc:
-        return ToolResult.failure(f"Failed to run ruff: {exc}")
+        return ToolResult.failure(f"Failed to run {linter_name}: {exc}")
 
     if result.returncode == 0:
-        return ToolResult.success(f"Verification passed: {display_path}")
+        return ToolResult.success(f"Verification passed ({linter_name}): {display_path}")
 
-    # ruff returns non-zero when there are findings
     output = result.stdout.strip() or result.stderr.strip()
-    return ToolResult.success(f"Lint issues in {display_path}:\n{output}")
+    return ToolResult.success(f"Lint issues in {display_path} ({linter_name}):\n{output}")
+
+
+def _verify_python(resolved: Path, display_path: str) -> ToolResult:
+    """Run ruff check on a Python file."""
+    ruff_bin = shutil.which("ruff")
+    if ruff_bin is None:
+        return ToolResult.success(
+            "ruff not found — skipping verification. Install with: pip install ruff"
+        )
+    return _run_linter(
+        [ruff_bin, "check", "--select=E,W,F", "--no-fix", str(resolved)],
+        display_path,
+        "ruff",
+    )
+
+
+def _verify_js_ts(resolved: Path, display_path: str, cwd: Path) -> ToolResult:
+    """Run biome or eslint on a JS/TS file."""
+    # Prefer biome (faster, no config needed)
+    biome_bin = shutil.which("biome")
+    if biome_bin is not None:
+        return _run_linter(
+            [biome_bin, "check", "--no-errors-on-unmatched", str(resolved)],
+            display_path,
+            "biome",
+        )
+
+    # Fall back to eslint
+    eslint_bin = shutil.which("eslint")
+    if eslint_bin is not None:
+        return _run_linter(
+            [eslint_bin, "--no-fix", str(resolved)],
+            display_path,
+            "eslint",
+        )
+
+    # Try npx eslint as last resort if node_modules exists
+    npx_bin = shutil.which("npx")
+    if npx_bin is not None and (cwd / "node_modules").is_dir():
+        return _run_linter(
+            [npx_bin, "eslint", "--no-fix", str(resolved)],
+            display_path,
+            "eslint (npx)",
+        )
+
+    return ToolResult.success(f"No JS/TS linter found for {display_path}. Install biome or eslint.")
+
+
+def _verify_go(resolved: Path, display_path: str) -> ToolResult:
+    """Run go vet on a Go file."""
+    go_bin = shutil.which("go")
+    if go_bin is None:
+        return ToolResult.success("go not found — skipping verification.")
+    return _run_linter(
+        [go_bin, "vet", str(resolved)],
+        display_path,
+        "go vet",
+    )
+
+
+def _verify_rust(resolved: Path, display_path: str) -> ToolResult:
+    """Run cargo check for Rust files.
+
+    Rust's linter (clippy) works on crate level, not individual files,
+    so we run cargo check from the file's directory to catch compile errors.
+    """
+    cargo_bin = shutil.which("cargo")
+    if cargo_bin is None:
+        return ToolResult.success("cargo not found — skipping verification.")
+
+    # Find the nearest Cargo.toml
+    cargo_dir = resolved.parent
+    while cargo_dir != cargo_dir.parent:
+        if (cargo_dir / "Cargo.toml").exists():
+            break
+        cargo_dir = cargo_dir.parent
+    else:
+        return ToolResult.success(f"No Cargo.toml found for {display_path}. Skipping.")
+
+    try:
+        result = subprocess.run(
+            [cargo_bin, "check", "--message-format=short"],
+            capture_output=True,
+            text=True,
+            timeout=VERIFY_TIMEOUT,
+            cwd=str(cargo_dir),
+        )
+    except subprocess.TimeoutExpired:
+        return ToolResult.failure(f"Verification timed out after {VERIFY_TIMEOUT}s: {display_path}")
+    except OSError as exc:
+        return ToolResult.failure(f"Failed to run cargo check: {exc}")
+
+    if result.returncode == 0:
+        return ToolResult.success(f"Verification passed (cargo check): {display_path}")
+
+    output = result.stderr.strip() or result.stdout.strip()
+    return ToolResult.success(f"Build issues in {display_path} (cargo check):\n{output}")
+
+
+def _verify_c_cpp(resolved: Path, display_path: str) -> ToolResult:
+    """Run clang-tidy on a C/C++ file."""
+    clang_tidy = shutil.which("clang-tidy")
+    if clang_tidy is None:
+        return ToolResult.success("clang-tidy not found — skipping verification.")
+    return _run_linter(
+        [clang_tidy, str(resolved), "--quiet"],
+        display_path,
+        "clang-tidy",
+    )

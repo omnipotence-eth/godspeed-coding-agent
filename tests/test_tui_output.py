@@ -45,8 +45,8 @@ class TestFormatPermissionPrompt:
         output = _capture(format_permission_prompt, "file_edit", "ASK", arguments=args)
         assert "file_edit" in output
         assert "src/main.py" in output
-        assert "- print('hello')" in output
-        assert "+ print('goodbye')" in output
+        assert "-print('hello')" in output
+        assert "+print('goodbye')" in output
 
     def test_file_write_shows_preview(self) -> None:
         content = "\n".join(f"line {i}" for i in range(20))

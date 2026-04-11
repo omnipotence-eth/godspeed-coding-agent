@@ -20,12 +20,12 @@ class TestLoadProjectInstructions:
         assert "Use pytest" in result
 
     def test_no_file_returns_none(self, tmp_path: Path) -> None:
-        result = load_project_instructions(tmp_path)
+        result = load_project_instructions(tmp_path, walk_parents=False)
         assert result is None
 
     def test_empty_file_returns_none(self, tmp_path: Path) -> None:
         (tmp_path / "GODSPEED.md").write_text("")
-        result = load_project_instructions(tmp_path)
+        result = load_project_instructions(tmp_path, walk_parents=False)
         assert result is None
 
     def test_walk_parents(self, tmp_path: Path) -> None:

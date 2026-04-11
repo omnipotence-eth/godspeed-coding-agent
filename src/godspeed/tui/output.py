@@ -114,34 +114,75 @@ def format_permission_prompt(
     args = arguments or {}
 
     if tool_name == "file_edit" and args.get("old_string") and args.get("new_string"):
+        import difflib
+
         file_path = args.get("file_path", "unknown")
-        detail_parts.append(Text.from_markup(f"[{MUTED}]File:[/{MUTED}] {file_path}\n"))
         old = args["old_string"]
         new = args["new_string"]
-        diff_lines = []
-        for line in old.splitlines():
-            diff_lines.append(f"- {line}")
-        for line in new.splitlines():
-            diff_lines.append(f"+ {line}")
-        diff_text = "\n".join(diff_lines[:20])
+
+        # Line change stats
+        old_lines = old.splitlines()
+        new_lines = new.splitlines()
+        added = sum(1 for line in difflib.ndiff(old_lines, new_lines) if line.startswith("+ "))
+        removed = sum(1 for line in difflib.ndiff(old_lines, new_lines) if line.startswith("- "))
+        stats = f"+{added} -{removed} lines"
+
+        detail_parts.append(
+            Text.from_markup(f"[{MUTED}]File:[/{MUTED}] {file_path}  [{DIM}]({stats})[/{DIM}]\n")
+        )
+
+        # Unified diff with context
+        diff_output = list(
+            difflib.unified_diff(
+                old_lines,
+                new_lines,
+                fromfile="before",
+                tofile="after",
+                lineterm="",
+                n=2,
+            )
+        )
+        # Skip the --- / +++ headers, keep @@ hunks and content
+        diff_content = [line for line in diff_output[2:]] if len(diff_output) > 2 else diff_output
+        diff_text = "\n".join(diff_content[:30])
         detail_parts.append(Syntax(diff_text, "diff", theme=SYNTAX_THEME, word_wrap=True))
-        if len(diff_lines) > 20:
+        if len(diff_content) > 30:
             detail_parts.append(
-                Text.from_markup(f"[{DIM}]... ({len(diff_lines) - 20} more lines)[/{DIM}]")
+                Text.from_markup(f"[{DIM}]... ({len(diff_content) - 30} more lines)[/{DIM}]")
             )
 
     elif tool_name == "file_write" and args.get("content"):
+        from pathlib import Path
+
         file_path = args.get("file_path", "unknown")
-        detail_parts.append(Text.from_markup(f"[{MUTED}]File:[/{MUTED}] {file_path}\n"))
         all_lines = args["content"].splitlines()
-        preview = "\n".join(all_lines[:10])
+        line_count = len(all_lines)
+
+        # Detect overwrite vs create
+        target = Path(file_path)
+        if not target.is_absolute():
+            # Best-effort check — may not resolve perfectly without context.cwd
+            action = "write"
+        elif target.exists():
+            action = "overwrite"
+        else:
+            action = "create"
+        action_label = f"[{WARNING}]{action}[/{WARNING}]" if action == "overwrite" else action
+
+        detail_parts.append(
+            Text.from_markup(
+                f"[{MUTED}]File:[/{MUTED}] {file_path}  "
+                f"[{DIM}]({action_label}, {line_count} lines)[/{DIM}]\n"
+            )
+        )
+        preview = "\n".join(all_lines[:15])
         ext = file_path.rsplit(".", 1)[-1] if "." in file_path else "text"
         lexer_map = {"py": "python", "js": "javascript", "ts": "typescript", "yaml": "yaml"}
         lexer = lexer_map.get(ext, ext)
         detail_parts.append(Syntax(preview, lexer, theme=SYNTAX_THEME, word_wrap=True))
-        if len(all_lines) > 10:
+        if len(all_lines) > 15:
             detail_parts.append(
-                Text.from_markup(f"[{DIM}]... ({len(all_lines) - 10} more lines)[/{DIM}]")
+                Text.from_markup(f"[{DIM}]... ({len(all_lines) - 15} more lines)[/{DIM}]")
             )
 
     elif tool_name == "shell" and args.get("command"):
@@ -194,6 +235,7 @@ def format_stats(
     output_tokens: int,
     model: str,
     session_id: str,
+    cost: float | None = None,
 ) -> None:
     """Display session statistics."""
     table = Table(show_header=False, border_style=MUTED, expand=False)
@@ -204,6 +246,8 @@ def format_stats(
     table.add_row("Input tokens", f"{input_tokens:,}")
     table.add_row("Output tokens", f"{output_tokens:,}")
     table.add_row("Total tokens", f"{input_tokens + output_tokens:,}")
+    if cost is not None:
+        table.add_row("Estimated cost", f"${cost:.4f}")
 
     panel = Panel(
         table,

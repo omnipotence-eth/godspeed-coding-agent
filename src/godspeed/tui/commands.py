@@ -97,6 +97,8 @@ class Commands:
         self._handlers["/guidance"] = self._cmd_guidance
         self._handlers["/tasks"] = self._cmd_tasks
         self._handlers["/reindex"] = self._cmd_reindex
+        self._handlers["/stats"] = self._cmd_stats
+        self._handlers["/export"] = self._cmd_export
         self._handlers["/quit"] = self._cmd_quit
         self._handlers["/exit"] = self._cmd_quit
 
@@ -151,6 +153,8 @@ class Commands:
         table.add_row("/pause", "Pause the agent loop at next iteration")
         table.add_row("/resume", "Resume a paused agent loop")
         table.add_row("/guidance <msg>", "Inject guidance and resume paused agent")
+        table.add_row("/stats", "Show token usage and estimated cost")
+        table.add_row("/export [name]", "Export conversation as markdown")
         table.add_row("/quit, /exit", "Exit Godspeed")
 
         console.print(table)
@@ -527,13 +531,86 @@ class Commands:
         console.print(f"  [{SUCCESS}]Reindex started in background.[/{SUCCESS}]")
         return CommandResult()
 
-    def _cmd_quit(self, _args: str = "") -> CommandResult:
-        """Exit Godspeed."""
+    def _cmd_stats(self, _args: str = "") -> CommandResult:
+        """Show session statistics including token usage and estimated cost."""
+        from godspeed.llm.cost import estimate_cost
+
+        input_tokens = self._llm_client.total_input_tokens
+        output_tokens = self._llm_client.total_output_tokens
+        cost = estimate_cost(self._llm_client.model, input_tokens, output_tokens)
+
         format_stats(
-            input_tokens=self._llm_client.total_input_tokens,
-            output_tokens=self._llm_client.total_output_tokens,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
             model=self._llm_client.model,
             session_id=self._session_id,
+            cost=cost if cost > 0 else None,
+        )
+        return CommandResult(handled=True)
+
+    def _cmd_export(self, args: str = "") -> CommandResult:
+        """Export the current conversation as a markdown file."""
+        from datetime import datetime
+
+        export_dir = self._cwd / ".godspeed" / "exports"
+        export_dir.mkdir(parents=True, exist_ok=True)
+
+        name = args.strip() or self._session_id[:12]
+        timestamp = datetime.now(tz=UTC).strftime("%Y%m%d_%H%M%S")
+        export_path = export_dir / f"{name}_{timestamp}.md"
+
+        lines = ["# Godspeed Session Export\n"]
+        lines.append(f"- **Session**: {self._session_id}")
+        lines.append(f"- **Model**: {self._llm_client.model}")
+        lines.append(f"- **Exported**: {datetime.now(tz=UTC).isoformat()}\n")
+        lines.append("---\n")
+
+        for msg in self._conversation.messages:
+            role = msg.get("role", "unknown")
+            content = msg.get("content", "")
+
+            if role == "system":
+                lines.append("## System Prompt\n")
+                lines.append(f"```\n{content[:500]}\n```\n")
+                if len(content) > 500:
+                    lines.append(f"*({len(content) - 500} chars truncated)*\n")
+            elif role == "user":
+                lines.append(f"## User\n\n{content}\n")
+            elif role == "assistant":
+                lines.append(f"## Assistant\n\n{content}\n")
+                tool_calls = msg.get("tool_calls")
+                if tool_calls:
+                    for tc in tool_calls:
+                        func = tc.get("function", {})
+                        lines.append(
+                            f"**Tool call**: `{func.get('name', '?')}`\n"
+                            f"```json\n{func.get('arguments', '{}')}\n```\n"
+                        )
+            elif role == "tool":
+                tool_id = msg.get("tool_call_id", "?")
+                lines.append(f"## Tool Result ({tool_id})\n")
+                lines.append(f"```\n{content[:1000]}\n```\n")
+                if len(content) > 1000:
+                    lines.append(f"*({len(content) - 1000} chars truncated)*\n")
+
+        export_path.write_text("\n".join(lines), encoding="utf-8")
+        console.print(f"  [{SUCCESS}]Exported to:[/{SUCCESS}] [{DIM}]{export_path}[/{DIM}]")
+        return CommandResult(handled=True)
+
+    def _cmd_quit(self, _args: str = "") -> CommandResult:
+        """Exit Godspeed."""
+        from godspeed.llm.cost import estimate_cost
+
+        input_tokens = self._llm_client.total_input_tokens
+        output_tokens = self._llm_client.total_output_tokens
+        cost = estimate_cost(self._llm_client.model, input_tokens, output_tokens)
+
+        format_stats(
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            model=self._llm_client.model,
+            session_id=self._session_id,
+            cost=cost if cost > 0 else None,
         )
         console.print(f"  [{DIM}]Goodbye.[/{DIM}]")
         return CommandResult(handled=True, should_quit=True)

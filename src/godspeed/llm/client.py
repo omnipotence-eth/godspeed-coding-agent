@@ -40,6 +40,41 @@ class ChatResponse:
         return len(self.tool_calls) > 0
 
 
+class ModelRouter:
+    """Routes LLM calls to different models based on task type.
+
+    Config maps task types to model names. Unmatched task types
+    fall back to the default model.
+    """
+
+    def __init__(self, routing: dict[str, str] | None = None) -> None:
+        self._routing = routing or {}
+
+    def route(self, default_model: str, task_type: str | None = None) -> str:
+        """Select the model for a given task type.
+
+        Args:
+            default_model: The default model to use.
+            task_type: Optional task hint (e.g., "plan", "edit", "chat").
+
+        Returns:
+            The model to use for this call.
+        """
+        if task_type and task_type in self._routing:
+            routed = self._routing[task_type]
+            logger.debug("Model routing task_type=%s model=%s", task_type, routed)
+            return routed
+        return default_model
+
+    @property
+    def has_routing(self) -> bool:
+        return bool(self._routing)
+
+    @property
+    def routes(self) -> dict[str, str]:
+        return dict(self._routing)
+
+
 class LLMClient:
     """Unified LLM client via LiteLLM.
 
@@ -52,10 +87,12 @@ class LLMClient:
         model: str,
         fallback_models: list[str] | None = None,
         timeout: int = 120,
+        router: ModelRouter | None = None,
     ) -> None:
         self.model = model
         self.fallback_models = fallback_models or []
         self.timeout = timeout
+        self.router = router or ModelRouter()
         self.total_input_tokens = 0
         self.total_output_tokens = 0
 
@@ -105,13 +142,38 @@ class LLMClient:
         self,
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]] | None = None,
+        task_type: str | None = None,
     ) -> ChatResponse:
         """Send messages to the LLM and return a parsed response.
 
         Uses LiteLLM's async completion with automatic provider routing.
         Falls back to alternate models on failure. Skips retries for
         connection-refused errors (e.g. Ollama not running).
+
+        Args:
+            messages: Conversation messages.
+            tools: Tool schemas for function calling.
+            task_type: Optional task hint for model routing
+                (e.g., "plan", "edit", "chat").
         """
+        # Apply model routing based on task type
+        routed_model = self.router.route(self.model, task_type)
+        if routed_model != self.model:
+            # Temporarily use the routed model
+            original_model = self.model
+            self.model = routed_model
+            try:
+                return await self._chat_with_fallback(messages, tools)
+            finally:
+                self.model = original_model
+        return await self._chat_with_fallback(messages, tools)
+
+    async def _chat_with_fallback(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None = None,
+    ) -> ChatResponse:
+        """Internal: send messages with fallback chain."""
         models_to_try = [self._effective_model(), *self.fallback_models]
 
         last_error: Exception | None = None

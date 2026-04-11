@@ -153,6 +153,12 @@ class GodspeedSettings(BaseSettings):
     max_context_tokens: int = 100_000
     compaction_threshold: float = 0.8
 
+    # Model routing — map task types to specific models
+    routing: dict[str, str] = Field(default_factory=dict)
+
+    # MCP servers
+    mcp_servers: list[dict[str, Any]] = Field(default_factory=list)
+
     # Nested settings
     permissions: PermissionSettings = Field(default_factory=PermissionSettings)
     audit: AuditSettings = Field(default_factory=AuditSettings)

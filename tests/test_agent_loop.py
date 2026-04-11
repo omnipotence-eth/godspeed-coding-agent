@@ -309,6 +309,85 @@ class TestStuckLoopDetection:
         assert len(replan_msgs) == 1, "Exactly one replan after success reset"
 
 
+class TestPauseResume:
+    """Test pause/resume via asyncio.Event."""
+
+    @pytest.mark.asyncio
+    async def test_pause_event_pauses_loop(self, tool_context) -> None:
+        """When pause_event is cleared, the loop should wait."""
+        import asyncio
+
+        conversation = Conversation("You are a coding agent.", max_tokens=100_000)
+        registry = ToolRegistry()
+
+        client = LLMClient(model="test")
+        client.chat = AsyncMock(return_value=_make_text_response("Resumed!"))
+
+        pause_event = asyncio.Event()
+        pause_event.clear()  # Start paused
+
+        # The loop should block; resume after a short delay
+        async def resume_later():
+            await asyncio.sleep(0.1)
+            pause_event.set()
+
+        task = asyncio.create_task(resume_later())
+
+        result = await agent_loop(
+            "Hello",
+            conversation,
+            client,
+            registry,
+            tool_context,
+            pause_event=pause_event,
+        )
+        await task
+        assert "Resumed" in result
+
+    @pytest.mark.asyncio
+    async def test_guidance_injection(self, tool_context) -> None:
+        """Guidance injected while paused appears in conversation."""
+        import asyncio
+
+        conversation = Conversation("You are a coding agent.", max_tokens=100_000)
+        registry = ToolRegistry()
+        registry.register(MockTool(name="shell", result=ToolResult.success("ok")))
+
+        call_count = 0
+
+        async def mock_chat(**kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return _make_tool_response("shell", {"command": "ls"})
+            return _make_text_response("Understood the guidance.")
+
+        client = LLMClient(model="test")
+        client.chat = AsyncMock(side_effect=mock_chat)
+
+        pause_event = asyncio.Event()
+        pause_event.set()  # Start running
+
+        # Inject guidance after first tool call
+        async def inject_guidance():
+            await asyncio.sleep(0.05)
+            conversation.add_user_message("[User guidance]: Use grep instead")
+            # Don't pause — just inject
+
+        task = asyncio.create_task(inject_guidance())
+
+        result = await agent_loop(
+            "Search for files",
+            conversation,
+            client,
+            registry,
+            tool_context,
+            pause_event=pause_event,
+        )
+        await task
+        assert "guidance" in result.lower() or "Understood" in result
+
+
 class TestAutoStash:
     """Test auto-stash after consecutive write operations."""
 

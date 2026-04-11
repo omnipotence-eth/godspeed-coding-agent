@@ -228,10 +228,14 @@ async def _run_app(
 
         _ensure_ollama(console=rich_console)
 
-    # LLM client
+    # LLM client with model routing
+    from godspeed.llm.client import ModelRouter
+
+    router = ModelRouter(routing=settings.routing) if settings.routing else None
     llm_client = LLMClient(
         model=effective_model,
         fallback_models=settings.fallback_models,
+        router=router,
     )
 
     # Conversation
@@ -241,6 +245,41 @@ async def _run_app(
         max_tokens=settings.max_context_tokens,
         compaction_threshold=settings.compaction_threshold,
     )
+
+    # MCP server discovery
+    if settings.mcp_servers:
+        from godspeed.mcp.client import MCPClient, MCPServerConfig
+        from godspeed.mcp.tool_adapter import adapt_mcp_tools
+
+        mcp_client = MCPClient()
+        if mcp_client.available:
+            for server_cfg in settings.mcp_servers:
+                config = MCPServerConfig(
+                    name=server_cfg.get("name", "unknown"),
+                    command=server_cfg.get("command", ""),
+                    args=server_cfg.get("args", []),
+                    env=server_cfg.get("env", {}),
+                )
+                try:
+                    definitions = await mcp_client.connect(config)
+                    for tool in adapt_mcp_tools(definitions, mcp_client):
+                        registry.register(tool)
+                        risk_levels[tool.name] = tool.risk_level
+                    logger.info("MCP server %s: %d tools", config.name, len(definitions))
+                except Exception as exc:
+                    logger.warning("MCP server %s failed: %s", config.name, exc)
+
+    # Sub-agent coordinator
+    from godspeed.agent.coordinator import AgentCoordinator, SpawnAgentTool
+
+    coordinator = AgentCoordinator(
+        llm_client=llm_client,
+        tool_registry=registry,
+        tool_context=tool_context,
+    )
+    spawn_tool = SpawnAgentTool(coordinator)
+    registry.register(spawn_tool)
+    risk_levels[spawn_tool.name] = spawn_tool.risk_level
 
     # Launch TUI
     app = TUIApp(

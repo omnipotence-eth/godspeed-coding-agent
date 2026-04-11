@@ -164,3 +164,75 @@ class TestPlanCommand:
         result = commands.dispatch("/plan")
         assert result is not None
         assert result.handled
+
+
+class TestPauseResumeCommands:
+    """Test /pause, /resume, and /guidance commands."""
+
+    @pytest.fixture
+    def commands_with_pause(self, conversation: Conversation, tmp_path: Path) -> Commands:
+        import asyncio
+
+        llm_client = MagicMock()
+        llm_client.model = "test-model"
+        llm_client.fallback_models = []
+        llm_client.total_input_tokens = 0
+        llm_client.total_output_tokens = 0
+        pause_event = asyncio.Event()
+        pause_event.set()  # Start running
+        return Commands(
+            conversation=conversation,
+            llm_client=llm_client,
+            permission_engine=None,
+            audit_trail=None,
+            session_id="test-session",
+            cwd=tmp_path,
+            pause_event=pause_event,
+        )
+
+    def test_pause_clears_event(self, commands_with_pause: Commands) -> None:
+        result = commands_with_pause.dispatch("/pause")
+        assert result is not None
+        assert result.handled
+        assert not commands_with_pause._pause_event.is_set()
+
+    def test_resume_sets_event(self, commands_with_pause: Commands) -> None:
+        commands_with_pause.dispatch("/pause")
+        result = commands_with_pause.dispatch("/resume")
+        assert result is not None
+        assert result.handled
+        assert commands_with_pause._pause_event.is_set()
+
+    def test_resume_when_not_paused(self, commands_with_pause: Commands) -> None:
+        result = commands_with_pause.dispatch("/resume")
+        assert result is not None
+        assert result.handled
+
+    def test_guidance_injects_message(
+        self, commands_with_pause: Commands, conversation: Conversation
+    ) -> None:
+        commands_with_pause.dispatch("/pause")
+        result = commands_with_pause.dispatch("/guidance Try a different approach")
+        assert result is not None
+        assert result.handled
+        # Check guidance was injected
+        messages = conversation.messages
+        guidance_found = any(
+            "different approach" in msg.get("content", "")
+            for msg in messages
+            if msg.get("role") == "user"
+        )
+        assert guidance_found
+        # Should also resume
+        assert commands_with_pause._pause_event.is_set()
+
+    def test_guidance_no_args(self, commands_with_pause: Commands) -> None:
+        result = commands_with_pause.dispatch("/guidance")
+        assert result is not None
+        assert result.handled
+
+    def test_pause_without_event(self, commands: Commands) -> None:
+        """Commands without pause_event should handle gracefully."""
+        result = commands.dispatch("/pause")
+        assert result is not None
+        assert result.handled

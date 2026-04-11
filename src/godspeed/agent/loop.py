@@ -6,6 +6,7 @@ and Claude Code. The model decides when to stop. No framework overhead.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -45,6 +46,7 @@ async def agent_loop(
     on_permission_denied: OnPermissionDenied | None = None,
     on_assistant_chunk: OnChunk | None = None,
     max_iterations: int | None = None,
+    pause_event: asyncio.Event | None = None,
 ) -> str:
     """Run the agent loop until the model stops calling tools.
 
@@ -68,6 +70,8 @@ async def agent_loop(
         on_assistant_chunk: Callback(text) for streaming chunks. When provided,
             uses streaming LLM calls instead of batch calls.
         max_iterations: Override the default iteration limit (MAX_ITERATIONS).
+        pause_event: Optional asyncio.Event for pause/resume. When cleared,
+            the loop waits at the top of each iteration until set again.
 
     Returns:
         The final assistant text response.
@@ -83,6 +87,12 @@ async def agent_loop(
     auto_stashed = False
 
     for iteration in range(iteration_limit):
+        # Pause/resume: if pause_event exists and is cleared, wait for it
+        if pause_event is not None and not pause_event.is_set():
+            logger.info("Agent loop paused at iteration=%d", iteration)
+            await pause_event.wait()
+            logger.info("Agent loop resumed at iteration=%d", iteration)
+
         logger.debug("Agent loop iteration=%d tokens=%d", iteration, conversation.token_count)
 
         # Check if we need to compact

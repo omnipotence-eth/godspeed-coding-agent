@@ -51,6 +51,8 @@ class TestGitTool:
             "commit",
             "diff",
             "log",
+            "stash",
+            "stash_pop",
             "status",
             "undo",
         }
@@ -142,6 +144,40 @@ class TestGitTool:
         result = await tool.execute({"action": "push"}, git_context)
         assert result.is_error
         assert "Invalid action" in result.error
+
+    @pytest.mark.asyncio
+    async def test_stash_with_changes(self, tool: GitTool, git_context: ToolContext) -> None:
+        _make_initial_commit(git_context.cwd)
+        (git_context.cwd / "init.txt").write_text("modified\n")
+        result = await tool.execute({"action": "stash"}, git_context)
+        assert not result.is_error
+        assert "godspeed-auto-stash" in result.output or "Saved" in result.output
+
+    @pytest.mark.asyncio
+    async def test_stash_clean_tree(self, tool: GitTool, git_context: ToolContext) -> None:
+        _make_initial_commit(git_context.cwd)
+        result = await tool.execute({"action": "stash"}, git_context)
+        assert not result.is_error
+        assert "nothing to stash" in result.output.lower()
+
+    @pytest.mark.asyncio
+    async def test_stash_pop(self, tool: GitTool, git_context: ToolContext) -> None:
+        _make_initial_commit(git_context.cwd)
+        (git_context.cwd / "init.txt").write_text("stashed content\n")
+        await tool.execute({"action": "stash"}, git_context)
+        # File should be reverted after stash
+        assert (git_context.cwd / "init.txt").read_text() == "initial content\n"
+        # Pop should restore it
+        result = await tool.execute({"action": "stash_pop"}, git_context)
+        assert not result.is_error
+        assert (git_context.cwd / "init.txt").read_text() == "stashed content\n"
+
+    @pytest.mark.asyncio
+    async def test_stash_pop_empty(self, tool: GitTool, git_context: ToolContext) -> None:
+        _make_initial_commit(git_context.cwd)
+        result = await tool.execute({"action": "stash_pop"}, git_context)
+        assert result.is_error
+        assert "no stash entries" in result.error.lower()
 
     @pytest.mark.asyncio
     async def test_not_a_repo(self, tool: GitTool, tool_context: ToolContext) -> None:

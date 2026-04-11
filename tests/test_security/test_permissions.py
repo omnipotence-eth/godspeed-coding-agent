@@ -212,3 +212,60 @@ class TestSessionGrantExpiry:
 
         assert engine.evaluate(tc_npm) != ALLOW or engine.evaluate(tc_npm) == ASK
         assert engine.evaluate(tc_make) == ALLOW
+
+
+class TestPlanMode:
+    """Test plan mode — blocks all non-READ_ONLY tools."""
+
+    def test_plan_mode_blocks_write_tools(self) -> None:
+        engine = PermissionEngine(
+            tool_risk_levels={"file_edit": RiskLevel.LOW, "shell": RiskLevel.HIGH},
+        )
+        engine.plan_mode = True
+
+        tc = ToolCall(tool_name="file_edit", arguments={"file_path": "test.py"})
+        result = engine.evaluate(tc)
+        assert result == DENY
+        assert "plan mode" in result.reason.lower()
+
+    def test_plan_mode_allows_read_only(self) -> None:
+        engine = PermissionEngine(
+            tool_risk_levels={"file_read": RiskLevel.READ_ONLY},
+        )
+        engine.plan_mode = True
+
+        tc = ToolCall(tool_name="file_read", arguments={"file_path": "test.py"})
+        assert engine.evaluate(tc) == ALLOW
+
+    def test_plan_mode_blocks_shell(self) -> None:
+        engine = PermissionEngine(
+            tool_risk_levels={"shell": RiskLevel.HIGH},
+        )
+        engine.plan_mode = True
+
+        tc = ToolCall(tool_name="shell", arguments={"command": "ls"})
+        assert engine.evaluate(tc) == DENY
+
+    def test_plan_mode_off_allows_normally(self) -> None:
+        engine = PermissionEngine(
+            tool_risk_levels={"file_edit": RiskLevel.LOW},
+            allow_patterns=["file_edit(*)"],
+        )
+        engine.plan_mode = False
+
+        tc = ToolCall(tool_name="file_edit", arguments={"file_path": "test.py"})
+        assert engine.evaluate(tc) == ALLOW
+
+    def test_plan_mode_toggle(self) -> None:
+        engine = PermissionEngine(
+            tool_risk_levels={"shell": RiskLevel.HIGH},
+        )
+        assert engine.plan_mode is False
+
+        engine.plan_mode = True
+        tc = ToolCall(tool_name="shell", arguments={"command": "ls"})
+        assert engine.evaluate(tc) == DENY
+
+        engine.plan_mode = False
+        # Without plan mode, HIGH risk defaults to ASK
+        assert engine.evaluate(tc) == ASK

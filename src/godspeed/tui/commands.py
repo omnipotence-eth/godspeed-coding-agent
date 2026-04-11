@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
+from datetime import UTC
 from pathlib import Path
 from typing import Any
 
@@ -66,6 +67,9 @@ class Commands:
         self._handlers["/permissions"] = self._cmd_permissions
         self._handlers["/extend"] = self._cmd_extend
         self._handlers["/context"] = self._cmd_context
+        self._handlers["/plan"] = self._cmd_plan
+        self._handlers["/checkpoint"] = self._cmd_checkpoint
+        self._handlers["/restore"] = self._cmd_restore
         self._handlers["/quit"] = self._cmd_quit
         self._handlers["/exit"] = self._cmd_quit
 
@@ -110,6 +114,9 @@ class Commands:
         table.add_row("/permissions", "Show current permission rules")
         table.add_row("/extend [N]", "Set max iterations per turn (default: 50)")
         table.add_row("/context", "Show context window usage")
+        table.add_row("/plan", "Toggle plan mode (read-only -- explore and plan only)")
+        table.add_row("/checkpoint [name]", "Save checkpoint, or list if no name")
+        table.add_row("/restore <name>", "Restore a saved checkpoint")
         table.add_row("/quit, /exit", "Exit Godspeed")
 
         console.print(table)
@@ -224,6 +231,22 @@ class Commands:
         console.print(table)
         return CommandResult(handled=True)
 
+    def _cmd_plan(self, _args: str = "") -> CommandResult:
+        """Toggle plan mode — read-only, explore and plan only."""
+        if self._permission_engine is None:
+            format_error("Permission engine not loaded — cannot toggle plan mode.")
+            return CommandResult(handled=True)
+
+        self._permission_engine.plan_mode = not self._permission_engine.plan_mode
+        if self._permission_engine.plan_mode:
+            console.print(
+                "  [bold yellow]Plan mode ON[/bold yellow] — "
+                "read-only tools only. Use /plan again to exit."
+            )
+        else:
+            console.print("  [bold green]Plan mode OFF[/bold green] — full tool access restored.")
+        return CommandResult(handled=True)
+
     def _cmd_extend(self, args: str = "") -> CommandResult:
         """Set or show the max iterations per agent turn."""
         from godspeed.agent.loop import MAX_ITERATIONS
@@ -263,6 +286,100 @@ class Commands:
         console.print(f"  [{color}]tokens: {tokens:,} / {max_tokens:,} ({pct:.0f}%)[/{color}]")
         msg_count = len(self._conversation.messages)
         console.print(f"  [dim]messages: {msg_count}[/dim]")
+        return CommandResult(handled=True)
+
+    def _cmd_checkpoint(self, args: str = "") -> CommandResult:
+        """Save a checkpoint or list available checkpoints."""
+        from godspeed.context.checkpoint import list_checkpoints, save_checkpoint
+
+        name = args.strip()
+
+        if not name or name == "list":
+            # List checkpoints
+            checkpoints = list_checkpoints(self._cwd)
+            if not checkpoints:
+                console.print("  [dim]No checkpoints saved yet.[/dim]")
+                return CommandResult(handled=True)
+
+            from datetime import datetime
+
+            from rich.table import Table
+
+            table = Table(title="Checkpoints", border_style="blue", expand=False)
+            table.add_column("Name", style="bold cyan")
+            table.add_column("Time", style="dim")
+            table.add_column("Model")
+            table.add_column("Tokens", justify="right")
+            table.add_column("Messages", justify="right")
+
+            for cp in checkpoints:
+                ts = datetime.fromtimestamp(cp["timestamp"], tz=UTC)
+                table.add_row(
+                    cp["name"],
+                    ts.strftime("%Y-%m-%d %H:%M"),
+                    cp["model"],
+                    f"{cp['token_count']:,}",
+                    str(cp["message_count"]),
+                )
+
+            console.print(table)
+            return CommandResult(handled=True)
+
+        # Save checkpoint
+        system_msg = self._conversation.messages[0]
+        system_prompt = system_msg.get("content", "")
+        # Messages excluding system prompt
+        messages = self._conversation.messages[1:]
+
+        path = save_checkpoint(
+            name=name,
+            system_prompt=system_prompt,
+            messages=messages,
+            model=self._llm_client.model,
+            token_count=self._conversation.token_count,
+            project_dir=self._cwd,
+        )
+        console.print(f"  [green]Checkpoint saved:[/green] [bold]{name}[/bold]")
+        console.print(f"  [dim]{path}[/dim]")
+        return CommandResult(handled=True)
+
+    def _cmd_restore(self, args: str = "") -> CommandResult:
+        """Restore a saved checkpoint."""
+        from godspeed.context.checkpoint import load_checkpoint
+
+        name = args.strip()
+        if not name:
+            format_error("Usage: /restore <name>")
+            return CommandResult(handled=True)
+
+        data = load_checkpoint(name, self._cwd)
+        if data is None:
+            format_error(f"Checkpoint not found: {name}")
+            return CommandResult(handled=True)
+
+        # Restore conversation state
+        self._conversation.clear()
+        for msg in data.get("messages", []):
+            role = msg.get("role", "")
+            if role == "user":
+                self._conversation.add_user_message(msg.get("content", ""))
+            elif role == "assistant":
+                self._conversation.add_assistant_message(
+                    content=msg.get("content", ""),
+                    tool_calls=msg.get("tool_calls"),
+                )
+            elif role == "tool":
+                self._conversation.add_tool_result(
+                    tool_call_id=msg.get("tool_call_id", ""),
+                    content=msg.get("content", ""),
+                )
+
+        token_count = self._conversation.token_count
+        msg_count = len(self._conversation.messages) - 1  # exclude system prompt
+        console.print(
+            f"  [green]Restored checkpoint:[/green] [bold]{name}[/bold] "
+            f"({msg_count} messages, {token_count:,} tokens)"
+        )
         return CommandResult(handled=True)
 
     def _cmd_quit(self, _args: str = "") -> CommandResult:

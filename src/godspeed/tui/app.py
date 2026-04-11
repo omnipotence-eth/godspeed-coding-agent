@@ -99,9 +99,20 @@ class TUIApp:
 
     async def run(self) -> None:
         """Run the main TUI loop."""
+        # Collect tool names and deny rules for safety disclosure
+        tool_names = [t.name for t in self._tool_registry.list_tools()]
+        deny_rules = (
+            [r.pattern for r in self._permission_engine.deny_rules]
+            if self._permission_engine is not None
+            else []
+        )
+
         format_welcome(
             model=self._llm_client.model,
             project_dir=str(self._tool_context.cwd),
+            tools=tool_names,
+            deny_rules=deny_rules,
+            audit_enabled=self._audit_trail is not None,
         )
 
         session: PromptSession[str] = PromptSession(

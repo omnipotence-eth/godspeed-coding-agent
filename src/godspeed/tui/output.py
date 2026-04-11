@@ -112,22 +112,49 @@ def format_stats(
     console.print(panel)
 
 
-def format_welcome(model: str, project_dir: str) -> None:
-    """Display welcome banner."""
+def format_welcome(
+    model: str,
+    project_dir: str,
+    tools: list[str] | None = None,
+    deny_rules: list[str] | None = None,
+    audit_enabled: bool = True,
+) -> None:
+    """Display welcome banner with safety disclosure (Claude Code style)."""
+    from godspeed import __version__
+
     console.print()
     console.print(
         Panel(
             Text.from_markup(
-                "[bold]Godspeed[/bold] -- Security-first coding agent\n\n"
+                f"[bold]Godspeed v{__version__}[/bold] -- Security-first coding agent\n\n"
                 f"[dim]Model:[/dim]   {model}\n"
-                f"[dim]Project:[/dim] {project_dir}\n\n"
-                "[dim]Type /help for commands, Ctrl+C to interrupt, /quit to exit.[/dim]"
+                f"[dim]Project:[/dim] {project_dir}\n"
+                f"[dim]Audit:[/dim]   {'enabled' if audit_enabled else '[red]disabled[/red]'}"
             ),
             border_style="bright_blue",
             expand=False,
         )
     )
-    console.print()
+
+    # Safety disclosure — what the agent can do
+    if tools:
+        tool_list = ", ".join(tools)
+        console.print(f"\n  [bold]Tools:[/bold] [dim]{tool_list}[/dim]")
+
+    console.print(
+        "\n  [bold yellow]Safety:[/bold yellow]"
+        " All tool calls require permission."
+        " Destructive commands are blocked by default."
+    )
+
+    if deny_rules:
+        sample = deny_rules[:5]
+        deny_display = ", ".join(sample)
+        if len(deny_rules) > 5:
+            deny_display += f", ... (+{len(deny_rules) - 5} more)"
+        console.print(f"  [red]Deny:[/red]   [dim]{deny_display}[/dim]")
+
+    console.print("\n  [dim]Type /help for commands, Ctrl+C to interrupt, /quit to exit.[/dim]\n")
 
 
 def format_error(message: str) -> None:

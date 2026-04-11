@@ -91,6 +91,35 @@ class TestPaletteConstants:
         assert len(SYNTAX_THEME) > 0
 
 
+class TestMarkerConstants:
+    """Test Unicode marker constants."""
+
+    def test_marker_success(self) -> None:
+        from godspeed.tui.theme import MARKER_SUCCESS
+
+        assert MARKER_SUCCESS == "\u2713"
+
+    def test_marker_error(self) -> None:
+        from godspeed.tui.theme import MARKER_ERROR
+
+        assert MARKER_ERROR == "\u2717"
+
+    def test_marker_warning(self) -> None:
+        from godspeed.tui.theme import MARKER_WARNING
+
+        assert MARKER_WARNING == "\u26a0"
+
+    def test_marker_tool(self) -> None:
+        from godspeed.tui.theme import MARKER_TOOL
+
+        assert MARKER_TOOL == "\u25b8"
+
+    def test_separator_dot(self) -> None:
+        from godspeed.tui.theme import SEPARATOR_DOT
+
+        assert SEPARATOR_DOT == "\u00b7"
+
+
 class TestBrandedStrings:
     """Test branded string constants."""
 

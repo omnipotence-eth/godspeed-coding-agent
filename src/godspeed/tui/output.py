@@ -1,4 +1,8 @@
-"""Rich output formatting for the Godspeed TUI — Midnight Gold theme."""
+"""Rich output formatting for the Godspeed TUI — Midnight Gold theme.
+
+Design philosophy: function first with beautiful form. Whitespace as structure,
+restraint in color, information density that respects the developer's attention.
+"""
 
 from __future__ import annotations
 
@@ -11,25 +15,22 @@ from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.syntax import Syntax
 from rich.table import Table
-from rich.text import Text
 
 from godspeed.tui.theme import (
     BOLD_ERROR,
     BOLD_PRIMARY,
-    BOLD_SUCCESS,
     BOLD_WARNING,
-    BORDER_BRAND,
-    BORDER_ERROR,
-    BORDER_INFO,
-    BORDER_SUCCESS,
-    BORDER_TOOL,
-    BORDER_WARNING,
     BRAND_TAGLINE,
     DIM,
     ERROR,
+    MARKER_ERROR,
+    MARKER_SUCCESS,
+    MARKER_TOOL,
+    MARKER_WARNING,
     MUTED,
-    PERM_DENY,
     PROMPT_ICON,
+    SECONDARY,
+    SEPARATOR_DOT,
     SUCCESS,
     SYNTAX_THEME,
     TABLE_KEY,
@@ -43,48 +44,119 @@ logger = logging.getLogger(__name__)
 
 console = Console()
 
+# Max lines for inline tool result display
+_RESULT_MAX_LINES = 10
+_RESULT_MAX_CHARS = 2000
+
 
 def format_tool_call(name: str, args: dict[str, Any]) -> None:
-    """Display a tool call as a Rich Panel with the tool name as header."""
+    """Display a tool call — compact inline for simple calls, expanded for complex ones."""
+    marker = styled(MARKER_TOOL, MUTED)
+    tool = styled(name, BOLD_PRIMARY)
+
+    # Simple single-arg tools: compact inline
+    if name in ("file_read", "glob_search", "repo_map") and args.get("file_path"):
+        console.print(f"  {marker} {tool}  {args['file_path']}")
+        return
+
+    if name == "grep_search" and args.get("pattern"):
+        path = args.get("path", "")
+        suffix = f"  {path}" if path else ""
+        console.print(f"  {marker} {tool}  {styled(args['pattern'], DIM)}{suffix}")
+        return
+
+    if name == "git" and args.get("action"):
+        action = args["action"]
+        extra = args.get("message", args.get("branch", ""))
+        suffix = f"  {extra}" if extra else ""
+        console.print(f"  {marker} {tool}  {action}{suffix}")
+        return
+
+    # Shell: show command with $ prefix
+    if name == "shell" and args.get("command"):
+        console.print(f"  {marker} {tool}")
+        console.print(Syntax(f"  $ {args['command']}", "bash", theme=SYNTAX_THEME, word_wrap=True))
+        return
+
+    # File edit: show compact diff
+    if name == "file_edit" and args.get("file_path"):
+        console.print(f"  {marker} {tool}  {args['file_path']}")
+        if args.get("old_string") and args.get("new_string"):
+            import difflib
+
+            old_lines = args["old_string"].splitlines()
+            new_lines = args["new_string"].splitlines()
+            diff_output = list(difflib.unified_diff(old_lines, new_lines, lineterm="", n=1))
+            # Skip --- / +++ headers
+            diff_lines = diff_output[2:] if len(diff_output) > 2 else diff_output
+            if diff_lines:
+                diff_text = "\n".join(diff_lines[:15])
+                console.print(Syntax(diff_text, "diff", theme=SYNTAX_THEME, word_wrap=True))
+        return
+
+    # File write: show path and line count
+    if name == "file_write" and args.get("file_path"):
+        content = args.get("content", "")
+        line_count = len(content.splitlines())
+        count_label = styled(f"({line_count} lines)", DIM)
+        console.print(f"  {marker} {tool}  {args['file_path']}  {count_label}")
+        return
+
+    # Default: JSON args
     try:
         args_text = json.dumps(args, indent=2, default=str)
     except (TypeError, ValueError):
         args_text = str(args)
 
-    syntax = Syntax(args_text, "json", theme=SYNTAX_THEME, word_wrap=True)
-    panel = Panel(
-        syntax,
-        title=styled(name, BOLD_PRIMARY),
-        border_style=BORDER_TOOL,
-        expand=False,
-    )
-    console.print(panel)
+    console.print(f"  {marker} {tool}")
+    console.print(Syntax(args_text, "json", theme=SYNTAX_THEME, word_wrap=True))
 
 
 def format_tool_result(name: str, result: str, is_error: bool = False) -> None:
-    """Display a tool result with color based on success/error."""
+    """Display a tool result — compact for success, expanded for errors."""
     if is_error:
-        border = BORDER_ERROR
-        title = styled(f"{name} (error)", BOLD_ERROR)
-        text_style = ERROR
+        marker = styled(MARKER_ERROR, ERROR)
+        tool = styled(f"{name}", BOLD_ERROR)
+
+        # Show full error output
+        display = result
+        if len(result) > _RESULT_MAX_CHARS:
+            remaining = len(result) - _RESULT_MAX_CHARS
+            display = result[:_RESULT_MAX_CHARS] + f"\n... ({remaining} more chars)"
+
+        lines = display.splitlines()
+        if len(lines) <= 3:
+            # Short error inline
+            console.print(f"  {marker} {tool}  {lines[0] if lines else ''}")
+            for line in lines[1:]:
+                console.print(f"    {line}")
+        else:
+            console.print(f"  {marker} {tool}")
+            # Indent error output
+            for line in lines[:20]:
+                console.print(f"    {styled(line, DIM)}")
+            if len(lines) > 20:
+                console.print(f"    {styled(f'... ({len(lines) - 20} more lines)', DIM)}")
     else:
-        border = BORDER_SUCCESS
-        title = styled(name, BOLD_SUCCESS)
-        text_style = DIM
+        marker = styled(MARKER_SUCCESS, SUCCESS)
+        tool = styled(name, MUTED)
 
-    # Truncate very long outputs for display
-    max_display = 2000
-    display_text = result
-    if len(result) > max_display:
-        display_text = result[:max_display] + f"\n... ({len(result) - max_display} chars truncated)"
+        # Summarize success output
+        lines = result.splitlines()
+        line_count = len(lines)
 
-    panel = Panel(
-        Text(display_text, style=text_style),
-        title=title,
-        border_style=border,
-        expand=False,
-    )
-    console.print(panel)
+        if not result.strip():
+            console.print(f"  {marker} {tool}")
+            return
+
+        # Short results: show inline
+        if line_count <= _RESULT_MAX_LINES and len(result) <= 500:
+            console.print(f"  {marker} {tool}")
+            for line in lines:
+                console.print(f"    {styled(line, DIM)}")
+        else:
+            # Long results: show summary
+            console.print(f"  {marker} {tool}  {styled(f'({line_count} lines)', DIM)}")
 
 
 def format_assistant_text(text: str) -> None:
@@ -103,15 +175,23 @@ def format_permission_prompt(
     """Display a permission request with contextual detail.
 
     Shows tool-specific previews:
-    - file_edit: mini-diff of old_string -> new_string
-    - file_write: first 10 lines of content
+    - file_edit: unified diff of old_string -> new_string
+    - file_write: first 15 lines of content
     - shell: syntax-highlighted command
     - file_read / grep_search / repo_map: file path
     """
     console.print()
 
-    detail_parts: list[Any] = []
+    # Warning marker header
+    warn_icon = styled(MARKER_WARNING, WARNING)
+    warn_text = styled("Permission required", BOLD_WARNING)
+    console.print(f"  {warn_icon}  {warn_text}")
+    console.print()
+
     args = arguments or {}
+
+    # Tool name and primary arg
+    console.print(f"    {styled(tool_name, BOLD_PRIMARY)}", end="")
 
     if tool_name == "file_edit" and args.get("old_string") and args.get("new_string"):
         import difflib
@@ -127,11 +207,9 @@ def format_permission_prompt(
         removed = sum(1 for line in difflib.ndiff(old_lines, new_lines) if line.startswith("- "))
         stats = f"+{added} -{removed} lines"
 
-        detail_parts.append(
-            Text.from_markup(f"[{MUTED}]File:[/{MUTED}] {file_path}  [{DIM}]({stats})[/{DIM}]\n")
-        )
+        console.print(f"  {file_path}  {styled(stats, DIM)}")
 
-        # Unified diff with context
+        # Unified diff
         diff_output = list(
             difflib.unified_diff(
                 old_lines,
@@ -142,14 +220,11 @@ def format_permission_prompt(
                 n=2,
             )
         )
-        # Skip the --- / +++ headers, keep @@ hunks and content
-        diff_content = [line for line in diff_output[2:]] if len(diff_output) > 2 else diff_output
+        diff_content = diff_output[2:] if len(diff_output) > 2 else diff_output
         diff_text = "\n".join(diff_content[:30])
-        detail_parts.append(Syntax(diff_text, "diff", theme=SYNTAX_THEME, word_wrap=True))
+        console.print(Syntax(diff_text, "diff", theme=SYNTAX_THEME, word_wrap=True))
         if len(diff_content) > 30:
-            detail_parts.append(
-                Text.from_markup(f"[{DIM}]... ({len(diff_content) - 30} more lines)[/{DIM}]")
-            )
+            console.print(f"    {styled(f'... ({len(diff_content) - 30} more lines)', DIM)}")
 
     elif tool_name == "file_write" and args.get("content"):
         from pathlib import Path
@@ -158,76 +233,52 @@ def format_permission_prompt(
         all_lines = args["content"].splitlines()
         line_count = len(all_lines)
 
-        # Detect overwrite vs create
         target = Path(file_path)
         if not target.is_absolute():
-            # Best-effort check — may not resolve perfectly without context.cwd
             action = "write"
         elif target.exists():
             action = "overwrite"
         else:
             action = "create"
-        action_label = f"[{WARNING}]{action}[/{WARNING}]" if action == "overwrite" else action
+        action_style = WARNING if action == "overwrite" else MUTED
+        console.print(f"  {file_path}  {styled(f'({action}, {line_count} lines)', action_style)}")
 
-        detail_parts.append(
-            Text.from_markup(
-                f"[{MUTED}]File:[/{MUTED}] {file_path}  "
-                f"[{DIM}]({action_label}, {line_count} lines)[/{DIM}]\n"
-            )
-        )
         preview = "\n".join(all_lines[:15])
         ext = file_path.rsplit(".", 1)[-1] if "." in file_path else "text"
         lexer_map = {"py": "python", "js": "javascript", "ts": "typescript", "yaml": "yaml"}
         lexer = lexer_map.get(ext, ext)
-        detail_parts.append(Syntax(preview, lexer, theme=SYNTAX_THEME, word_wrap=True))
+        console.print(Syntax(preview, lexer, theme=SYNTAX_THEME, word_wrap=True))
         if len(all_lines) > 15:
-            detail_parts.append(
-                Text.from_markup(f"[{DIM}]... ({len(all_lines) - 15} more lines)[/{DIM}]")
-            )
+            console.print(f"    {styled(f'... ({len(all_lines) - 15} more lines)', DIM)}")
 
     elif tool_name == "shell" and args.get("command"):
-        detail_parts.append(Syntax(args["command"], "bash", theme=SYNTAX_THEME, word_wrap=True))
+        console.print()
+        cmd = f"    $ {args['command']}"
+        console.print(Syntax(cmd, "bash", theme=SYNTAX_THEME, word_wrap=True))
 
     elif args.get("file_path"):
-        detail_parts.append(Text.from_markup(f"[{MUTED}]Path:[/{MUTED}] {args['file_path']}"))
+        console.print(f"  {args['file_path']}")
 
     elif args.get("pattern"):
-        detail_parts.append(Text.from_markup(f"[{MUTED}]Pattern:[/{MUTED}] {args['pattern']}"))
+        console.print(f"  {styled(args['pattern'], DIM)}")
 
-    # Build the panel content
-    from rich.console import Group
+    else:
+        console.print()
 
-    content_parts: list[Any] = [
-        Text.from_markup(f"[{BOLD_PRIMARY}]{tool_name}[/{BOLD_PRIMARY}]\n"),
-    ]
-    if detail_parts:
-        content_parts.append(Text(""))
-        content_parts.extend(detail_parts)
-        content_parts.append(Text(""))
-
-    content_parts.append(
-        Text.from_markup(
-            f"[{DIM}]{reason}[/{DIM}]\n\n"
-            f"[{WARNING}]Allow this tool call?[/{WARNING}] "
-            f"[{DIM}](y)es / (n)o / (a)lways for this session[/{DIM}]"
-        )
+    # Prompt line
+    console.print()
+    console.print(f"    {styled(reason, DIM)}")
+    console.print(
+        f"    {styled('Allow?', WARNING)}"
+        f" {styled(f'(y)es {SEPARATOR_DOT} (n)o {SEPARATOR_DOT} (a)lways this session', DIM)}"
     )
-
-    panel = Panel(
-        Group(*content_parts),
-        title=styled("Permission Required", BOLD_WARNING),
-        border_style=BORDER_WARNING,
-        expand=False,
-    )
-    console.print(panel)
     return ""
 
 
 def format_permission_denied(tool_name: str, reason: str) -> None:
     """Display a permission denied notice."""
-    console.print(
-        Text(f"  Blocked: {tool_name} -- {reason}", style=BOLD_ERROR),
-    )
+    marker = styled(MARKER_ERROR, ERROR)
+    console.print(f"  {marker} {styled('Blocked:', BOLD_ERROR)} {tool_name} -- {reason}")
 
 
 def format_stats(
@@ -238,7 +289,7 @@ def format_stats(
     cost: float | None = None,
 ) -> None:
     """Display session statistics."""
-    table = Table(show_header=False, border_style=MUTED, expand=False)
+    table = Table(show_header=False, border_style=MUTED, expand=False, padding=(0, 2))
     table.add_column("Key", style=TABLE_KEY)
     table.add_column("Value", style=TABLE_VALUE)
     table.add_row("Model", model)
@@ -252,7 +303,7 @@ def format_stats(
     panel = Panel(
         table,
         title=styled("Session Stats", BOLD_PRIMARY),
-        border_style=BORDER_INFO,
+        border_style=SECONDARY,
         expand=False,
     )
     console.print(panel)
@@ -265,46 +316,76 @@ def format_welcome(
     deny_rules: list[str] | None = None,
     audit_enabled: bool = True,
 ) -> None:
-    """Display welcome banner — Midnight Gold theme."""
+    """Display welcome banner — clean, minimal, function-first."""
     from godspeed import __version__
 
     console.print()
+
+    # Branded header
     audit_status = styled("enabled", SUCCESS) if audit_enabled else styled("disabled", ERROR)
+    header = f"  {PROMPT_ICON} {brand(__version__)}\n  {styled(BRAND_TAGLINE, DIM)}\n"
+    console.print(header)
+
+    # Key info — aligned, clean
+    console.print(f"  {styled('Model', MUTED)}    {model}")
+    console.print(f"  {styled('Project', MUTED)}  {project_dir}")
+    console.print(f"  {styled('Audit', MUTED)}    {audit_status}")
+
+    # Hint line
     console.print(
-        Panel(
-            Text.from_markup(
-                f"{PROMPT_ICON} {brand(__version__)} -- {styled(BRAND_TAGLINE, DIM)}\n\n"
-                f"[{MUTED}]Model:[/{MUTED}]   {model}\n"
-                f"[{MUTED}]Project:[/{MUTED}] {project_dir}\n"
-                f"[{MUTED}]Audit:[/{MUTED}]   {audit_status}"
-            ),
-            border_style=BORDER_BRAND,
-            expand=False,
+        f"\n  {styled(f'Type /help for commands {SEPARATOR_DOT} /plan for read-only mode', DIM)}\n"
+    )
+
+
+def format_session_summary(
+    duration_secs: float,
+    input_tokens: int,
+    output_tokens: int,
+    cost: float | None = None,
+    tool_calls: int = 0,
+    tool_errors: int = 0,
+    tool_denied: int = 0,
+) -> None:
+    """Display session summary on quit — clean, compact."""
+    console.print()
+    console.print(f"  {styled('Session complete', DIM)}")
+    console.print()
+
+    # Duration
+    minutes = int(duration_secs // 60)
+    seconds = int(duration_secs % 60)
+    dur = f"{minutes}m {seconds}s" if minutes > 0 else f"{seconds}s"
+    console.print(f"    {styled('Duration', MUTED)}  {dur}")
+
+    # Tokens
+    total = input_tokens + output_tokens
+    console.print(
+        f"    {styled('Tokens', MUTED)}    {total:,}"
+        f"  {styled(f'(in: {input_tokens:,} {SEPARATOR_DOT} out: {output_tokens:,})', DIM)}"
+    )
+
+    # Cost
+    if cost is not None and cost > 0:
+        console.print(f"    {styled('Cost', MUTED)}      ${cost:.4f}")
+    elif cost is not None:
+        console.print(f"    {styled('Cost', MUTED)}      {styled('free', SUCCESS)}")
+
+    # Tool summary
+    if tool_calls > 0:
+        success = tool_calls - tool_errors - tool_denied
+        parts = [f"{success} {MARKER_SUCCESS}"]
+        if tool_errors > 0:
+            parts.append(f"{tool_errors} {MARKER_ERROR}")
+        if tool_denied > 0:
+            parts.append(f"{tool_denied} denied")
+        summary = f" {SEPARATOR_DOT} ".join(parts)
+        console.print(
+            f"    {styled('Tools', MUTED)}     {tool_calls} calls  {styled(f'({summary})', DIM)}"
         )
-    )
 
-    if tools:
-        tool_list = ", ".join(tools)
-        console.print(f"\n  [{BOLD_PRIMARY}]Tools:[/{BOLD_PRIMARY}] [{DIM}]{tool_list}[/{DIM}]")
-
-    console.print(
-        f"\n  [{BOLD_WARNING}]Safety:[/{BOLD_WARNING}]"
-        " All tool calls require permission."
-        " Destructive commands are blocked by default."
-    )
-
-    if deny_rules:
-        sample = deny_rules[:5]
-        deny_display = ", ".join(sample)
-        if len(deny_rules) > 5:
-            deny_display += f", ... (+{len(deny_rules) - 5} more)"
-        console.print(f"  [{PERM_DENY}]Deny:[/{PERM_DENY}]   [{DIM}]{deny_display}[/{DIM}]")
-
-    console.print(
-        f"\n  [{DIM}]Type /help for commands, Ctrl+C to interrupt, /quit to exit.[/{DIM}]\n"
-    )
+    console.print(f"\n  {PROMPT_ICON} {styled('Godspeed', BOLD_PRIMARY)}\n")
 
 
 def format_error(message: str) -> None:
     """Display an error message."""
-    console.print(Text(f"Error: {message}", style=BOLD_ERROR))
+    console.print(f"  {styled(MARKER_ERROR, ERROR)} {styled(f'Error: {message}', BOLD_ERROR)}")

@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-04-11
+
+### Added
+
+- **User memory with SQLite**: `UserMemory` class backed by SQLite with WAL mode; persistent preferences (key/value CRUD) and corrections table; safe concurrent access; auto-creates `~/.godspeed/memory.db`
+- **Session memory**: `SessionMemory` records session lifecycle events (start, end, tool calls, errors) to SQLite; cross-session history with event filtering and limits
+- **Correction tracker**: `CorrectionTracker` with heuristic detection of user corrections (negation patterns like "no", "don't", "stop", "instead"); auto-records to UserMemory; `format_for_system_prompt()` surfaces top-N corrections as "User prefers X over Y" guidance
+- **`memory_enabled` config**: toggle memory system via `settings.yaml`
+- 602 tests, ~90% coverage
+
 ## [0.4.0] - 2026-04-11
 
 ### Added

@@ -46,6 +46,7 @@ class Commands:
         audit_trail: Any | None,
         session_id: str,
         cwd: Path,
+        pause_event: Any | None = None,
     ) -> None:
         self._conversation = conversation
         self._llm_client = llm_client
@@ -53,6 +54,7 @@ class Commands:
         self._audit_trail = audit_trail
         self._session_id = session_id
         self._cwd = cwd
+        self._pause_event = pause_event
         self._handlers: dict[str, CommandHandler] = {}
         self.max_iterations: int | None = None  # None = use default
         self._register_builtins()
@@ -70,6 +72,9 @@ class Commands:
         self._handlers["/plan"] = self._cmd_plan
         self._handlers["/checkpoint"] = self._cmd_checkpoint
         self._handlers["/restore"] = self._cmd_restore
+        self._handlers["/pause"] = self._cmd_pause
+        self._handlers["/resume"] = self._cmd_resume
+        self._handlers["/guidance"] = self._cmd_guidance
         self._handlers["/quit"] = self._cmd_quit
         self._handlers["/exit"] = self._cmd_quit
 
@@ -117,6 +122,9 @@ class Commands:
         table.add_row("/plan", "Toggle plan mode (read-only -- explore and plan only)")
         table.add_row("/checkpoint [name]", "Save checkpoint, or list if no name")
         table.add_row("/restore <name>", "Restore a saved checkpoint")
+        table.add_row("/pause", "Pause the agent loop at next iteration")
+        table.add_row("/resume", "Resume a paused agent loop")
+        table.add_row("/guidance <msg>", "Inject guidance and resume paused agent")
         table.add_row("/quit, /exit", "Exit Godspeed")
 
         console.print(table)
@@ -380,6 +388,47 @@ class Commands:
             f"  [green]Restored checkpoint:[/green] [bold]{name}[/bold] "
             f"({msg_count} messages, {token_count:,} tokens)"
         )
+        return CommandResult(handled=True)
+
+    def _cmd_pause(self, _args: str = "") -> CommandResult:
+        """Pause the agent loop at the next iteration."""
+        if self._pause_event is None:
+            format_error("Pause/resume not available in this session.")
+            return CommandResult(handled=True)
+
+        self._pause_event.clear()
+        console.print("  [bold yellow]Agent paused.[/bold yellow] Use /resume or /guidance <msg>.")
+        return CommandResult(handled=True)
+
+    def _cmd_resume(self, _args: str = "") -> CommandResult:
+        """Resume a paused agent loop."""
+        if self._pause_event is None:
+            format_error("Pause/resume not available in this session.")
+            return CommandResult(handled=True)
+
+        if self._pause_event.is_set():
+            console.print("  [dim]Agent is not paused.[/dim]")
+            return CommandResult(handled=True)
+
+        self._pause_event.set()
+        console.print("  [bold green]Agent resumed.[/bold green]")
+        return CommandResult(handled=True)
+
+    def _cmd_guidance(self, args: str = "") -> CommandResult:
+        """Inject guidance as a user message and resume the paused agent."""
+        if not args.strip():
+            format_error("Usage: /guidance <your guidance message>")
+            return CommandResult(handled=True)
+
+        # Inject guidance into conversation
+        self._conversation.add_user_message(f"[User guidance]: {args.strip()}")
+        console.print(f"  [dim]Guidance injected: {args.strip()}[/dim]")
+
+        # Resume if paused
+        if self._pause_event is not None and not self._pause_event.is_set():
+            self._pause_event.set()
+            console.print("  [bold green]Agent resumed with guidance.[/bold green]")
+
         return CommandResult(handled=True)
 
     def _cmd_quit(self, _args: str = "") -> CommandResult:

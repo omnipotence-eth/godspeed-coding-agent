@@ -80,6 +80,10 @@ class TUIApp:
         self._audit_trail = audit_trail
         self._session_id = session_id
 
+        # Pause/resume event for human-in-the-loop
+        self._pause_event = asyncio.Event()
+        self._pause_event.set()  # Start in running state
+
         self._commands = Commands(
             conversation=conversation,
             llm_client=llm_client,
@@ -87,6 +91,7 @@ class TUIApp:
             audit_trail=audit_trail,
             session_id=session_id,
             cwd=tool_context.cwd,
+            pause_event=self._pause_event,
         )
 
         self._completer = GodspeedCompleter(cwd=tool_context.cwd)
@@ -168,6 +173,7 @@ class TUIApp:
                     on_permission_denied=_on_permission_denied,
                     on_assistant_chunk=_on_assistant_chunk,
                     max_iterations=self._commands.max_iterations,
+                    pause_event=self._pause_event,
                 )
                 console.print()  # End streaming output with newline
             except KeyboardInterrupt:
@@ -232,8 +238,9 @@ class _InteractivePermissionProxy:
         if decision != ASK:
             return decision
 
-        # Show the permission prompt and get user input
-        format_permission_prompt(tool_call.tool_name, decision.reason)
+        # Show the permission prompt with contextual detail
+        args = getattr(tool_call, "arguments", None) or {}
+        format_permission_prompt(tool_call.tool_name, decision.reason, arguments=args)
         try:
             answer = console.input("[bold yellow]  > [/bold yellow]").strip().lower()
         except (KeyboardInterrupt, EOFError):

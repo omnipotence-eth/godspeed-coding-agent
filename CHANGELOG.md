@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-04-11
+
+### Added
+
+- **Sub-agent coordinator**: `AgentCoordinator` spawns isolated sub-agents with separate conversations; depth limit 3, iteration limit 25; `SpawnAgentTool` (HIGH risk) enables multi-agent orchestration via `agent_loop()` reuse
+- **`spawn_parallel()`**: run multiple sub-agents concurrently via `asyncio.gather()`
+- **MCP client**: `MCPClient` connects to MCP servers via stdio transport; `MCPToolAdapter` maps MCP tool definitions to Godspeed Tool ABC (all HIGH risk); graceful when `mcp` package not installed
+- **MCP server discovery**: `mcp_servers` config in `settings.yaml` auto-discovers and registers remote tools at startup
+- **Model routing**: `ModelRouter` routes LLM calls by task type (plan/edit/chat) to different models; configurable via `routing` in settings
+- **Human-in-the-loop pause/resume**: `asyncio.Event` shared between TUI and agent loop; `/pause` stops at next iteration, `/resume` continues, `/guidance <msg>` injects mid-conversation correction and resumes
+- **Rich permission prompts**: contextual detail in permission dialogs -- file_edit shows mini-diff, file_write shows first 10 lines, shell shows syntax-highlighted command, file_read shows path
+- 549 tests, ~90% coverage
+
+### Changed
+
+- `LLMClient.chat()` accepts optional `task_type` parameter for model routing
+- `agent_loop()` accepts `pause_event` parameter for human-in-the-loop control
+- `format_permission_prompt()` accepts optional `arguments` dict for contextual display
+
 ## [0.3.0] - 2026-04-11
 
 ### Added

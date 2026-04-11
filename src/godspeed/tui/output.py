@@ -67,16 +67,86 @@ def format_assistant_text(text: str) -> None:
     console.print(md)
 
 
-def format_permission_prompt(tool_name: str, reason: str) -> str:
-    """Display a permission request and return user input (y/n/always)."""
+def format_permission_prompt(
+    tool_name: str,
+    reason: str,
+    arguments: dict[str, Any] | None = None,
+) -> str:
+    """Display a permission request with contextual detail.
+
+    Shows tool-specific previews:
+    - file_edit: mini-diff of old_string → new_string
+    - file_write: first 10 lines of content
+    - shell: syntax-highlighted command
+    - file_read / grep_search / repo_map: file path
+    """
     console.print()
-    panel = Panel(
+
+    detail_parts: list[Any] = []
+    args = arguments or {}
+
+    if tool_name == "file_edit" and args.get("old_string") and args.get("new_string"):
+        file_path = args.get("file_path", "unknown")
+        detail_parts.append(Text.from_markup(f"[dim]File:[/dim] {file_path}\n"))
+        old = args["old_string"]
+        new = args["new_string"]
+        diff_lines = []
+        for line in old.splitlines():
+            diff_lines.append(f"- {line}")
+        for line in new.splitlines():
+            diff_lines.append(f"+ {line}")
+        diff_text = "\n".join(diff_lines[:20])
+        detail_parts.append(Syntax(diff_text, "diff", theme="monokai", word_wrap=True))
+        if len(diff_lines) > 20:
+            detail_parts.append(
+                Text.from_markup(f"[dim]... ({len(diff_lines) - 20} more lines)[/dim]")
+            )
+
+    elif tool_name == "file_write" and args.get("content"):
+        file_path = args.get("file_path", "unknown")
+        detail_parts.append(Text.from_markup(f"[dim]File:[/dim] {file_path}\n"))
+        all_lines = args["content"].splitlines()
+        preview = "\n".join(all_lines[:10])
+        # Guess lexer from file extension
+        ext = file_path.rsplit(".", 1)[-1] if "." in file_path else "text"
+        lexer_map = {"py": "python", "js": "javascript", "ts": "typescript", "yaml": "yaml"}
+        lexer = lexer_map.get(ext, ext)
+        detail_parts.append(Syntax(preview, lexer, theme="monokai", word_wrap=True))
+        if len(all_lines) > 10:
+            detail_parts.append(
+                Text.from_markup(f"[dim]... ({len(all_lines) - 10} more lines)[/dim]")
+            )
+
+    elif tool_name == "shell" and args.get("command"):
+        detail_parts.append(Syntax(args["command"], "bash", theme="monokai", word_wrap=True))
+
+    elif args.get("file_path"):
+        detail_parts.append(Text.from_markup(f"[dim]Path:[/dim] {args['file_path']}"))
+
+    elif args.get("pattern"):
+        detail_parts.append(Text.from_markup(f"[dim]Pattern:[/dim] {args['pattern']}"))
+
+    # Build the panel content
+    from rich.console import Group
+
+    content_parts: list[Any] = [
+        Text.from_markup(f"[bold]{tool_name}[/bold]\n"),
+    ]
+    if detail_parts:
+        content_parts.append(Text(""))  # spacer
+        content_parts.extend(detail_parts)
+        content_parts.append(Text(""))  # spacer
+
+    content_parts.append(
         Text.from_markup(
-            f"[bold]{tool_name}[/bold]\n\n"
             f"[dim]{reason}[/dim]\n\n"
             "[yellow]Allow this tool call?[/yellow] "
             "[dim](y)es / (n)o / (a)lways for this session[/dim]"
-        ),
+        )
+    )
+
+    panel = Panel(
+        Group(*content_parts),
         title="[bold yellow]Permission Required[/bold yellow]",
         border_style="yellow",
         expand=False,

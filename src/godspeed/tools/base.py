@@ -87,7 +87,9 @@ class ToolCall(BaseModel):
 class PermissionEvaluator(Protocol):
     """Protocol for permission evaluation — avoids circular imports."""
 
-    def evaluate(self, tool_call: ToolCall) -> Any: ...
+    def evaluate(self, tool_call: ToolCall) -> Any:
+        """Evaluate a tool call and return a permission decision."""
+        ...
 
 
 @runtime_checkable
@@ -99,7 +101,9 @@ class AuditRecorder(Protocol):
         event_type: str,
         detail: dict[str, Any] | None = None,
         outcome: str = "success",
-    ) -> Any: ...
+    ) -> Any:
+        """Record an audit event. Returns the persisted record."""
+        ...
 
 
 class ToolContext(BaseModel):

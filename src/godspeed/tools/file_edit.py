@@ -75,7 +75,9 @@ class FileEditTool(Tool):
         if not isinstance(old_string, str) or not old_string:
             return ToolResult.failure("old_string must be a non-empty string")
         if not isinstance(new_string, str):
-            return ToolResult.failure("new_string must be a string")
+            return ToolResult.failure(
+                f"new_string must be a string, got {type(new_string).__name__}"
+            )
         if old_string == new_string:
             return ToolResult.failure("old_string and new_string must be different")
 

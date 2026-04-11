@@ -8,14 +8,19 @@ DEFAULT_EXCLUDES = frozenset(
     {
         "node_modules",
         ".venv",
+        "venv",
         "__pycache__",
         ".git",
         ".mypy_cache",
         ".ruff_cache",
         ".pytest_cache",
+        ".hypothesis",
+        ".tox",
         "dist",
         "build",
         ".eggs",
+        "htmlcov",
+        ".coverage",
     }
 )
 

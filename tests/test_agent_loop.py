@@ -241,3 +241,112 @@ class TestConversation:
         # The system prompt itself might push us over
         # This test just verifies the property works
         assert isinstance(conv.is_near_limit, bool)
+
+    def test_get_compaction_context_includes_roles(self) -> None:
+        conv = Conversation("System prompt")
+        conv.add_user_message("Fix the bug")
+        conv.add_assistant_message("I'll read the file first")
+        context = conv.get_compaction_context()
+        assert "[user]: Fix the bug" in context
+        assert "[assistant]: I'll read the file first" in context
+
+    def test_get_compaction_context_includes_tool_calls(self) -> None:
+        conv = Conversation("System prompt")
+        conv.add_assistant_message(
+            content="",
+            tool_calls=[
+                {
+                    "id": "call_1",
+                    "function": {"name": "file_read", "arguments": '{"file_path": "main.py"}'},
+                }
+            ],
+        )
+        context = conv.get_compaction_context()
+        assert "file_read" in context
+        assert "main.py" in context
+
+    def test_add_assistant_message_normalizes_tool_calls_type(self) -> None:
+        """Tool calls should always have type='function' for LiteLLM compat."""
+        conv = Conversation("System prompt")
+        conv.add_assistant_message(
+            tool_calls=[{"id": "call_1", "function": {"name": "test", "arguments": "{}"}}]
+        )
+        msg = conv.messages[-1]
+        assert msg["tool_calls"][0]["type"] == "function"
+
+    def test_add_assistant_message_preserves_existing_type(self) -> None:
+        """If type is already set, don't overwrite it."""
+        conv = Conversation("System prompt")
+        conv.add_assistant_message(
+            tool_calls=[
+                {
+                    "id": "call_1",
+                    "type": "function",
+                    "function": {"name": "test", "arguments": "{}"},
+                }
+            ],
+        )
+        msg = conv.messages[-1]
+        assert msg["tool_calls"][0]["type"] == "function"
+
+
+class TestTokenCounter:
+    """Tests for token counting utilities."""
+
+    def test_get_encoding_for_known_model(self) -> None:
+        from godspeed.llm.token_counter import get_encoding
+
+        enc = get_encoding("gpt-4")
+        assert enc is not None
+
+    def test_get_encoding_for_claude_falls_back(self) -> None:
+        from godspeed.llm.token_counter import get_encoding
+
+        enc = get_encoding("claude-sonnet-4-20250514")
+        assert enc is not None
+
+    def test_get_encoding_for_ollama_model(self) -> None:
+        from godspeed.llm.token_counter import get_encoding
+
+        enc = get_encoding("ollama/qwen3:4b")
+        assert enc is not None
+
+    def test_get_encoding_for_unknown_model(self) -> None:
+        from godspeed.llm.token_counter import get_encoding
+
+        enc = get_encoding("totally-unknown-model-xyz")
+        assert enc is not None  # falls back to cl100k_base
+
+    def test_count_tokens_basic(self) -> None:
+        from godspeed.llm.token_counter import count_tokens
+
+        count = count_tokens("Hello world")
+        assert count > 0
+
+    def test_count_message_tokens_basic(self) -> None:
+        from godspeed.llm.token_counter import count_message_tokens
+
+        msgs = [
+            {"role": "system", "content": "You are helpful."},
+            {"role": "user", "content": "Hello"},
+        ]
+        count = count_message_tokens(msgs)
+        assert count > 0
+
+    def test_count_message_tokens_with_tool_calls(self) -> None:
+        from godspeed.llm.token_counter import count_message_tokens
+
+        msgs = [
+            {
+                "role": "assistant",
+                "tool_calls": [{"id": "call_1", "function": {"name": "test", "arguments": "{}"}}],
+            }
+        ]
+        count = count_message_tokens(msgs)
+        assert count > 0
+
+    def test_count_tokens_empty_string(self) -> None:
+        from godspeed.llm.token_counter import count_tokens
+
+        count = count_tokens("")
+        assert count == 0

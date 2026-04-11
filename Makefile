@@ -1,4 +1,4 @@
-.PHONY: lint format type-check security test test-cov clean
+.PHONY: lint format type-check security test test-cov clean install
 
 lint:
 	ruff check . --fix
@@ -23,5 +23,8 @@ test-cov:
 clean:
 	rm -rf build/ dist/ *.egg-info htmlcov/ .coverage .pytest_cache __pycache__
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+
+install:
+	uv tool install -e .
 
 all: lint type-check security test

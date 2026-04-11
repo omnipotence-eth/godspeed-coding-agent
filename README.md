@@ -30,9 +30,9 @@ If you want a coding agent you can actually point at a production codebase, this
 
 ### Security
 
-- **4-tier permission engine** -- deny-first evaluation with pattern matching, dangerous command detection (25+ patterns), and fail-closed defaults. No tool call executes without explicit permission.
+- **4-tier permission engine** -- deny-first evaluation with pattern matching, dangerous command detection (46 patterns), and fail-closed defaults. No tool call executes without explicit permission.
 - **Hash-chained audit trail** -- SHA-256 JSONL log where each entry chains to the previous. Tamper-evident and verifiable with `godspeed audit verify`.
-- **Secret protection** -- 4 layers of defense: file deny-listing, context cleaning, output filtering, and audit redaction. 18+ regex patterns plus Shannon entropy analysis catch API keys, tokens, and credentials before they leak.
+- **Secret protection** -- 4 layers of defense: file deny-listing, context cleaning, output filtering, and audit redaction. 27 regex patterns plus Shannon entropy analysis catch API keys, tokens, and credentials before they leak.
 
 ### Capability
 
@@ -61,6 +61,10 @@ flowchart LR
     style Audit fill:#2ecc71,color:#fff
 ```
 
+**How it works:**
+
+The agent loop is hand-rolled (no framework) following the same pattern proven by top-performing coding agents. The LLM decides when to stop. On each turn, the LLM either responds with text (done) or requests tool calls. Every tool call passes through the **permission engine** before execution: deny rules are evaluated first and always win, then dangerous command detection (25+ regex patterns) blocks destructive operations, then session grants and allow rules, and finally the tool's risk level determines the default. If anything is ambiguous, it fails closed. After execution, the tool call, its result, and the permission decision are recorded in the **audit trail** -- a hash-chained JSONL file where each record includes the SHA-256 hash of the previous record. Secrets are redacted at four layers: file access deny rules, context cleaning before the LLM sees content, output filtering on LLM responses, and audit log redaction.
+
 **Key modules:**
 
 | Module | Path | Purpose |
@@ -84,19 +88,37 @@ pip install godspeed
 Or with [uv](https://github.com/astral-sh/uv):
 
 ```bash
-uv add godspeed
+uv tool install godspeed     # installs globally — run 'godspeed' from anywhere
+```
+
+### Setup
+
+```bash
+# One-time setup — creates ~/.godspeed/ and default settings
+godspeed init
+
+# Pull a free local model (default, no API key needed)
+ollama pull qwen3:4b
 ```
 
 ### Run
 
 ```bash
-# Set your LLM API key (example: Claude)
-export ANTHROPIC_API_KEY="sk-..."
-
-# Launch in any project directory
+# Launch in any project directory — uses free local model by default
 cd your-project/
 godspeed
 ```
+
+Or use a paid cloud model:
+
+```bash
+export ANTHROPIC_API_KEY="sk-..."
+godspeed -m claude-sonnet-4-20250514
+```
+
+Switch models at any time with `/model <name>` inside the TUI, or run `godspeed models` to see all options.
+
+Godspeed auto-upgrades `ollama/` to `ollama_chat/` for tool-capable models (Qwen, Llama, Gemma, Mistral, etc.).
 
 Godspeed reads `GODSPEED.md` from the project root for persistent instructions -- similar to how other agents use `CLAUDE.md`.
 
@@ -104,10 +126,22 @@ Godspeed reads `GODSPEED.md` from the project root for persistent instructions -
 
 ```
 $ godspeed
-> Explain the authentication flow in this codebase
+godspeed> Explain the authentication flow in this codebase
 ```
 
 The agent will read your code, answer questions, write files, and run commands -- all gated by the permission engine.
+
+### Slash commands
+
+| Command | Description |
+|---------|-------------|
+| `/help` | Show available commands |
+| `/model [name]` | Show or switch the active model |
+| `/clear` | Clear conversation history |
+| `/undo` | Undo last git commit (`git reset --soft HEAD~1`) |
+| `/audit` | Show audit trail stats and verify chain integrity |
+| `/permissions` | Show current permission rules and session grants |
+| `/quit` | Exit Godspeed |
 
 ## Configuration
 
@@ -122,9 +156,25 @@ model: claude-sonnet-4-20250514
 fallback_models:
   - gpt-4o
   - gemini-2.0-flash
-permission_mode: ask  # ask | auto-allow | deny
-audit_dir: ~/.godspeed/audit/
+
+permissions:
+  deny:
+    - "FileRead(.env)"
+    - "FileRead(*.pem)"
+    - "FileRead(.ssh/*)"
+  allow:
+    - "Bash(git *)"
+    - "Bash(ruff *)"
+    - "Bash(pytest *)"
+  ask:
+    - "Bash(*)"
+
+audit:
+  enabled: true
+  retention_days: 30
 ```
+
+Permission rules use glob-style matching against `ToolName(argument)` strings. Deny rules are additive across config levels -- a project config cannot weaken global denies.
 
 ### Environment variables
 
@@ -134,6 +184,20 @@ audit_dir: ~/.godspeed/audit/
 | `OPENAI_API_KEY` | GPT access |
 | `GEMINI_API_KEY` | Gemini access |
 | `GODSPEED_MODEL` | Override default model |
+
+## How Godspeed Compares
+
+| Feature | Godspeed | Claude Code | Cursor | Aider | OpenClaw |
+|---------|----------|-------------|--------|-------|----------|
+| Deny-first permission engine | **Yes** (4-tier, pattern matching, 46 dangerous patterns) | Proprietary | No | No | No |
+| Hash-chained audit trail | **Yes** (SHA-256 JSONL, verifiable) | No | No | No | No |
+| Secret protection | **4 layers** (deny, context clean, output filter, audit redact) | Limited | No | No | No |
+| Free by default | **Yes** (Ollama, zero API cost) | No (paid API) | No (subscription) | Yes | Yes |
+| 200+ LLM providers | **Yes** (LiteLLM) | Claude only | OpenAI/Claude | ~15 | Limited |
+| Open source | **MIT** | No | No | Apache 2.0 | MIT |
+| Fallback chains | **Yes** | No | No | No | No |
+
+Godspeed is the only open-source coding agent that ships with production security primitives out of the box. Others expect you to bolt security on yourself or trust the model not to run destructive commands.
 
 ## Development
 

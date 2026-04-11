@@ -161,3 +161,37 @@ class AuditTrail:
                 prev_hash = record.record_hash
 
         return True, f"Chain verified: {line_num} records"
+
+    def cleanup_expired(self, retention_days: int = 30) -> int:
+        """Remove audit logs older than retention_days.
+
+        Scans the log directory for session files and deletes those whose
+        last modification time exceeds the retention period. Skips the
+        current session's log file.
+
+        Returns:
+            Number of expired log files removed.
+        """
+        import time
+
+        if retention_days <= 0:
+            return 0
+
+        cutoff = time.time() - (retention_days * 86400)
+        removed = 0
+
+        for log_file in self._log_dir.glob("*.audit.jsonl"):
+            # Never delete the current session's log
+            if log_file == self._log_path:
+                continue
+            try:
+                if log_file.stat().st_mtime < cutoff:
+                    log_file.unlink()
+                    removed += 1
+                    logger.info("Removed expired audit log path=%s", log_file.name)
+            except OSError as exc:
+                logger.warning("Failed to remove expired audit log path=%s error=%s", log_file, exc)
+
+        if removed:
+            logger.info("Audit cleanup removed=%d retention_days=%d", removed, retention_days)
+        return removed

@@ -9,11 +9,26 @@ import tiktoken
 
 logger = logging.getLogger(__name__)
 
-# Model-to-encoding mapping for common models
+# Model-to-encoding mapping — tiktoken doesn't know non-OpenAI models so we map
+# them to the closest tokenizer. cl100k_base (~100k vocab) is a safe default
+# since most modern LLMs use similar BPE vocabularies and we only need approximate
+# token counts for context budget management, not exact billing.
 _MODEL_ENCODINGS: dict[str, str] = {
+    # OpenAI
     "gpt-4": "cl100k_base",
     "gpt-4o": "o200k_base",
     "gpt-3.5-turbo": "cl100k_base",
+    # Anthropic Claude — uses its own tokenizer but cl100k_base is close enough
+    "claude": "cl100k_base",
+    # Google Gemini
+    "gemini": "cl100k_base",
+    # DeepSeek
+    "deepseek": "cl100k_base",
+    # Ollama local models (qwen, llama, gemma, mistral, etc.)
+    "qwen": "cl100k_base",
+    "llama": "cl100k_base",
+    "gemma": "cl100k_base",
+    "mistral": "cl100k_base",
 }
 _DEFAULT_ENCODING = "cl100k_base"
 
@@ -27,7 +42,7 @@ def get_encoding(model: str) -> tiktoken.Encoding:
     try:
         return tiktoken.encoding_for_model(model_name)
     except KeyError:
-        pass
+        logger.debug("No tiktoken encoding for model=%s, trying prefix mapping", model_name)
 
     # Check our mapping
     for prefix, encoding in _MODEL_ENCODINGS.items():
@@ -55,7 +70,7 @@ def count_message_tokens(messages: list[dict[str, Any]], model: str = "gpt-4") -
     for msg in messages:
         # Per-message overhead (~4 tokens: role, content separators)
         tokens += 4
-        for _key, value in msg.items():
+        for _, value in msg.items():
             if isinstance(value, str):
                 tokens += len(enc.encode(value))
             elif isinstance(value, list):

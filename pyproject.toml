@@ -17,15 +17,20 @@ keywords = [
     "cli",
     "developer-tools",
     "open-source",
+    "litellm",
+    "multi-agent",
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: Console",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development",
     "Topic :: Software Development :: Libraries :: Application Frameworks",
     "Typing :: Typed",
 ]
@@ -71,6 +76,7 @@ godspeed = "godspeed.cli:main"
 Homepage = "https://github.com/omnipotence-eth/godspeed-coding-agent"
 Repository = "https://github.com/omnipotence-eth/godspeed-coding-agent"
 Issues = "https://github.com/omnipotence-eth/godspeed-coding-agent/issues"
+Documentation = "https://github.com/omnipotence-eth/godspeed-coding-agent#readme"
 Changelog = "https://github.com/omnipotence-eth/godspeed-coding-agent/blob/main/CHANGELOG.md"
 
 [build-system]

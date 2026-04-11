@@ -1,0 +1,90 @@
+# Godspeed Settings — copy to ~/.godspeed/settings.yaml
+#
+# Godspeed works out of the box with free local models via Ollama.
+# To use paid models, set the appropriate API key as an env var and
+# change the model below.
+#
+# Model switching:
+#   - CLI flag:     godspeed -m claude-sonnet-4-20250514
+#   - Env var:      GODSPEED_MODEL=gpt-4o godspeed
+#   - This file:    edit the 'model' field below
+#   - At runtime:   /model claude-sonnet-4-20250514
+
+# ─── LLM ────────────────────────────────────────────────────────────────
+# Default: free local model via Ollama (no API key needed)
+# Install: ollama pull qwen3:4b
+model: ollama/qwen3:4b
+
+# Fallback chain — tried in order if the primary model fails.
+# Useful for mixing local + cloud: local model for speed, cloud for fallback.
+fallback_models: []
+
+# ─── Popular model examples (uncomment one) ─────────────────────────────
+#
+# Free local models (Ollama — no API key):
+#   model: ollama/qwen3:4b          # 4B params, fast, good tool calling
+#   model: ollama/qwen3:8b          # 8B params, better reasoning
+#   model: ollama/gemma4:e4b        # Google Gemma 4, excellent coding
+#   model: ollama/llama3.3:8b       # Meta Llama 3.3
+#   model: ollama/mistral:7b        # Mistral 7B
+#   model: ollama/deepseek-r1:8b    # DeepSeek R1, strong reasoning
+#
+# Paid cloud models (set API key as env var):
+#   model: claude-sonnet-4-20250514    # ANTHROPIC_API_KEY
+#   model: claude-opus-4-20250514      # ANTHROPIC_API_KEY
+#   model: gpt-4o                      # OPENAI_API_KEY
+#   model: gpt-4o-mini                 # OPENAI_API_KEY
+#   model: gemini/gemini-2.0-flash     # GEMINI_API_KEY
+#   model: deepseek/deepseek-chat      # DEEPSEEK_API_KEY
+#
+# Mixed strategy — fast local + smart cloud fallback:
+#   model: ollama/qwen3:4b
+#   fallback_models:
+#     - claude-sonnet-4-20250514
+#     - gpt-4o
+
+# ─── Context ────────────────────────────────────────────────────────────
+max_context_tokens: 100000
+compaction_threshold: 0.8
+
+# ─── Permissions ────────────────────────────────────────────────────────
+# Deny rules are checked first and always win. Project configs can only
+# ADD deny rules, never remove global ones.
+permissions:
+  deny:
+    # Secrets and credentials
+    - "FileRead(.env)"
+    - "FileRead(.env.*)"
+    - "FileRead(.env.local)"
+    - "FileRead(.env.production)"
+    - "FileRead(.env.staging)"
+    - "FileRead(*.pem)"
+    - "FileRead(*.key)"
+    - "FileRead(*.p12)"
+    - "FileRead(*.pfx)"
+    - "FileRead(*.jks)"
+    - "FileRead(*credentials*)"
+    - "FileRead(*secret*)"
+    - "FileRead(.aws/*)"
+    - "FileRead(.gcloud/*)"
+    - "FileRead(.azure/*)"
+    - "FileRead(.ssh/*)"
+    - "FileRead(docker-compose*.secret*)"
+    - "FileWrite(.env)"
+    - "FileWrite(.env.*)"
+    - "FileWrite(.ssh/*)"
+    - "FileWrite(.aws/*)"
+  allow:
+    # Safe dev commands — auto-approved
+    - "Bash(git *)"
+    - "Bash(ruff *)"
+    - "Bash(pytest *)"
+    - "Bash(make *)"
+  ask:
+    # Everything else requires confirmation
+    - "Bash(*)"
+
+# ─── Audit ──────────────────────────────────────────────────────────────
+audit:
+  enabled: true
+  retention_days: 30

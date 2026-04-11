@@ -14,7 +14,7 @@ class TestGodspeedSettings:
     """Test root configuration."""
 
     def test_defaults(self, settings: GodspeedSettings) -> None:
-        assert settings.model == "claude-sonnet-4-20250514"
+        assert settings.model == "ollama/qwen3:4b"
         assert settings.permission_mode == "normal"
         assert settings.max_context_tokens == 100_000
         assert settings.compaction_threshold == 0.8

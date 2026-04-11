@@ -10,6 +10,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
 import click
@@ -49,14 +50,14 @@ def _is_ollama_running() -> bool:
     try:
         import urllib.request
 
-        req = urllib.request.Request(OLLAMA_URL, method="GET")  # noqa: S310
-        with urllib.request.urlopen(req, timeout=2):  # noqa: S310
+        req = urllib.request.Request(OLLAMA_URL, method="GET")  # noqa: S310  # nosec B310
+        with urllib.request.urlopen(req, timeout=2):  # noqa: S310  # nosec B310
             return True
     except Exception:
         return False
 
 
-def _ensure_ollama(console: object | None = None) -> bool:
+def _ensure_ollama(console: Any | None = None) -> bool:
     """Start Ollama if it's not running. Returns True if Ollama is available.
 
     Args:
@@ -68,7 +69,7 @@ def _ensure_ollama(console: object | None = None) -> bool:
     ollama_bin = shutil.which("ollama")
     if ollama_bin is None:
         if console is not None:
-            console.print(  # type: ignore[union-attr]
+            console.print(
                 "[yellow]  Ollama is not installed. "
                 "Install from https://ollama.com or use a cloud model: "
                 "godspeed -m claude-sonnet-4-20250514[/yellow]"
@@ -77,8 +78,7 @@ def _ensure_ollama(console: object | None = None) -> bool:
 
     # Start ollama serve as a detached background process
     if console is not None:
-        console.print("[dim]  Starting Ollama...[/dim]", end="")  # type: ignore[union-attr]
-
+        console.print("[dim]  Starting Ollama...[/dim]", end="")
     try:
         subprocess.Popen(
             [ollama_bin, "serve"],
@@ -89,7 +89,7 @@ def _ensure_ollama(console: object | None = None) -> bool:
     except OSError as exc:
         logger.warning("Failed to start Ollama: %s", exc)
         if console is not None:
-            console.print(f" [red]failed: {exc}[/red]")  # type: ignore[union-attr]
+            console.print(f" [red]failed: {exc}[/red]")
         return False
 
     # Poll until it's up
@@ -98,13 +98,11 @@ def _ensure_ollama(console: object | None = None) -> bool:
         time.sleep(0.5)
         if _is_ollama_running():
             if console is not None:
-                console.print(" [green]ready[/green]")  # type: ignore[union-attr]
+                console.print(" [green]ready[/green]")
             return True
 
     if console is not None:
-        console.print(  # type: ignore[union-attr]
-            " [yellow]timed out. Ollama may still be starting.[/yellow]"
-        )
+        console.print(" [yellow]timed out. Ollama may still be starting.[/yellow]")
     return False
 
 

@@ -30,6 +30,7 @@ from godspeed.tui.output import (
     format_tool_result,
     format_welcome,
 )
+from godspeed.tui.theme import BOLD_WARNING, DIM, ERROR, icon_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -129,9 +130,9 @@ class TUIApp:
         except Exception as exc:
             # prompt-toolkit fails in non-TTY contexts (piped input, CI, etc.)
             console.print(
-                f"\n[red]  Cannot create interactive session: {exc}[/red]\n"
-                "  [dim]Godspeed requires a real terminal. Run it directly in your"
-                " terminal, not through a pipe or non-interactive shell.[/dim]"
+                f"\n[{ERROR}]  Cannot create interactive session: {exc}[/{ERROR}]\n"
+                f"  [{DIM}]Godspeed requires a real terminal. Run it directly in your"
+                f" terminal, not through a pipe or non-interactive shell.[/{DIM}]"
             )
             return
 
@@ -140,11 +141,11 @@ class TUIApp:
                 user_input = await asyncio.get_event_loop().run_in_executor(
                     None,
                     lambda: session.prompt(
-                        HTML("<b><ansibrightblue>godspeed></ansibrightblue></b> "),
+                        HTML(icon_prompt()),
                     ),
                 )
             except KeyboardInterrupt:
-                console.print("\n  [dim]Interrupted. Type /quit to exit.[/dim]")
+                console.print(f"\n  [{DIM}]Interrupted. Type /quit to exit.[/{DIM}]")
                 continue
             except EOFError:
                 break
@@ -177,7 +178,7 @@ class TUIApp:
                 )
                 console.print()  # End streaming output with newline
             except KeyboardInterrupt:
-                console.print("\n  [dim]Agent interrupted.[/dim]")
+                console.print(f"\n  [{DIM}]Agent interrupted.[/{DIM}]")
             except Exception as exc:
                 logger.error("Agent loop error: %s", exc, exc_info=True)
                 format_error(f"Agent error: {exc}")
@@ -242,7 +243,7 @@ class _InteractivePermissionProxy:
         args = getattr(tool_call, "arguments", None) or {}
         format_permission_prompt(tool_call.tool_name, decision.reason, arguments=args)
         try:
-            answer = console.input("[bold yellow]  > [/bold yellow]").strip().lower()
+            answer = console.input(f"[{BOLD_WARNING}]  > [/{BOLD_WARNING}]").strip().lower()
         except (KeyboardInterrupt, EOFError):
             answer = "n"
 

@@ -69,16 +69,20 @@ def _ensure_ollama(console: Any | None = None) -> bool:
     ollama_bin = shutil.which("ollama")
     if ollama_bin is None:
         if console is not None:
+            from godspeed.tui.theme import WARNING
+
             console.print(
-                "[yellow]  Ollama is not installed. "
+                f"[{WARNING}]  Ollama is not installed. "
                 "Install from https://ollama.com or use a cloud model: "
-                "godspeed -m claude-sonnet-4-20250514[/yellow]"
+                f"godspeed -m claude-sonnet-4-20250514[/{WARNING}]"
             )
         return False
 
     # Start ollama serve as a detached background process
     if console is not None:
-        console.print("[dim]  Starting Ollama...[/dim]", end="")
+        from godspeed.tui.theme import DIM
+
+        console.print(f"[{DIM}]  Starting Ollama...[/{DIM}]", end="")
     try:
         subprocess.Popen(
             [ollama_bin, "serve"],
@@ -89,7 +93,9 @@ def _ensure_ollama(console: Any | None = None) -> bool:
     except OSError as exc:
         logger.warning("Failed to start Ollama: %s", exc)
         if console is not None:
-            console.print(f" [red]failed: {exc}[/red]")
+            from godspeed.tui.theme import ERROR
+
+            console.print(f" [{ERROR}]failed: {exc}[/{ERROR}]")
         return False
 
     # Poll until it's up
@@ -98,11 +104,15 @@ def _ensure_ollama(console: Any | None = None) -> bool:
         time.sleep(0.5)
         if _is_ollama_running():
             if console is not None:
-                console.print(" [green]ready[/green]")
+                from godspeed.tui.theme import SUCCESS
+
+                console.print(f" [{SUCCESS}]ready[/{SUCCESS}]")
             return True
 
     if console is not None:
-        console.print(" [yellow]timed out. Ollama may still be starting.[/yellow]")
+        from godspeed.tui.theme import WARNING
+
+        console.print(f" [{WARNING}]timed out. Ollama may still be starting.[/{WARNING}]")
     return False
 
 
@@ -339,8 +349,10 @@ def version() -> None:
     """Show Godspeed version."""
     from rich.console import Console as RichConsole
 
+    from godspeed.tui.theme import brand
+
     c = RichConsole()
-    c.print(f"godspeed [bold]{__version__}[/bold]")
+    c.print(brand(__version__))
 
 
 @main.group()
@@ -365,25 +377,26 @@ def audit_verify(session_id: str | None, audit_dir: Path | None) -> None:
 
     from godspeed.audit.trail import AuditTrail
     from godspeed.config import DEFAULT_GLOBAL_DIR
+    from godspeed.tui.theme import DIM, ERROR, SUCCESS
 
     c = RichConsole()
     effective_dir = audit_dir or (DEFAULT_GLOBAL_DIR / "audit")
 
     if not effective_dir.exists():
-        c.print(f"[red]Audit directory not found: {effective_dir}[/red]")
+        c.print(f"[{ERROR}]Audit directory not found: {effective_dir}[/{ERROR}]")
         sys.exit(1)
 
     if session_id:
         # Verify single session
         trail = AuditTrail(log_dir=effective_dir, session_id=session_id)
         if not trail.log_path.exists():
-            c.print(f"[red]No audit log found for session: {session_id}[/red]")
+            c.print(f"[{ERROR}]No audit log found for session: {session_id}[/{ERROR}]")
             sys.exit(1)
         is_valid, message = trail.verify_chain()
         if is_valid:
-            c.print(f"[green]VALID[/green] -- {message}")
+            c.print(f"[{SUCCESS}]VALID[/{SUCCESS}] -- {message}")
         else:
-            c.print(f"[red]BROKEN[/red] -- {message}")
+            c.print(f"[{ERROR}]BROKEN[/{ERROR}] -- {message}")
             sys.exit(1)
     else:
         # Verify all sessions
@@ -393,11 +406,11 @@ def audit_verify(session_id: str | None, audit_dir: Path | None) -> None:
             sid = log_file.stem.replace(".audit", "")
             trail = AuditTrail(log_dir=effective_dir, session_id=sid)
             is_valid, message = trail.verify_chain()
-            status = "[green]VALID[/green]" if is_valid else "[red]BROKEN[/red]"
+            status = f"[{SUCCESS}]VALID[/{SUCCESS}]" if is_valid else f"[{ERROR}]BROKEN[/{ERROR}]"
             c.print(f"  {status}  {sid[:12]}...  {message}")
 
         if not found:
-            c.print("[dim]No audit logs found.[/dim]")
+            c.print(f"[{DIM}]No audit logs found.[/{DIM}]")
 
 
 @main.command()
@@ -407,6 +420,7 @@ def init() -> None:
     from rich.console import Console as RichConsole
 
     from godspeed.config import DEFAULT_GLOBAL_DIR
+    from godspeed.tui.theme import ACCENT, BOLD_PRIMARY, DIM, SUCCESS
 
     c = RichConsole()
     global_dir = DEFAULT_GLOBAL_DIR
@@ -417,7 +431,7 @@ def init() -> None:
     audit_dir.mkdir(parents=True, exist_ok=True)
 
     if settings_path.exists():
-        c.print(f"  [dim]Settings already exist:[/dim] {settings_path}")
+        c.print(f"  [{DIM}]Settings already exist:[/{DIM}] {settings_path}")
     else:
         # Copy the example settings
         example = Path(__file__).parent.parent.parent / "settings.yaml.example"
@@ -431,15 +445,15 @@ def init() -> None:
                 "fallback_models: []\n",
                 encoding="utf-8",
             )
-        c.print(f"  [green]Created settings:[/green] {settings_path}")
+        c.print(f"  [{SUCCESS}]Created settings:[/{SUCCESS}] {settings_path}")
 
-    c.print(f"  [green]Audit directory:[/green] {audit_dir}")
+    c.print(f"  [{SUCCESS}]Audit directory:[/{SUCCESS}] {audit_dir}")
     c.print()
-    c.print("  [bold]Next steps:[/bold]")
-    c.print("    1. Install a local model: [cyan]ollama pull qwen3:4b[/cyan]")
-    c.print("    2. Or set an API key:     [cyan]export ANTHROPIC_API_KEY=sk-...[/cyan]")
-    c.print(f"    3. Edit your settings:    [cyan]{settings_path}[/cyan]")
-    c.print("    4. Launch Godspeed:        [cyan]godspeed[/cyan]")
+    c.print(f"  [{BOLD_PRIMARY}]Next steps:[/{BOLD_PRIMARY}]")
+    c.print(f"    1. Install a local model: [{ACCENT}]ollama pull qwen3:4b[/{ACCENT}]")
+    c.print(f"    2. Or set an API key:     [{ACCENT}]export ANTHROPIC_API_KEY=sk-...[/{ACCENT}]")
+    c.print(f"    3. Edit your settings:    [{ACCENT}]{settings_path}[/{ACCENT}]")
+    c.print(f"    4. Launch Godspeed:        [{ACCENT}]godspeed[/{ACCENT}]")
 
 
 @main.command()
@@ -448,21 +462,24 @@ def models() -> None:
     from rich.console import Console as RichConsole
     from rich.table import Table
 
+    from godspeed.tui.theme import BOLD_PRIMARY, DIM, MUTED, SUCCESS, TABLE_BORDER
+
     c = RichConsole()
 
-    table = Table(title="Popular Models", border_style="blue", expand=False)
-    table.add_column("Model", style="bold cyan")
-    table.add_column("Provider", style="dim")
+    table = Table(title="Popular Models", border_style=TABLE_BORDER, expand=False)
+    table.add_column("Model", style=BOLD_PRIMARY)
+    table.add_column("Provider", style=MUTED)
     table.add_column("Cost")
-    table.add_column("API Key Env Var", style="dim")
+    table.add_column("API Key Env Var", style=MUTED)
 
+    free = f"[{SUCCESS}]Free[/{SUCCESS}]"
     # Free local models
-    table.add_row("ollama/qwen3:4b", "Ollama", "[green]Free[/green]", "None (local)")
-    table.add_row("ollama/qwen3:8b", "Ollama", "[green]Free[/green]", "None (local)")
-    table.add_row("ollama/gemma4:e4b", "Ollama", "[green]Free[/green]", "None (local)")
-    table.add_row("ollama/llama3.3:8b", "Ollama", "[green]Free[/green]", "None (local)")
-    table.add_row("ollama/deepseek-r1:8b", "Ollama", "[green]Free[/green]", "None (local)")
-    table.add_row("ollama/mistral:7b", "Ollama", "[green]Free[/green]", "None (local)")
+    table.add_row("ollama/qwen3:4b", "Ollama", free, "None (local)")
+    table.add_row("ollama/qwen3:8b", "Ollama", free, "None (local)")
+    table.add_row("ollama/gemma4:e4b", "Ollama", free, "None (local)")
+    table.add_row("ollama/llama3.3:8b", "Ollama", free, "None (local)")
+    table.add_row("ollama/deepseek-r1:8b", "Ollama", free, "None (local)")
+    table.add_row("ollama/mistral:7b", "Ollama", free, "None (local)")
 
     # Paid cloud models
     table.add_row("claude-sonnet-4-20250514", "Anthropic", "Paid", "ANTHROPIC_API_KEY")
@@ -474,8 +491,8 @@ def models() -> None:
 
     c.print(table)
     c.print()
-    c.print("  [bold]Switch models:[/bold]")
-    c.print("    [dim]CLI flag:[/dim]     godspeed -m claude-sonnet-4-20250514")
-    c.print("    [dim]Env var:[/dim]      GODSPEED_MODEL=gpt-4o godspeed")
-    c.print("    [dim]Settings:[/dim]     Edit ~/.godspeed/settings.yaml")
-    c.print("    [dim]At runtime:[/dim]   /model claude-sonnet-4-20250514")
+    c.print(f"  [{BOLD_PRIMARY}]Switch models:[/{BOLD_PRIMARY}]")
+    c.print(f"    [{DIM}]CLI flag:[/{DIM}]     godspeed -m claude-sonnet-4-20250514")
+    c.print(f"    [{DIM}]Env var:[/{DIM}]      GODSPEED_MODEL=gpt-4o godspeed")
+    c.print(f"    [{DIM}]Settings:[/{DIM}]     Edit ~/.godspeed/settings.yaml")
+    c.print(f"    [{DIM}]At runtime:[/{DIM}]   /model claude-sonnet-4-20250514")

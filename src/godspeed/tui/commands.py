@@ -9,6 +9,26 @@ from pathlib import Path
 from typing import Any
 
 from godspeed.tui.output import console, format_error, format_stats
+from godspeed.tui.theme import (
+    BOLD_PRIMARY,
+    BOLD_SUCCESS,
+    BOLD_WARNING,
+    CTX_CRITICAL,
+    CTX_OK,
+    CTX_WARN,
+    DIM,
+    ERROR,
+    MUTED,
+    PERM_ALLOW,
+    PERM_ASK,
+    PERM_DENY,
+    PERM_SESSION,
+    SUCCESS,
+    TABLE_BORDER,
+    TABLE_KEY,
+    TABLE_VALUE,
+    WARNING,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -107,8 +127,8 @@ class Commands:
         """Show available commands."""
         from rich.table import Table
 
-        table = Table(title="Commands", border_style="blue", expand=False)
-        table.add_column("Command", style="bold cyan")
+        table = Table(title="Commands", border_style=TABLE_BORDER, expand=False)
+        table.add_column("Command", style=BOLD_PRIMARY)
         table.add_column("Description")
 
         table.add_row("/help", "Show this help message")
@@ -135,20 +155,23 @@ class Commands:
         if args.strip():
             old_model = self._llm_client.model
             self._llm_client.model = args.strip()
+            new_model = self._llm_client.model
             console.print(
-                f"  Model switched: [dim]{old_model}[/dim] -> [bold]{self._llm_client.model}[/bold]"
+                f"  Model switched: [{MUTED}]{old_model}[/{MUTED}]"
+                f" -> [{BOLD_PRIMARY}]{new_model}[/{BOLD_PRIMARY}]"
             )
         else:
-            console.print(f"  Active model: [bold]{self._llm_client.model}[/bold]")
+            model = self._llm_client.model
+            console.print(f"  Active model: [{BOLD_PRIMARY}]{model}[/{BOLD_PRIMARY}]")
             if self._llm_client.fallback_models:
                 fallbacks = ", ".join(self._llm_client.fallback_models)
-                console.print(f"  Fallbacks: [dim]{fallbacks}[/dim]")
+                console.print(f"  Fallbacks: [{DIM}]{fallbacks}[/{DIM}]")
         return CommandResult(handled=True)
 
     def _cmd_clear(self, _args: str = "") -> CommandResult:
         """Clear conversation history."""
         self._conversation.clear()
-        console.print("  [dim]Conversation cleared.[/dim]")
+        console.print(f"  [{DIM}]Conversation cleared.[/{DIM}]")
         return CommandResult(handled=True)
 
     def _cmd_undo(self, _args: str = "") -> CommandResult:
@@ -168,7 +191,7 @@ class Commands:
                 return CommandResult(handled=True)
 
             last_commit = result.stdout.strip()
-            console.print(f"  Undoing: [dim]{last_commit}[/dim]")
+            console.print(f"  Undoing: [{MUTED}]{last_commit}[/{MUTED}]")
 
             undo_result = subprocess.run(
                 ["git", "reset", "--soft", "HEAD~1"],
@@ -178,7 +201,9 @@ class Commands:
                 timeout=10,
             )
             if undo_result.returncode == 0:
-                console.print("  [green]Last commit undone (changes preserved in staging).[/green]")
+                console.print(
+                    f"  [{SUCCESS}]Last commit undone (changes preserved in staging).[/{SUCCESS}]"
+                )
             else:
                 format_error(f"git reset failed: {undo_result.stderr.strip()}")
 
@@ -190,14 +215,14 @@ class Commands:
     def _cmd_audit(self, _args: str = "") -> CommandResult:
         """Show audit trail stats and verify chain."""
         if self._audit_trail is None:
-            console.print("  [dim]Audit trail is disabled.[/dim]")
+            console.print(f"  [{DIM}]Audit trail is disabled.[/{DIM}]")
             return CommandResult(handled=True)
 
         from rich.table import Table
 
-        table = Table(show_header=False, border_style="dim", expand=False)
-        table.add_column("Key", style="dim")
-        table.add_column("Value", style="bold")
+        table = Table(show_header=False, border_style=MUTED, expand=False)
+        table.add_column("Key", style=TABLE_KEY)
+        table.add_column("Value", style=TABLE_VALUE)
         table.add_row("Session", self._session_id[:12] + "...")
         table.add_row("Records", str(self._audit_trail.record_count))
         table.add_row("Log file", str(self._audit_trail.log_path))
@@ -207,9 +232,9 @@ class Commands:
         # Verify chain integrity
         is_valid, message = self._audit_trail.verify_chain()
         if is_valid:
-            console.print(f"  [green]Chain integrity: VALID -- {message}[/green]")
+            console.print(f"  [{SUCCESS}]Chain integrity: VALID -- {message}[/{SUCCESS}]")
         else:
-            console.print(f"  [red]Chain integrity: BROKEN -- {message}[/red]")
+            console.print(f"  [{ERROR}]Chain integrity: BROKEN -- {message}[/{ERROR}]")
 
         return CommandResult(handled=True)
 
@@ -218,23 +243,23 @@ class Commands:
         from rich.table import Table
 
         if self._permission_engine is None:
-            console.print("  [dim]Permission engine not loaded.[/dim]")
+            console.print(f"  [{DIM}]Permission engine not loaded.[/{DIM}]")
             return CommandResult(handled=True)
 
-        table = Table(title="Permission Rules", border_style="yellow", expand=False)
+        table = Table(title="Permission Rules", border_style=WARNING, expand=False)
         table.add_column("Action", style="bold")
         table.add_column("Pattern")
 
         for rule in self._permission_engine.deny_rules:
-            table.add_row("[red]DENY[/red]", rule.pattern)
+            table.add_row(f"[{PERM_DENY}]DENY[/{PERM_DENY}]", rule.pattern)
         for rule in self._permission_engine.allow_rules:
-            table.add_row("[green]ALLOW[/green]", rule.pattern)
+            table.add_row(f"[{PERM_ALLOW}]ALLOW[/{PERM_ALLOW}]", rule.pattern)
         for rule in self._permission_engine.ask_rules:
-            table.add_row("[yellow]ASK[/yellow]", rule.pattern)
+            table.add_row(f"[{PERM_ASK}]ASK[/{PERM_ASK}]", rule.pattern)
 
         # Session grants
         for grant in self._permission_engine.session_grants:
-            table.add_row("[blue]SESSION[/blue]", grant)
+            table.add_row(f"[{PERM_SESSION}]SESSION[/{PERM_SESSION}]", grant)
 
         console.print(table)
         return CommandResult(handled=True)
@@ -248,11 +273,13 @@ class Commands:
         self._permission_engine.plan_mode = not self._permission_engine.plan_mode
         if self._permission_engine.plan_mode:
             console.print(
-                "  [bold yellow]Plan mode ON[/bold yellow] — "
+                f"  [{BOLD_WARNING}]Plan mode ON[/{BOLD_WARNING}] — "
                 "read-only tools only. Use /plan again to exit."
             )
         else:
-            console.print("  [bold green]Plan mode OFF[/bold green] — full tool access restored.")
+            console.print(
+                f"  [{BOLD_SUCCESS}]Plan mode OFF[/{BOLD_SUCCESS}] — full tool access restored."
+            )
         return CommandResult(handled=True)
 
     def _cmd_extend(self, args: str = "") -> CommandResult:
@@ -261,7 +288,10 @@ class Commands:
 
         if not args.strip():
             current = self.max_iterations if self.max_iterations is not None else MAX_ITERATIONS
-            console.print(f"  Max iterations: [bold]{current}[/bold] (default: {MAX_ITERATIONS})")
+            console.print(
+                f"  Max iterations: [{BOLD_PRIMARY}]{current}[/{BOLD_PRIMARY}]"
+                f" (default: {MAX_ITERATIONS})"
+            )
             return CommandResult(handled=True)
 
         try:
@@ -275,7 +305,7 @@ class Commands:
             return CommandResult(handled=True)
 
         self.max_iterations = value
-        console.print(f"  Max iterations set to [bold]{value}[/bold]")
+        console.print(f"  Max iterations set to [{BOLD_PRIMARY}]{value}[/{BOLD_PRIMARY}]")
         return CommandResult(handled=True)
 
     def _cmd_context(self, _args: str = "") -> CommandResult:
@@ -285,15 +315,15 @@ class Commands:
         pct = (tokens / max_tokens * 100) if max_tokens > 0 else 0
 
         if pct < 50:
-            color = "green"
+            color = CTX_OK
         elif pct < 80:
-            color = "yellow"
+            color = CTX_WARN
         else:
-            color = "red"
+            color = CTX_CRITICAL
 
         console.print(f"  [{color}]tokens: {tokens:,} / {max_tokens:,} ({pct:.0f}%)[/{color}]")
         msg_count = len(self._conversation.messages)
-        console.print(f"  [dim]messages: {msg_count}[/dim]")
+        console.print(f"  [{DIM}]messages: {msg_count}[/{DIM}]")
         return CommandResult(handled=True)
 
     def _cmd_checkpoint(self, args: str = "") -> CommandResult:
@@ -306,16 +336,16 @@ class Commands:
             # List checkpoints
             checkpoints = list_checkpoints(self._cwd)
             if not checkpoints:
-                console.print("  [dim]No checkpoints saved yet.[/dim]")
+                console.print(f"  [{DIM}]No checkpoints saved yet.[/{DIM}]")
                 return CommandResult(handled=True)
 
             from datetime import datetime
 
             from rich.table import Table
 
-            table = Table(title="Checkpoints", border_style="blue", expand=False)
-            table.add_column("Name", style="bold cyan")
-            table.add_column("Time", style="dim")
+            table = Table(title="Checkpoints", border_style=TABLE_BORDER, expand=False)
+            table.add_column("Name", style=BOLD_PRIMARY)
+            table.add_column("Time", style=MUTED)
             table.add_column("Model")
             table.add_column("Tokens", justify="right")
             table.add_column("Messages", justify="right")
@@ -347,8 +377,10 @@ class Commands:
             token_count=self._conversation.token_count,
             project_dir=self._cwd,
         )
-        console.print(f"  [green]Checkpoint saved:[/green] [bold]{name}[/bold]")
-        console.print(f"  [dim]{path}[/dim]")
+        console.print(
+            f"  [{SUCCESS}]Checkpoint saved:[/{SUCCESS}] [{BOLD_PRIMARY}]{name}[/{BOLD_PRIMARY}]"
+        )
+        console.print(f"  [{DIM}]{path}[/{DIM}]")
         return CommandResult(handled=True)
 
     def _cmd_restore(self, args: str = "") -> CommandResult:
@@ -385,8 +417,9 @@ class Commands:
         token_count = self._conversation.token_count
         msg_count = len(self._conversation.messages) - 1  # exclude system prompt
         console.print(
-            f"  [green]Restored checkpoint:[/green] [bold]{name}[/bold] "
-            f"({msg_count} messages, {token_count:,} tokens)"
+            f"  [{SUCCESS}]Restored checkpoint:[/{SUCCESS}]"
+            f" [{BOLD_PRIMARY}]{name}[/{BOLD_PRIMARY}]"
+            f" ({msg_count} messages, {token_count:,} tokens)"
         )
         return CommandResult(handled=True)
 
@@ -397,7 +430,9 @@ class Commands:
             return CommandResult(handled=True)
 
         self._pause_event.clear()
-        console.print("  [bold yellow]Agent paused.[/bold yellow] Use /resume or /guidance <msg>.")
+        console.print(
+            f"  [{BOLD_WARNING}]Agent paused.[/{BOLD_WARNING}] Use /resume or /guidance <msg>."
+        )
         return CommandResult(handled=True)
 
     def _cmd_resume(self, _args: str = "") -> CommandResult:
@@ -407,11 +442,11 @@ class Commands:
             return CommandResult(handled=True)
 
         if self._pause_event.is_set():
-            console.print("  [dim]Agent is not paused.[/dim]")
+            console.print(f"  [{DIM}]Agent is not paused.[/{DIM}]")
             return CommandResult(handled=True)
 
         self._pause_event.set()
-        console.print("  [bold green]Agent resumed.[/bold green]")
+        console.print(f"  [{BOLD_SUCCESS}]Agent resumed.[/{BOLD_SUCCESS}]")
         return CommandResult(handled=True)
 
     def _cmd_guidance(self, args: str = "") -> CommandResult:
@@ -422,12 +457,12 @@ class Commands:
 
         # Inject guidance into conversation
         self._conversation.add_user_message(f"[User guidance]: {args.strip()}")
-        console.print(f"  [dim]Guidance injected: {args.strip()}[/dim]")
+        console.print(f"  [{DIM}]Guidance injected: {args.strip()}[/{DIM}]")
 
         # Resume if paused
         if self._pause_event is not None and not self._pause_event.is_set():
             self._pause_event.set()
-            console.print("  [bold green]Agent resumed with guidance.[/bold green]")
+            console.print(f"  [{BOLD_SUCCESS}]Agent resumed with guidance.[/{BOLD_SUCCESS}]")
 
         return CommandResult(handled=True)
 
@@ -439,5 +474,5 @@ class Commands:
             model=self._llm_client.model,
             session_id=self._session_id,
         )
-        console.print("  [dim]Goodbye.[/dim]")
+        console.print(f"  [{DIM}]Goodbye.[/{DIM}]")
         return CommandResult(handled=True, should_quit=True)

@@ -21,14 +21,19 @@ from godspeed.tui.theme import (
     BOLD_PRIMARY,
     BOLD_WARNING,
     BRAND_TAGLINE,
+    DECORATOR,
     DIM,
     ERROR,
+    GUTTER,
+    GUTTER_STYLE,
     MARKER_ERROR,
+    MARKER_INFO,
     MARKER_SUCCESS,
     MARKER_TOOL,
     MARKER_WARNING,
     MUTED,
     PROMPT_ICON,
+    RULE_CHAR,
     SECONDARY,
     SEPARATOR_DOT,
     SUCCESS,
@@ -47,6 +52,51 @@ console = Console()
 # Max lines for inline tool result display
 _RESULT_MAX_LINES = 10
 _RESULT_MAX_CHARS = 2000
+
+# Rule width for horizontal separators
+_RULE_WIDTH = 35
+
+
+def _rule() -> str:
+    """Return a thin horizontal rule string."""
+    return styled(RULE_CHAR * _RULE_WIDTH, MUTED)
+
+
+def _gutter_lines(text: str) -> None:
+    """Print text with a left gutter border on each line."""
+    gutter = styled(GUTTER, GUTTER_STYLE)
+    for line in text.splitlines():
+        console.print(f"    {gutter} {line}")
+
+
+# =============================================================================
+# Status-typed message formatters
+# =============================================================================
+
+
+def format_info(message: str) -> None:
+    """Display an info message with ● indicator."""
+    console.print(f"  {styled(MARKER_INFO, SECONDARY)} {styled(message, DIM)}")
+
+
+def format_success(message: str) -> None:
+    """Display a success message with ✓ indicator."""
+    console.print(f"  {styled(MARKER_SUCCESS, SUCCESS)} {message}")
+
+
+def format_warning(message: str) -> None:
+    """Display a warning message with ⚠ indicator."""
+    console.print(f"  {styled(MARKER_WARNING, WARNING)} {message}")
+
+
+def format_error(message: str) -> None:
+    """Display an error message with ✗ indicator."""
+    console.print(f"  {styled(MARKER_ERROR, ERROR)} {styled(f'Error: {message}', BOLD_ERROR)}")
+
+
+# =============================================================================
+# Tool call / result display
+# =============================================================================
 
 
 def format_tool_call(name: str, args: dict[str, Any]) -> None:
@@ -72,13 +122,13 @@ def format_tool_call(name: str, args: dict[str, Any]) -> None:
         console.print(f"  {marker} {tool}  {action}{suffix}")
         return
 
-    # Shell: show command with $ prefix
+    # Shell: show command with $ prefix and gutter
     if name == "shell" and args.get("command"):
         console.print(f"  {marker} {tool}")
-        console.print(Syntax(f"  $ {args['command']}", "bash", theme=SYNTAX_THEME, word_wrap=True))
+        _gutter_lines(f"$ {args['command']}")
         return
 
-    # File edit: show compact diff
+    # File edit: show compact diff with gutter
     if name == "file_edit" and args.get("file_path"):
         console.print(f"  {marker} {tool}  {args['file_path']}")
         if args.get("old_string") and args.get("new_string"):
@@ -91,7 +141,7 @@ def format_tool_call(name: str, args: dict[str, Any]) -> None:
             diff_lines = diff_output[2:] if len(diff_output) > 2 else diff_output
             if diff_lines:
                 diff_text = "\n".join(diff_lines[:15])
-                console.print(Syntax(diff_text, "diff", theme=SYNTAX_THEME, word_wrap=True))
+                _gutter_lines(diff_text)
         return
 
     # File write: show path and line count
@@ -102,14 +152,14 @@ def format_tool_call(name: str, args: dict[str, Any]) -> None:
         console.print(f"  {marker} {tool}  {args['file_path']}  {count_label}")
         return
 
-    # Default: JSON args
+    # Default: JSON args with gutter
     try:
         args_text = json.dumps(args, indent=2, default=str)
     except (TypeError, ValueError):
         args_text = str(args)
 
     console.print(f"  {marker} {tool}")
-    console.print(Syntax(args_text, "json", theme=SYNTAX_THEME, word_wrap=True))
+    _gutter_lines(args_text)
 
 
 def format_tool_result(name: str, result: str, is_error: bool = False) -> None:
@@ -288,7 +338,7 @@ def format_stats(
     session_id: str,
     cost: float | None = None,
 ) -> None:
-    """Display session statistics."""
+    """Display session statistics (used by /stats command)."""
     table = Table(show_header=False, border_style=MUTED, expand=False, padding=(0, 2))
     table.add_column("Key", style=TABLE_KEY)
     table.add_column("Value", style=TABLE_VALUE)
@@ -321,12 +371,18 @@ def format_welcome(
 
     console.print()
 
-    # Branded header
-    audit_status = styled("enabled", SUCCESS) if audit_enabled else styled("disabled", ERROR)
-    header = f"  {PROMPT_ICON} {brand(__version__)}\n  {styled(BRAND_TAGLINE, DIM)}\n"
+    # Decorated branded header
+    dec = styled(f"{DECORATOR}{DECORATOR}{DECORATOR}", MUTED)
+    header = f"  {dec} {PROMPT_ICON} {brand(__version__)} {dec}"
     console.print(header)
+    console.print(f"  {styled(BRAND_TAGLINE, DIM)}")
+    console.print()
+
+    # Thin rule separator
+    console.print(f"  {_rule()}")
 
     # Key info — aligned, clean
+    audit_status = styled("enabled", SUCCESS) if audit_enabled else styled("disabled", ERROR)
     console.print(f"  {styled('Model', MUTED)}    {model}")
     console.print(f"  {styled('Project', MUTED)}  {project_dir}")
     console.print(f"  {styled('Audit', MUTED)}    {audit_status}")
@@ -348,6 +404,7 @@ def format_session_summary(
 ) -> None:
     """Display session summary on quit — clean, compact."""
     console.print()
+    console.print(f"  {_rule()}")
     console.print(f"  {styled('Session complete', DIM)}")
     console.print()
 
@@ -383,9 +440,6 @@ def format_session_summary(
             f"    {styled('Tools', MUTED)}     {tool_calls} calls  {styled(f'({summary})', DIM)}"
         )
 
-    console.print(f"\n  {PROMPT_ICON} {styled('Godspeed', BOLD_PRIMARY)}\n")
-
-
-def format_error(message: str) -> None:
-    """Display an error message."""
-    console.print(f"  {styled(MARKER_ERROR, ERROR)} {styled(f'Error: {message}', BOLD_ERROR)}")
+    # Branded sign-off with decorative slashes
+    dec = styled(f"{DECORATOR}{DECORATOR}{DECORATOR}", MUTED)
+    console.print(f"\n  {dec} {PROMPT_ICON} {styled('Godspeed', BOLD_PRIMARY)} {dec}\n")

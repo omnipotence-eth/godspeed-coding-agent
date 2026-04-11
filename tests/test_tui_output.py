@@ -265,3 +265,63 @@ class TestMiscFormatters:
     def test_format_assistant_text_markdown(self) -> None:
         output = _capture(format_assistant_text, "**bold text**")
         assert "bold" in output
+
+
+class TestStatusFormatters:
+    """Test status-typed message formatters (Crush-inspired)."""
+
+    def test_format_info_shows_bullet(self) -> None:
+        from godspeed.tui.output import format_info
+
+        output = _capture(format_info, "Some info message")
+        assert "\u25cf" in output  # ● marker
+        assert "Some info message" in output
+
+    def test_format_success_shows_check(self) -> None:
+        from godspeed.tui.output import format_success
+
+        output = _capture(format_success, "Operation done")
+        assert "\u2713" in output  # ✓ marker
+        assert "Operation done" in output
+
+    def test_format_warning_shows_triangle(self) -> None:
+        from godspeed.tui.output import format_warning
+
+        output = _capture(format_warning, "Be careful")
+        assert "\u26a0" in output  # ⚠ marker
+        assert "Be careful" in output
+
+
+class TestDecorativeElements:
+    """Test Crush-inspired decorative branding elements."""
+
+    def test_welcome_has_decorators(self) -> None:
+        output = _capture(format_welcome, "model", "/home/user")
+        assert "\u2571" in output  # decorator slash
+
+    def test_welcome_has_rule(self) -> None:
+        output = _capture(format_welcome, "model", "/home/user")
+        assert "\u2500" in output  # ─ rule character
+
+    def test_session_summary_has_rule(self) -> None:
+        output = _capture(format_session_summary, 60.0, 1000, 500)
+        assert "\u2500" in output  # ─ rule character
+
+    def test_session_summary_has_decorated_signoff(self) -> None:
+        output = _capture(format_session_summary, 60.0, 1000, 500)
+        assert "\u2571" in output  # decorator slash
+        assert "Godspeed" in output
+
+    def test_tool_call_shell_has_gutter(self) -> None:
+        output = _capture(format_tool_call, "shell", {"command": "ls -la"})
+        assert "\u2502" in output  # │ gutter
+        assert "ls -la" in output
+
+    def test_tool_call_file_edit_has_gutter(self) -> None:
+        args = {
+            "file_path": "main.py",
+            "old_string": "old code",
+            "new_string": "new code",
+        }
+        output = _capture(format_tool_call, "file_edit", args)
+        assert "\u2502" in output  # │ gutter

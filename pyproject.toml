@@ -76,6 +76,7 @@ godspeed = "godspeed.cli:main"
 Homepage = "https://github.com/omnipotence-eth/godspeed-coding-agent"
 Repository = "https://github.com/omnipotence-eth/godspeed-coding-agent"
 Issues = "https://github.com/omnipotence-eth/godspeed-coding-agent/issues"
+Documentation = "https://github.com/omnipotence-eth/godspeed-coding-agent#readme"
 Changelog = "https://github.com/omnipotence-eth/godspeed-coding-agent/blob/main/CHANGELOG.md"
 
 [build-system]

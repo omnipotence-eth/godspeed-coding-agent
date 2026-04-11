@@ -185,6 +185,20 @@ Permission rules use glob-style matching against `ToolName(argument)` strings. D
 | `GEMINI_API_KEY` | Gemini access |
 | `GODSPEED_MODEL` | Override default model |
 
+## How Godspeed Compares
+
+| Feature | Godspeed | Claude Code | Cursor | Aider | OpenClaw |
+|---------|----------|-------------|--------|-------|----------|
+| Deny-first permission engine | **Yes** (4-tier, pattern matching, 46 dangerous patterns) | Proprietary | No | No | No |
+| Hash-chained audit trail | **Yes** (SHA-256 JSONL, verifiable) | No | No | No | No |
+| Secret protection | **4 layers** (deny, context clean, output filter, audit redact) | Limited | No | No | No |
+| Free by default | **Yes** (Ollama, zero API cost) | No (paid API) | No (subscription) | Yes | Yes |
+| 200+ LLM providers | **Yes** (LiteLLM) | Claude only | OpenAI/Claude | ~15 | Limited |
+| Open source | **MIT** | No | No | Apache 2.0 | MIT |
+| Fallback chains | **Yes** | No | No | No | No |
+
+Godspeed is the only open-source coding agent that ships with production security primitives out of the box. Others expect you to bolt security on yourself or trust the model not to run destructive commands.
+
 ## Development
 
 ```bash

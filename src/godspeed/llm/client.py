@@ -49,25 +49,38 @@ class LLMClient:
         self.total_input_tokens = 0
         self.total_output_tokens = 0
 
+    # Ollama models known to support native tool calling
+    _TOOLS_CAPABLE_OLLAMA = (
+        "qwen",
+        "llama3",
+        "mistral",
+        "command-r",
+        "firefunction",
+        "hermes",
+        "gemma",
+    )
+
     def _supports_tool_calling(self) -> bool:
         """Check if current model likely supports native function calling."""
         model_lower = self.model.lower()
-        # Models known to NOT support tool calling
-        no_tools = ("ollama/", "ollama_chat/")
-        # Exception: some Ollama models DO support tools
-        tools_capable_ollama = (
-            "qwen",
-            "llama3",
-            "mistral",
-            "command-r",
-            "firefunction",
-            "hermes",
-        )
-
-        if any(model_lower.startswith(prefix) for prefix in no_tools):
+        if model_lower.startswith(("ollama/", "ollama_chat/")):
             model_name = model_lower.split("/", 1)[-1].split(":")[0]
-            return any(cap in model_name for cap in tools_capable_ollama)
+            return any(cap in model_name for cap in self._TOOLS_CAPABLE_OLLAMA)
         return True
+
+    def _effective_model(self) -> str:
+        """Return the model string to use for API calls.
+
+        Upgrades 'ollama/' to 'ollama_chat/' for tool-capable models,
+        since LiteLLM's ollama_chat provider supports native tool calling
+        while the plain ollama provider does not.
+        """
+        model_lower = self.model.lower()
+        if model_lower.startswith("ollama/") and self._supports_tool_calling():
+            upgraded = "ollama_chat/" + self.model.split("/", 1)[1]
+            logger.info("Upgrading model %s → %s for tool calling support", self.model, upgraded)
+            return upgraded
+        return self.model
 
     async def chat(
         self,
@@ -79,34 +92,17 @@ class LLMClient:
         Uses LiteLLM's async completion with automatic provider routing.
         Falls back to alternate models on failure.
         """
-        models_to_try = [self.model, *self.fallback_models]
+        models_to_try = [self._effective_model(), *self.fallback_models]
 
         last_error: Exception | None = None
         for idx, model in enumerate(models_to_try):
             try:
                 return await self._call(model, messages, tools)
-            except TimeoutError as exc:
-                msg = f"LLM call timed out after {self.timeout}s for model={model}"
-                logger.warning(msg)
-                last_error = TimeoutError(msg)
-                # Retry primary model once after short delay before trying fallbacks
-                if idx == 0:
-                    logger.warning("Primary model failed, retrying once after 2s delay: %s", exc)
-                    await asyncio.sleep(2)
-                    try:
-                        return await self._call(model, messages, tools)
-                    except Exception as retry_exc:
-                        logger.warning(
-                            "Primary model retry failed model=%s error=%s",
-                            model,
-                            retry_exc,
-                        )
-                        last_error = retry_exc
             except Exception as exc:
                 logger.warning("LLM call failed model=%s error=%s", model, exc)
+                last_error = exc
                 # Retry primary model once after short delay before trying fallbacks
                 if idx == 0:
-                    logger.warning("Primary model failed, retrying once after 2s delay: %s", exc)
                     await asyncio.sleep(2)
                     try:
                         return await self._call(model, messages, tools)
@@ -117,8 +113,6 @@ class LLMClient:
                             retry_exc,
                         )
                         last_error = retry_exc
-                else:
-                    last_error = exc
 
         msg = f"All models failed. Last error: {last_error}"
         raise RuntimeError(msg)
@@ -192,8 +186,9 @@ class LLMClient:
         Yields ChatResponse objects as they arrive. The final response
         has finish_reason set.
         """
+        effective = self._effective_model()
         kwargs: dict[str, Any] = {
-            "model": self.model,
+            "model": effective,
             "messages": messages,
             "stream": True,
             "timeout": self.timeout,
@@ -205,7 +200,7 @@ class LLMClient:
             else:
                 logger.info(
                     "Model %s may not support native tool calling; using text mode",
-                    self.model,
+                    effective,
                 )
 
         try:

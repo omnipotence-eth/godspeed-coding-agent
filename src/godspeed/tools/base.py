@@ -5,7 +5,7 @@ from __future__ import annotations
 import abc
 from enum import StrEnum
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
 
 from pydantic import BaseModel, Field
 
@@ -34,12 +34,17 @@ class ToolResult(BaseModel):
     is_error: bool = False
 
     @classmethod
-    def success(cls, output: str) -> ToolResult:
+    def ok(cls, output: str) -> ToolResult:
+        """Create a successful result."""
         return cls(output=output)
 
     @classmethod
     def failure(cls, error: str) -> ToolResult:
+        """Create an error result."""
         return cls(output="", error=error, is_error=True)
+
+    # Keep 'success' as an alias for backwards compat with existing code
+    success = ok
 
 
 class ToolCall(BaseModel):
@@ -78,14 +83,32 @@ class ToolCall(BaseModel):
         return f"{self.tool_name}(*)"
 
 
+@runtime_checkable
+class PermissionEvaluator(Protocol):
+    """Protocol for permission evaluation — avoids circular imports."""
+
+    def evaluate(self, tool_call: ToolCall) -> Any: ...
+
+
+@runtime_checkable
+class AuditRecorder(Protocol):
+    """Protocol for audit recording — avoids circular imports."""
+
+    def record(
+        self,
+        event_type: str,
+        detail: dict[str, Any] | None = None,
+        outcome: str = "success",
+    ) -> Any: ...
+
+
 class ToolContext(BaseModel):
     """Execution context passed to every tool."""
 
     cwd: Path
     session_id: str
-    # Use Any to avoid circular imports — set at runtime by the agent loop
-    permissions: Any = None
-    audit: Any = None
+    permissions: PermissionEvaluator | None = None
+    audit: AuditRecorder | None = None
 
     model_config = {"arbitrary_types_allowed": True}
 

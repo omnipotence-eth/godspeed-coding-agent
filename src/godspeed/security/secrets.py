@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import math
 import re
+from dataclasses import dataclass
 
 # Compiled secret detection patterns: (regex, type_name)
 SECRET_PATTERNS: list[tuple[re.Pattern[str], str]] = [
@@ -86,13 +87,23 @@ ENTROPY_MIN_LENGTH = 20
 REDACTED = "[REDACTED]"
 
 
-def detect_secrets(text: str) -> list[dict[str, str]]:
+@dataclass(frozen=True, slots=True)
+class SecretFinding:
+    """A detected secret with its location and type."""
+
+    secret_type: str
+    match: str
+    start: int
+    end: int
+
+
+def detect_secrets(text: str) -> list[SecretFinding]:
     """Detect potential secrets in text using regex patterns and entropy.
 
     Returns:
-        List of dicts with 'type', 'match', 'start', 'end' keys.
+        List of SecretFinding objects with type, match, start, end.
     """
-    findings: list[dict[str, str]] = []
+    findings: list[SecretFinding] = []
     seen_spans: set[tuple[int, int]] = set()
 
     # Pattern-based detection
@@ -102,12 +113,12 @@ def detect_secrets(text: str) -> list[dict[str, str]]:
             if span not in seen_spans:
                 seen_spans.add(span)
                 findings.append(
-                    {
-                        "type": secret_type,
-                        "match": match.group(),
-                        "start": str(match.start()),
-                        "end": str(match.end()),
-                    }
+                    SecretFinding(
+                        secret_type=secret_type,
+                        match=match.group(),
+                        start=match.start(),
+                        end=match.end(),
+                    )
                 )
 
     # Entropy-based detection for unmatched high-entropy strings
@@ -119,12 +130,12 @@ def detect_secrets(text: str) -> list[dict[str, str]]:
         if len(token) >= ENTROPY_MIN_LENGTH and _shannon_entropy(token) >= ENTROPY_THRESHOLD:
             seen_spans.add(span)
             findings.append(
-                {
-                    "type": "high_entropy_string",
-                    "match": token,
-                    "start": str(match.start()),
-                    "end": str(match.end()),
-                }
+                SecretFinding(
+                    secret_type="high_entropy_string",
+                    match=token,
+                    start=match.start(),
+                    end=match.end(),
+                )
             )
 
     return findings
@@ -137,13 +148,11 @@ def redact_secrets(text: str) -> str:
         return text
 
     # Sort by position descending so replacements don't shift indices
-    findings.sort(key=lambda f: int(f["start"]), reverse=True)
+    sorted_findings = sorted(findings, key=lambda f: f.start, reverse=True)
 
     result = text
-    for finding in findings:
-        start = int(finding["start"])
-        end = int(finding["end"])
-        result = result[:start] + REDACTED + result[end:]
+    for finding in sorted_findings:
+        result = result[: finding.start] + REDACTED + result[finding.end :]
 
     return result
 

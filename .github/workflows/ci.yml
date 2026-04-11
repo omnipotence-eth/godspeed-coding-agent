@@ -27,7 +27,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
       - run: uv sync --all-extras
-      - run: uv run ty check src/ || uv run mypy src/
+      - run: uv run mypy src/ --ignore-missing-imports
 
   security:
     runs-on: ubuntu-latest

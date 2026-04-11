@@ -75,9 +75,10 @@ async def _run_app(
 ) -> None:
     """Wire up all components and launch the TUI."""
     from godspeed.agent.conversation import Conversation
-    from godspeed.agent.system_prompt import build_system_prompt, load_project_instructions
+    from godspeed.agent.system_prompt import build_system_prompt
     from godspeed.audit.trail import AuditTrail
     from godspeed.config import GodspeedSettings
+    from godspeed.context.project_instructions import load_project_instructions
     from godspeed.llm.client import LLMClient
     from godspeed.security.permissions import PermissionEngine
     from godspeed.tools.base import ToolContext

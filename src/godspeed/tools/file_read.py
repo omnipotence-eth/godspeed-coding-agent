@@ -66,8 +66,20 @@ class FileReadTool(Tool):
             file_path = resolve_tool_path(file_path_str, context.cwd)
         except ValueError as exc:
             return ToolResult.failure(str(exc))
-        offset = max(1, arguments.get("offset", 1))
-        limit = min(arguments.get("limit", MAX_LINES), MAX_LINES)
+        raw_offset = arguments.get("offset", 1)
+        raw_limit = arguments.get("limit", MAX_LINES)
+        if not isinstance(raw_offset, int):
+            try:
+                raw_offset = int(raw_offset)
+            except (TypeError, ValueError):
+                return ToolResult.failure("offset must be an integer")
+        if not isinstance(raw_limit, int):
+            try:
+                raw_limit = int(raw_limit)
+            except (TypeError, ValueError):
+                return ToolResult.failure("limit must be an integer")
+        offset = max(1, raw_offset)
+        limit = min(raw_limit, MAX_LINES)
 
         if not file_path.exists():
             return ToolResult.failure(f"File not found: {file_path}")

@@ -299,6 +299,23 @@ async def _run_app(
     registry.register(spawn_tool)
     risk_levels[spawn_tool.name] = spawn_tool.risk_level
 
+    # Codebase index (optional — requires chromadb)
+    codebase_index = None
+    from godspeed.context.codebase_index import CodebaseIndex
+
+    codebase_index = CodebaseIndex(project_dir=effective_project_dir)
+    if codebase_index.is_available:
+        from godspeed.tools.code_search import CodeSearchTool
+
+        code_search_tool = CodeSearchTool(codebase_index)
+        registry.register(code_search_tool)
+        risk_levels[code_search_tool.name] = code_search_tool.risk_level
+
+        # Auto-reindex in background if stale
+        if codebase_index.needs_reindex():
+            logger.info("Codebase index is stale, rebuilding in background")
+            asyncio.get_event_loop().create_task(codebase_index.build_index_async())
+
     # Discover skills
     from godspeed.skills.loader import discover_skills
 
@@ -336,6 +353,7 @@ async def _run_app(
         extra_completions=skill_completions,
         hook_executor=hook_executor,
         task_store=task_store,
+        codebase_index=codebase_index,
     )
     await app.run()
 

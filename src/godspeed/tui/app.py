@@ -76,6 +76,7 @@ class TUIApp:
         extra_completions: list[tuple[str, str]] | None = None,
         hook_executor: Any | None = None,
         task_store: Any | None = None,
+        codebase_index: Any | None = None,
     ) -> None:
         self._llm_client = llm_client
         self._tool_registry = tool_registry
@@ -99,9 +100,11 @@ class TUIApp:
             pause_event=self._pause_event,
         )
 
-        # Wire task store for /tasks command
+        # Wire task store and codebase index for commands
         if task_store is not None:
             self._commands._task_store = task_store
+        if codebase_index is not None:
+            self._commands._codebase_index = codebase_index
 
         # Register skill commands
         if skills:

@@ -96,11 +96,13 @@ class Commands:
         self._handlers["/resume"] = self._cmd_resume
         self._handlers["/guidance"] = self._cmd_guidance
         self._handlers["/tasks"] = self._cmd_tasks
+        self._handlers["/reindex"] = self._cmd_reindex
         self._handlers["/quit"] = self._cmd_quit
         self._handlers["/exit"] = self._cmd_quit
 
-    # Task store reference — set externally after Commands init
+    # External references — set after Commands init
     _task_store: Any | None = None
+    _codebase_index: Any | None = None
 
     def register(self, name: str, handler: CommandHandler) -> None:
         """Register a custom slash command."""
@@ -498,6 +500,31 @@ class Commands:
             table.add_row(str(t.id), t.title, status_style)
 
         console.print(table)
+        return CommandResult()
+
+    def _cmd_reindex(self, _args: str = "") -> CommandResult:
+        """Rebuild the codebase search index."""
+        if self._codebase_index is None:
+            console.print(f"  [{MUTED}]Codebase index not available.[/{MUTED}]")
+            console.print(f"  [{DIM}]Install with: pip install godspeed[index][/{DIM}]")
+            return CommandResult()
+
+        if not self._codebase_index.is_available:
+            console.print(
+                f"  [{ERROR}]ChromaDB not installed.[/{ERROR}] "
+                f"[{DIM}]pip install godspeed[index][/{DIM}]"
+            )
+            return CommandResult()
+
+        if self._codebase_index.is_building:
+            console.print(f"  [{WARNING}]Index is already building...[/{WARNING}]")
+            return CommandResult()
+
+        import asyncio
+
+        console.print(f"  [{DIM}]Rebuilding codebase index...[/{DIM}]")
+        asyncio.get_event_loop().create_task(self._codebase_index.build_index_async())
+        console.print(f"  [{SUCCESS}]Reindex started in background.[/{SUCCESS}]")
         return CommandResult()
 
     def _cmd_quit(self, _args: str = "") -> CommandResult:

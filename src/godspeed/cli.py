@@ -17,17 +17,27 @@ logger = logging.getLogger(__name__)
 
 
 def _setup_logging(verbose: bool) -> None:
-    """Configure logging based on verbosity level."""
-    level = logging.DEBUG if verbose else logging.WARNING
-    logging.basicConfig(
-        level=level,
-        format="%(asctime)s %(name)s %(levelname)s %(message)s",
-        datefmt="%H:%M:%S",
+    """Configure logging based on verbosity level.
+
+    In verbose mode, only godspeed.* loggers get DEBUG — all third-party
+    libraries stay at WARNING so they don't drown the TUI output.
+    Logs go to stderr to avoid interleaving with Rich's stdout streaming.
+    """
+    import sys
+
+    handler = logging.StreamHandler(sys.stderr)
+    handler.setFormatter(
+        logging.Formatter("%(asctime)s %(name)s %(levelname)s %(message)s", datefmt="%H:%M:%S")
     )
-    # Quiet noisy libraries
-    logging.getLogger("litellm").setLevel(logging.WARNING)
-    logging.getLogger("httpx").setLevel(logging.WARNING)
-    logging.getLogger("httpcore").setLevel(logging.WARNING)
+
+    # Root logger: WARNING always (catches all third-party noise)
+    root = logging.getLogger()
+    root.setLevel(logging.WARNING)
+    root.addHandler(handler)
+
+    # Godspeed loggers: DEBUG in verbose mode, WARNING otherwise
+    godspeed_logger = logging.getLogger("godspeed")
+    godspeed_logger.setLevel(logging.DEBUG if verbose else logging.WARNING)
 
 
 def _build_tool_registry() -> tuple:

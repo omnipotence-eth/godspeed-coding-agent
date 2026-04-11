@@ -8,6 +8,8 @@ from unittest.mock import MagicMock
 import pytest
 
 from godspeed.agent.conversation import Conversation
+from godspeed.security.permissions import PermissionEngine
+from godspeed.tools.base import RiskLevel
 from godspeed.tui.commands import Commands
 
 
@@ -122,3 +124,43 @@ class TestCommandDispatch:
         assert result.handled
         # Only system prompt should remain
         assert len(conversation.messages) == 1
+
+
+class TestPlanCommand:
+    """Test /plan command for toggling plan mode."""
+
+    @pytest.fixture
+    def commands_with_perms(self, conversation: Conversation, tmp_path: Path) -> Commands:
+        llm_client = MagicMock()
+        llm_client.model = "test-model"
+        llm_client.fallback_models = []
+        llm_client.total_input_tokens = 0
+        llm_client.total_output_tokens = 0
+        engine = PermissionEngine(
+            tool_risk_levels={"file_read": RiskLevel.READ_ONLY, "shell": RiskLevel.HIGH},
+        )
+        return Commands(
+            conversation=conversation,
+            llm_client=llm_client,
+            permission_engine=engine,
+            audit_trail=None,
+            session_id="test-session",
+            cwd=tmp_path,
+        )
+
+    def test_plan_toggles_on(self, commands_with_perms: Commands) -> None:
+        result = commands_with_perms.dispatch("/plan")
+        assert result is not None
+        assert result.handled
+        assert commands_with_perms._permission_engine.plan_mode is True
+
+    def test_plan_toggles_off(self, commands_with_perms: Commands) -> None:
+        commands_with_perms.dispatch("/plan")  # on
+        commands_with_perms.dispatch("/plan")  # off
+        assert commands_with_perms._permission_engine.plan_mode is False
+
+    def test_plan_without_permission_engine(self, commands: Commands) -> None:
+        """Commands with no permission engine should handle /plan gracefully."""
+        result = commands.dispatch("/plan")
+        assert result is not None
+        assert result.handled

@@ -124,6 +124,7 @@ def _build_tool_registry() -> tuple:
     from godspeed.tools.git import GitTool
     from godspeed.tools.glob_search import GlobSearchTool
     from godspeed.tools.grep_search import GrepSearchTool
+    from godspeed.tools.repo_map import RepoMapTool
     from godspeed.tools.shell import ShellTool
     from godspeed.tools.verify import VerifyTool
 
@@ -136,6 +137,7 @@ def _build_tool_registry() -> tuple:
         GrepSearchTool(),
         GitTool(),
         VerifyTool(),
+        RepoMapTool(),
     ]
 
     for tool in tools:

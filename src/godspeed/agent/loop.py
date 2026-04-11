@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 MAX_ITERATIONS = 50
 MAX_RETRIES = 3
 STUCK_LOOP_THRESHOLD = 3
+AUTO_STASH_THRESHOLD = 3
 
 # Callback type aliases for clarity
 OnAssistantText = Callable[[str], None]
@@ -78,6 +79,8 @@ async def agent_loop(
     retries = 0
     final_text = ""
     recent_error_hashes: list[str] = []
+    consecutive_writes = 0
+    auto_stashed = False
 
     for iteration in range(iteration_limit):
         logger.debug("Agent loop iteration=%d tokens=%d", iteration, conversation.token_count)
@@ -211,6 +214,40 @@ async def agent_loop(
                         "passed" in verify_result.output.lower(),
                     )
 
+            # Auto-stash: track consecutive write operations
+            if not result.is_error and tool_call.tool_name in ("file_edit", "file_write"):
+                consecutive_writes += 1
+                if (
+                    consecutive_writes >= AUTO_STASH_THRESHOLD
+                    and not auto_stashed
+                    and tool_registry.has_tool("git")
+                ):
+                    stash_call = ToolCall(
+                        tool_name="git",
+                        arguments={"action": "stash"},
+                        call_id=f"{tool_call.call_id}_autostash",
+                    )
+                    stash_result = await tool_registry.dispatch(stash_call, tool_context)
+                    if (
+                        not stash_result.is_error
+                        and "nothing to stash" not in (stash_result.output or "").lower()
+                    ):
+                        auto_stashed = True
+                        logger.info(
+                            "Auto-stash triggered after %d consecutive writes",
+                            consecutive_writes,
+                        )
+                        conversation.add_tool_result(
+                            tool_call_id=stash_call.call_id,
+                            content=(
+                                f"[Auto-stash] Saved working state after "
+                                f"{consecutive_writes} consecutive file edits. "
+                                f"Use git stash_pop to restore if needed."
+                            ),
+                        )
+            else:
+                consecutive_writes = 0
+
             # Stuck-loop detection: track repeated errors
             if result.is_error:
                 error_hash = hashlib.sha256((result_content or "").encode()).hexdigest()
@@ -265,20 +302,20 @@ def _parse_tool_call(raw: dict[str, Any]) -> ToolCall | None:
 
 
 async def _compact_conversation(conversation: Conversation, llm_client: LLMClient) -> None:
-    """Compact conversation by summarizing history via a separate LLM call."""
-    logger.info("Compacting conversation tokens=%d", conversation.token_count)
+    """Compact conversation by summarizing history via a separate LLM call.
 
+    Uses model-aware compaction prompts — small models get aggressive summarization,
+    frontier models get detailed preservation.
+    """
+    from godspeed.context.compaction import get_compaction_prompt
+
+    model_name = getattr(llm_client, "model", "")
+    logger.info("Compacting conversation tokens=%d model=%s", conversation.token_count, model_name)
+
+    prompt = get_compaction_prompt(model_name) if model_name else get_compaction_prompt("")
     context = conversation.get_compaction_context()
     summary_messages = [
-        {
-            "role": "system",
-            "content": (
-                "Summarize the following conversation between a user and a coding agent. "
-                "Preserve: architectural decisions, file paths modified, unresolved issues, "
-                "current task state. Discard: redundant tool outputs, repeated attempts. "
-                "Be concise but complete."
-            ),
-        },
+        {"role": "system", "content": prompt},
         {"role": "user", "content": context},
     ]
 

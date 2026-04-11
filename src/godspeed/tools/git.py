@@ -12,7 +12,7 @@ from godspeed.tools.base import RiskLevel, Tool, ToolContext, ToolResult
 
 logger = logging.getLogger(__name__)
 
-VALID_ACTIONS = frozenset({"status", "diff", "commit", "log", "undo"})
+VALID_ACTIONS = frozenset({"status", "diff", "commit", "log", "undo", "stash", "stash_pop"})
 
 
 class GitTool(Tool):
@@ -29,7 +29,7 @@ class GitTool(Tool):
     @property
     def description(self) -> str:
         return (
-            "Run git operations: status, diff, commit, log, undo. "
+            "Run git operations: status, diff, commit, log, undo, stash, stash_pop. "
             "Commit stages all changes and commits with the given message. "
             "Undo reverts the last commit (soft reset, changes remain staged)."
         )
@@ -80,6 +80,10 @@ class GitTool(Tool):
             return await self._log(repo)
         if action == "undo":
             return await self._undo(repo)
+        if action == "stash":
+            return await self._stash(repo)
+        if action == "stash_pop":
+            return await self._stash_pop(repo)
 
         return ToolResult.failure(f"Unhandled action: {action}")
 
@@ -161,3 +165,26 @@ class GitTool(Tool):
             return ToolResult.success("Undid last commit (changes remain staged)")
         except GitCommandError as exc:
             return ToolResult.failure(f"git undo failed: {exc}")
+
+    async def _stash(self, repo: Repo) -> ToolResult:
+        """Stash working directory changes."""
+        try:
+            if not repo.is_dirty(untracked_files=True):
+                return ToolResult.success("Nothing to stash (working tree clean)")
+            output = repo.git.stash("push", "-m", "godspeed-auto-stash")
+            logger.info("git.stash pushed")
+            return ToolResult.success(output)
+        except GitCommandError as exc:
+            return ToolResult.failure(f"git stash failed: {exc}")
+
+    async def _stash_pop(self, repo: Repo) -> ToolResult:
+        """Pop the most recent stash entry."""
+        try:
+            output = repo.git.stash("pop")
+            logger.info("git.stash_pop")
+            return ToolResult.success(output)
+        except GitCommandError as exc:
+            # "No stash entries found" is a common case
+            if "no stash entries" in str(exc).lower():
+                return ToolResult.failure("No stash entries to pop")
+            return ToolResult.failure(f"git stash pop failed: {exc}")

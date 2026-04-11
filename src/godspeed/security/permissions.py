@@ -75,12 +75,19 @@ class PermissionEngine:
         self._session_grants: dict[str, float] = {}
         self._grant_ttl: float = 3600.0  # 1 hour default
         self._grants_lock = threading.Lock()
+        self.plan_mode: bool = False
 
     def evaluate(self, tool_call: ToolCall) -> PermissionDecision:
         """Evaluate a tool call against all rules.
 
         Returns a PermissionDecision with action and reason.
         """
+        # Plan mode: block everything except READ_ONLY tools
+        if self.plan_mode:
+            risk = self._tool_risk_levels.get(tool_call.tool_name, RiskLevel.HIGH)
+            if risk != RiskLevel.READ_ONLY:
+                return PermissionDecision(DENY, "Plan mode active — read-only tools only")
+
         formatted = tool_call.format_for_permission()
 
         # 1. Deny rules first — always win

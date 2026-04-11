@@ -13,6 +13,49 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 logger = logging.getLogger(__name__)
 
 DEFAULT_GLOBAL_DIR = Path.home() / ".godspeed"
+
+# Model context windows — used for model-aware compaction prompts.
+# Keys are prefixes matched against the model string.
+MODEL_CONTEXT_WINDOWS: dict[str, int] = {
+    # Frontier models with large context
+    "claude-opus": 200_000,
+    "claude-sonnet": 200_000,
+    "claude-haiku": 200_000,
+    "gpt-4o": 128_000,
+    "gpt-4-turbo": 128_000,
+    "gpt-4": 8_192,
+    "gpt-3.5": 16_385,
+    "gemini-2": 1_000_000,
+    "gemini-1.5": 1_000_000,
+    "gemini-pro": 32_000,
+    # Open-source models (common Ollama defaults)
+    "ollama/qwen3": 32_768,
+    "ollama/llama3": 8_192,
+    "ollama/llama3.1": 128_000,
+    "ollama/mistral": 32_768,
+    "ollama/codellama": 16_384,
+    "ollama/deepseek": 32_768,
+    "ollama/gemma": 8_192,
+    "ollama/phi": 16_384,
+}
+
+
+def get_model_context_window(model: str) -> int:
+    """Get the context window size for a model by prefix matching.
+
+    Returns the matched size or 32_768 as a safe default.
+    """
+    model_lower = model.lower()
+    # Try longest prefix match first for specificity
+    best_match = ""
+    best_size = 32_768  # safe default
+    for prefix, size in MODEL_CONTEXT_WINDOWS.items():
+        if model_lower.startswith(prefix.lower()) and len(prefix) > len(best_match):
+            best_match = prefix
+            best_size = size
+    return best_size
+
+
 DEFAULT_PROJECT_DIR = Path(".godspeed")
 
 

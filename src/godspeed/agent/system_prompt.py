@@ -44,10 +44,21 @@ engineering tasks by reading, writing, and editing code in their project.
 """
 
 
+PLAN_MODE_PROMPT = """\
+
+## Plan Mode Active
+You are in PLAN MODE. You may only explore and plan — do NOT write files, \
+run commands, or make changes. Use read-only tools (file_read, grep_search, \
+glob_search, repo_map) to understand the codebase. Propose a plan but do not \
+execute it.
+"""
+
+
 def build_system_prompt(
     tools: list[Tool],
     project_instructions: str | None = None,
     cwd: Path | None = None,
+    plan_mode: bool = False,
 ) -> str:
     """Assemble the full system prompt.
 
@@ -58,6 +69,9 @@ def build_system_prompt(
     4. Working directory context
     """
     parts = [CORE_PROMPT]
+
+    if plan_mode:
+        parts.append(PLAN_MODE_PROMPT)
 
     if cwd:
         parts.append(f"\n## Working Directory\n{cwd}\n")

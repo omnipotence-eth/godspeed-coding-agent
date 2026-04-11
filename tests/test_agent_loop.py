@@ -309,6 +309,138 @@ class TestStuckLoopDetection:
         assert len(replan_msgs) == 1, "Exactly one replan after success reset"
 
 
+class TestAutoStash:
+    """Test auto-stash after consecutive write operations."""
+
+    @pytest.mark.asyncio
+    async def test_auto_stash_triggers_at_threshold(self, tool_context) -> None:
+        """Auto-stash triggers after 3 consecutive file_edit/file_write calls."""
+        conversation = Conversation("You are a coding agent.", max_tokens=100_000)
+        registry = ToolRegistry()
+        registry.register(MockTool(name="file_edit", result=ToolResult.success("edited")))
+        git_result = ToolResult.success("Saved working directory")
+        registry.register(MockTool(name="git", result=git_result))
+
+        call_id = 0
+
+        def make_edit_response() -> ChatResponse:
+            nonlocal call_id
+            call_id += 1
+            return ChatResponse(
+                content="",
+                tool_calls=[
+                    {
+                        "id": f"call_{call_id:03d}",
+                        "function": {
+                            "name": "file_edit",
+                            "arguments": json.dumps({"file_path": "test.txt"}),
+                        },
+                    }
+                ],
+                finish_reason="tool_calls",
+            )
+
+        client = LLMClient(model="test")
+        client.chat = AsyncMock(
+            side_effect=[
+                make_edit_response(),  # write 1
+                make_edit_response(),  # write 2
+                make_edit_response(),  # write 3 — triggers auto-stash
+                _make_text_response("Done editing."),
+            ]
+        )
+
+        result = await agent_loop("Edit files", conversation, client, registry, tool_context)
+        assert "Done editing" in result
+
+        # Verify auto-stash message was injected
+        messages = conversation.messages
+        stash_found = any(
+            msg.get("role") == "tool" and "auto-stash" in msg.get("content", "").lower()
+            for msg in messages
+        )
+        assert stash_found, "Auto-stash message should be in conversation"
+
+    @pytest.mark.asyncio
+    async def test_no_auto_stash_below_threshold(self, tool_context) -> None:
+        """Two consecutive writes should NOT trigger auto-stash."""
+        conversation = Conversation("You are a coding agent.", max_tokens=100_000)
+        registry = ToolRegistry()
+        registry.register(MockTool(name="file_edit", result=ToolResult.success("edited")))
+        git_result = ToolResult.success("Saved working directory")
+        registry.register(MockTool(name="git", result=git_result))
+
+        client = LLMClient(model="test")
+        client.chat = AsyncMock(
+            side_effect=[
+                _make_tool_response("file_edit", {"file_path": "a.txt"}),
+                _make_tool_response("file_edit", {"file_path": "b.txt"}),
+                _make_text_response("Done."),
+            ]
+        )
+
+        result = await agent_loop("Edit files", conversation, client, registry, tool_context)
+        assert "Done" in result
+
+        messages = conversation.messages
+        stash_found = any(
+            msg.get("role") == "tool" and "auto-stash" in msg.get("content", "").lower()
+            for msg in messages
+        )
+        assert not stash_found, "No auto-stash below threshold"
+
+    @pytest.mark.asyncio
+    async def test_non_write_resets_counter(self, tool_context) -> None:
+        """A non-write tool call between writes resets the counter."""
+        conversation = Conversation("You are a coding agent.", max_tokens=100_000)
+        registry = ToolRegistry()
+        registry.register(MockTool(name="file_edit", result=ToolResult.success("edited")))
+        registry.register(MockTool(name="file_read", result=ToolResult.success("content")))
+        git_result = ToolResult.success("Saved working directory")
+        registry.register(MockTool(name="git", result=git_result))
+
+        call_id = 0
+
+        def make_response(tool_name: str, args: dict) -> ChatResponse:
+            nonlocal call_id
+            call_id += 1
+            return ChatResponse(
+                content="",
+                tool_calls=[
+                    {
+                        "id": f"call_{call_id:03d}",
+                        "function": {
+                            "name": tool_name,
+                            "arguments": json.dumps(args),
+                        },
+                    }
+                ],
+                finish_reason="tool_calls",
+            )
+
+        client = LLMClient(model="test")
+        client.chat = AsyncMock(
+            side_effect=[
+                make_response("file_edit", {"file_path": "a.txt"}),  # write 1
+                make_response("file_edit", {"file_path": "b.txt"}),  # write 2
+                make_response("file_read", {"file_path": "c.txt"}),  # read — resets
+                make_response("file_edit", {"file_path": "d.txt"}),  # write 1 again
+                make_response("file_edit", {"file_path": "e.txt"}),  # write 2 again
+                _make_text_response("Done."),
+            ]
+        )
+
+        result = await agent_loop("Edit files", conversation, client, registry, tool_context)
+        assert "Done" in result
+
+        messages = conversation.messages
+        stash_found = any(
+            msg.get("role") == "tool" and "auto-stash" in msg.get("content", "").lower()
+            for msg in messages
+        )
+        assert not stash_found, "Read in the middle should reset write counter"
+
+
 class TestConversation:
     """Test conversation management."""
 

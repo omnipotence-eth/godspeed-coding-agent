@@ -131,9 +131,11 @@ def _build_tool_registry() -> tuple:
     registry = ToolRegistry()
     risk_levels: dict[str, RiskLevel] = {}
 
+    from godspeed.tools.background import BackgroundCheckTool
     from godspeed.tools.git import GitTool
     from godspeed.tools.glob_search import GlobSearchTool
     from godspeed.tools.grep_search import GrepSearchTool
+    from godspeed.tools.notebook import NotebookEditTool
     from godspeed.tools.repo_map import RepoMapTool
     from godspeed.tools.shell import ShellTool
     from godspeed.tools.test_runner import TestRunnerTool
@@ -141,7 +143,7 @@ def _build_tool_registry() -> tuple:
     from godspeed.tools.web_fetch import WebFetchTool
     from godspeed.tools.web_search import WebSearchTool
 
-    tools = [
+    tools: list = [
         FileReadTool(),
         FileWriteTool(),
         FileEditTool(),
@@ -154,7 +156,38 @@ def _build_tool_registry() -> tuple:
         TestRunnerTool(),
         WebSearchTool(),
         WebFetchTool(),
+        NotebookEditTool(),
+        BackgroundCheckTool(),
     ]
+
+    # Optional tools — register if their dependencies are available
+    try:
+        from godspeed.tools.image_read import ImageReadTool
+
+        tools.append(ImageReadTool())
+    except ImportError:
+        pass
+
+    try:
+        from godspeed.tools.pdf_read import PdfReadTool
+
+        tools.append(PdfReadTool())
+    except ImportError:
+        pass
+
+    try:
+        from godspeed.tools.github import GithubTool
+
+        tools.append(GithubTool())
+    except ImportError:
+        pass
+
+    try:
+        from godspeed.tools.diff_apply import DiffApplyTool
+
+        tools.append(DiffApplyTool())
+    except ImportError:
+        pass
 
     for tool in tools:
         registry.register(tool)
@@ -260,6 +293,8 @@ async def _run_app(
         model=effective_model,
         fallback_models=settings.fallback_models,
         router=router,
+        thinking_budget=settings.thinking_budget,
+        max_cost_usd=settings.max_cost_usd,
     )
 
     # Conversation
@@ -283,6 +318,9 @@ async def _run_app(
                     command=server_cfg.get("command", ""),
                     args=server_cfg.get("args", []),
                     env=server_cfg.get("env", {}),
+                    transport=server_cfg.get("transport", "stdio"),
+                    url=server_cfg.get("url"),
+                    headers=server_cfg.get("headers"),
                 )
                 try:
                     definitions = await mcp_client.connect(config)
@@ -656,6 +694,8 @@ async def _headless_run(
         model=effective_model,
         fallback_models=settings.fallback_models,
         router=router,
+        thinking_budget=settings.thinking_budget,
+        max_cost_usd=settings.max_cost_usd,
     )
 
     conversation = Conversation(

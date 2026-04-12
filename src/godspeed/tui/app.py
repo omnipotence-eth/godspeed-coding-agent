@@ -25,9 +25,12 @@ from godspeed.tui.output import (
     console,
     format_assistant_text,
     format_error,
+    format_parallel_results,
+    format_parallel_tool_calls,
     format_permission_denied,
     format_permission_prompt,
     format_session_summary,
+    format_thinking,
     format_tool_call,
     format_tool_result,
     format_welcome,
@@ -194,6 +197,25 @@ class TUIApp:
                     break
                 continue
 
+            # Parse @-mentions from input and resolve to content blocks
+            effective_input = user_input
+            from godspeed.tui.mentions import parse_mentions, resolve_mentions
+
+            cleaned_text, mentions = parse_mentions(user_input)
+            if mentions:
+                try:
+                    mention_blocks = await resolve_mentions(mentions, self._tool_context.cwd)
+                    if mention_blocks:
+                        # Build multimodal message: cleaned text + resolved content
+
+                        content_blocks = [{"type": "text", "text": cleaned_text}]
+                        content_blocks.extend(mention_blocks)
+                        self._conversation.add_user_message(content_blocks)
+                        effective_input = ""  # Already added to conversation
+                except Exception as exc:
+                    logger.warning("Mention resolution failed: %s", exc)
+                    # Fall through with original input
+
             # Run agent loop with context-aware thinking indicator
             spinner = _ThinkingSpinner()
 
@@ -228,10 +250,32 @@ class TUIApp:
                 _s.stop()
                 format_permission_denied(tool_name, reason)
 
+            def _track_parallel_start(
+                calls: list[tuple[str, dict[str, Any]]],
+                _s: _ThinkingSpinner = spinner,
+            ) -> None:
+                _s.stop()
+                format_parallel_tool_calls(calls)
+
+            def _track_parallel_complete(
+                results: list[tuple[str, str, bool]],
+                _s: _ThinkingSpinner = spinner,
+            ) -> None:
+                format_parallel_results(results)
+                _s.start()
+
+            def _on_thinking(
+                text: str,
+                _s: _ThinkingSpinner = spinner,
+            ) -> None:
+                _s.stop()
+                format_thinking(text)
+                _s.start()
+
             try:
                 spinner.start()
                 await agent_loop(
-                    user_input=user_input,
+                    user_input=effective_input if effective_input else user_input,
                     conversation=self._conversation,
                     llm_client=self._llm_client,
                     tool_registry=self._tool_registry,
@@ -244,6 +288,10 @@ class TUIApp:
                     max_iterations=self._commands.max_iterations,
                     pause_event=self._pause_event,
                     hook_executor=self._hook_executor,
+                    skip_user_message=not effective_input,
+                    on_parallel_start=_track_parallel_start,
+                    on_parallel_complete=_track_parallel_complete,
+                    on_thinking=_on_thinking,
                 )
                 console.print()  # End streaming output with newline
             except KeyboardInterrupt:

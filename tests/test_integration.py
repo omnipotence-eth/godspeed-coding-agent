@@ -2,14 +2,18 @@
 
 Tests the complete pipeline: LLM (mocked) → tool call → permission check →
 tool execution → audit recording → result fed back to conversation.
+
+v2.0 additions: parallel tool dispatch, multimodal @-mentions,
+auto-commit after threshold, and lint-fix-retry loops.
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 from typing import Any
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -18,11 +22,13 @@ from godspeed.agent.loop import agent_loop
 from godspeed.audit.trail import AuditTrail
 from godspeed.llm.client import ChatResponse, LLMClient
 from godspeed.security.permissions import PermissionEngine
-from godspeed.tools.base import RiskLevel, ToolContext
+from godspeed.tools.base import RiskLevel, Tool, ToolContext, ToolResult
 from godspeed.tools.file_read import FileReadTool
 from godspeed.tools.file_write import FileWriteTool
 from godspeed.tools.registry import ToolRegistry
 from godspeed.tools.shell import ShellTool
+from godspeed.tui.mentions import parse_mentions, resolve_mentions
+from tests.conftest import MockTool
 
 
 def _text(content: str) -> ChatResponse:
@@ -297,3 +303,380 @@ class TestIntegrationConversationFlow:
 
         result = await agent_loop("Loop forever", conv, client, registry, ctx)
         assert "maximum iterations" in result.lower()
+
+
+# ---------------------------------------------------------------------------
+# v2.0 Integration Tests
+# ---------------------------------------------------------------------------
+
+
+class _TrackedTool(Tool):
+    """Tool that records invocations with timestamps for concurrency assertions."""
+
+    def __init__(
+        self,
+        name: str,
+        delay: float = 0.05,
+        result: ToolResult | None = None,
+    ) -> None:
+        self._name = name
+        self._delay = delay
+        self._result = result or ToolResult.success(f"{name}_output")
+        self.calls: list[dict[str, Any]] = []
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @property
+    def description(self) -> str:
+        return f"Tracked test tool: {self._name}"
+
+    @property
+    def risk_level(self) -> RiskLevel:
+        return RiskLevel.READ_ONLY
+
+    def get_schema(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {"input": {"type": "string"}},
+            "required": [],
+        }
+
+    async def execute(self, arguments: dict[str, Any], context: ToolContext) -> ToolResult:
+        loop = asyncio.get_running_loop()
+        start = loop.time()
+        await asyncio.sleep(self._delay)
+        end = loop.time()
+        self.calls.append({"args": arguments, "start": start, "end": end})
+        return self._result
+
+
+class TestParallelToolsEndToEnd:
+    """LLM returns 3 tool calls, all execute concurrently, conversation has correct results."""
+
+    @pytest.mark.asyncio
+    async def test_parallel_tools_end_to_end(self, tool_context: ToolContext) -> None:
+        conversation = Conversation("You are a coding agent.", max_tokens=100_000)
+        registry = ToolRegistry()
+
+        tool_a = _TrackedTool("tool_a", delay=0.15)
+        tool_b = _TrackedTool("tool_b", delay=0.15)
+        tool_c = _TrackedTool("tool_c", delay=0.15)
+        registry.register(tool_a)
+        registry.register(tool_b)
+        registry.register(tool_c)
+
+        client = LLMClient(model="test")
+        client.chat = AsyncMock(
+            side_effect=[
+                _multi_tool_call(
+                    [
+                        ("tool_a", {"input": "alpha"}),
+                        ("tool_b", {"input": "beta"}),
+                        ("tool_c", {"input": "gamma"}),
+                    ]
+                ),
+                _text("All three complete."),
+            ]
+        )
+
+        result = await agent_loop(
+            "Run all three tools",
+            conversation,
+            client,
+            registry,
+            tool_context,
+            parallel_tool_calls=True,
+        )
+
+        # Final text returned correctly
+        assert result == "All three complete."
+
+        # Each tool invoked exactly once with correct args
+        assert len(tool_a.calls) == 1
+        assert tool_a.calls[0]["args"] == {"input": "alpha"}
+        assert len(tool_b.calls) == 1
+        assert tool_b.calls[0]["args"] == {"input": "beta"}
+        assert len(tool_c.calls) == 1
+        assert tool_c.calls[0]["args"] == {"input": "gamma"}
+
+        # Concurrency: all three started before any finished
+        all_starts = [t.calls[0]["start"] for t in (tool_a, tool_b, tool_c)]
+        all_ends = [t.calls[0]["end"] for t in (tool_a, tool_b, tool_c)]
+        latest_start = max(all_starts)
+        earliest_end = min(all_ends)
+        assert latest_start < earliest_end, "Tools did not overlap — not truly parallel"
+
+        # Conversation contains results in call order (a, b, c)
+        tool_msgs = [
+            msg["content"]
+            for msg in conversation.messages
+            if msg.get("role") == "tool" and msg.get("content", "").endswith("_output")
+        ]
+        assert tool_msgs == ["tool_a_output", "tool_b_output", "tool_c_output"]
+
+
+class TestMultimodalWithFileMention:
+    """@file:test.py flows through parse_mentions -> resolve_mentions -> content blocks."""
+
+    @pytest.mark.asyncio
+    async def test_multimodal_with_file_mention(self, tool_context: ToolContext) -> None:
+        # Create a real file in the temp project directory
+        test_file = tool_context.cwd / "test.py"
+        test_file.write_text("print('hello world')\n", encoding="utf-8")
+
+        # Step 1: parse_mentions extracts the mention and cleans text
+        raw_input = "Review this @file:test.py and explain it"
+        cleaned, mentions = parse_mentions(raw_input)
+
+        assert cleaned == "Review this and explain it"
+        assert len(mentions) == 1
+        assert mentions[0].type == "file"
+        assert mentions[0].target == "test.py"
+
+        # Step 2: resolve_mentions reads the file into content blocks
+        blocks = await resolve_mentions(mentions, tool_context.cwd)
+
+        assert len(blocks) == 1
+        assert blocks[0]["type"] == "text"
+        assert "print('hello world')" in blocks[0]["text"]
+        assert "[Content of test.py]" in blocks[0]["text"]
+
+        # Step 3: Build multimodal message and add to conversation
+        conversation = Conversation("You are a coding agent.", max_tokens=100_000)
+        content_blocks: list[dict[str, Any]] = [
+            {"type": "text", "text": cleaned},
+            *blocks,
+        ]
+        conversation.add_user_message(content_blocks)
+
+        # Verify the conversation has the multimodal content
+        user_msgs = [m for m in conversation.messages if m["role"] == "user"]
+        assert len(user_msgs) == 1
+        assert isinstance(user_msgs[0]["content"], list)
+        assert len(user_msgs[0]["content"]) == 2
+        assert user_msgs[0]["content"][0]["text"] == "Review this and explain it"
+        assert "print('hello world')" in user_msgs[0]["content"][1]["text"]
+
+    @pytest.mark.asyncio
+    async def test_file_mention_missing_file_produces_error_block(
+        self, tool_context: ToolContext
+    ) -> None:
+        """Referencing a nonexistent file produces an error content block."""
+        _cleaned, mentions = parse_mentions("Look at @file:nonexistent.py")
+        blocks = await resolve_mentions(mentions, tool_context.cwd)
+
+        assert len(blocks) == 1
+        assert "Error resolving" in blocks[0]["text"]
+
+
+class TestAutoCommitAfterThreshold:
+    """N successful edits triggers auto-commit (mock git and LLM)."""
+
+    @pytest.mark.asyncio
+    async def test_auto_commit_after_threshold(self, tool_context: ToolContext) -> None:
+        conversation = Conversation("You are a coding agent.", max_tokens=100_000)
+        registry = ToolRegistry()
+
+        # Register a file_edit tool that always succeeds
+        edit_tool = MockTool(
+            name="file_edit",
+            result=ToolResult.success("Edit applied"),
+        )
+        registry.register(edit_tool)
+
+        # 3 sequential single-edit calls + final text.
+        # auto_commit_threshold=3 so commit triggers after 3rd edit.
+        threshold = 3
+        side_effects: list[ChatResponse] = []
+        for i in range(threshold):
+            side_effects.append(
+                _multi_tool_call(
+                    [
+                        ("file_edit", {"file_path": f"src/mod_{i}.py", "content": f"v{i}"}),
+                    ]
+                )
+            )
+        side_effects.append(_text("All edits done."))
+
+        client = LLMClient(model="test")
+        client.chat = AsyncMock(side_effect=side_effects)
+
+        # Mock the auto_commit module so no real git operations happen
+        mock_commit_msg = "feat(src): update modules"
+        with (
+            patch(
+                "godspeed.agent.auto_commit.generate_commit_message",
+                new_callable=AsyncMock,
+                return_value=mock_commit_msg,
+            ) as mock_gen_msg,
+            patch(
+                "godspeed.agent.auto_commit.auto_commit",
+                new_callable=AsyncMock,
+                return_value=ToolResult.success(f"Auto-committed: abc12345 {mock_commit_msg}"),
+            ) as mock_commit,
+        ):
+            result = await agent_loop(
+                "Edit three files",
+                conversation,
+                client,
+                registry,
+                tool_context,
+                parallel_tool_calls=False,
+                auto_commit=True,
+                auto_commit_threshold=threshold,
+            )
+
+        assert result == "All edits done."
+
+        # auto_commit was called exactly once (after reaching threshold)
+        mock_gen_msg.assert_awaited_once()
+        mock_commit.assert_awaited_once()
+
+        # The commit message was generated from the change descriptions
+        descriptions_arg = mock_gen_msg.call_args[0][0]
+        assert len(descriptions_arg) == threshold
+        assert all("file_edit" in d for d in descriptions_arg)
+
+        # Conversation contains the auto-commit result
+        tool_msgs = [m["content"] for m in conversation.messages if m.get("role") == "tool"]
+        assert any("Auto-commit" in msg for msg in tool_msgs)
+
+    @pytest.mark.asyncio
+    async def test_no_auto_commit_below_threshold(self, tool_context: ToolContext) -> None:
+        """Fewer edits than threshold should not trigger auto-commit."""
+        conversation = Conversation("You are a coding agent.", max_tokens=100_000)
+        registry = ToolRegistry()
+        registry.register(MockTool(name="file_edit", result=ToolResult.success("ok")))
+
+        # Only 2 edits, threshold is 5
+        side_effects = [
+            _multi_tool_call([("file_edit", {"file_path": "a.py", "content": "x"})]),
+            _multi_tool_call([("file_edit", {"file_path": "b.py", "content": "y"})]),
+            _text("Done."),
+        ]
+        client = LLMClient(model="test")
+        client.chat = AsyncMock(side_effect=side_effects)
+
+        with patch(
+            "godspeed.agent.auto_commit.auto_commit",
+            new_callable=AsyncMock,
+        ) as mock_commit:
+            await agent_loop(
+                "Edit two files",
+                conversation,
+                client,
+                registry,
+                tool_context,
+                parallel_tool_calls=False,
+                auto_commit=True,
+                auto_commit_threshold=5,
+            )
+
+        mock_commit.assert_not_awaited()
+
+
+class TestLintFixRetryInLoop:
+    """Edit -> auto-verify with retry -> re-verify passes."""
+
+    @pytest.mark.asyncio
+    async def test_lint_fix_retry_in_loop(self, tool_context: ToolContext) -> None:
+        """file_edit on a .py file triggers _auto_verify_file with retry loop.
+
+        Mock the verify internals: first check fails, fix runs, re-check passes.
+        """
+        conversation = Conversation("You are a coding agent.", max_tokens=100_000)
+        registry = ToolRegistry()
+
+        # Register file_edit and verify tools
+        edit_tool = MockTool(name="file_edit", result=ToolResult.success("File written"))
+        verify_tool = MockTool(name="verify", result=ToolResult.success("Verification passed"))
+        registry.register(edit_tool)
+        registry.register(verify_tool)
+
+        # Create the target file so path resolution works
+        target = tool_context.cwd / "app.py"
+        target.write_text("x=1\n", encoding="utf-8")
+
+        client = LLMClient(model="test")
+        client.chat = AsyncMock(
+            side_effect=[
+                _multi_tool_call(
+                    [
+                        ("file_edit", {"file_path": "app.py", "content": "x = 1\n"}),
+                    ]
+                ),
+                _text("Edit verified and clean."),
+            ]
+        )
+
+        with patch(
+            "godspeed.agent.loop._auto_verify_file",
+            new_callable=AsyncMock,
+        ) as mock_auto_verify:
+            # Simulate: the retry loop ran one fix round and then passed
+            mock_auto_verify.return_value = ToolResult.success(
+                "Auto-fixed 1 round(s) of issues, 0 remaining: app.py"
+            )
+
+            result = await agent_loop(
+                "Fix app.py",
+                conversation,
+                client,
+                registry,
+                tool_context,
+                parallel_tool_calls=False,
+                auto_fix_retries=3,
+            )
+
+        assert result == "Edit verified and clean."
+
+        # _auto_verify_file was called for the .py file edit
+        mock_auto_verify.assert_awaited_once()
+        call_args = mock_auto_verify.call_args
+        assert call_args[0][0] == "app.py"  # file_path
+        assert call_args[0][4] == 3  # auto_fix_retries
+
+        # Conversation contains the verify result showing auto-fix worked
+        tool_msgs = [m["content"] for m in conversation.messages if m.get("role") == "tool"]
+        assert any("Auto-fixed" in msg for msg in tool_msgs)
+        assert any("0 remaining" in msg for msg in tool_msgs)
+
+    @pytest.mark.asyncio
+    async def test_verify_skipped_for_non_verifiable_extension(
+        self, tool_context: ToolContext
+    ) -> None:
+        """file_edit on a non-verifiable extension (.txt) should skip auto-verify."""
+        conversation = Conversation("You are a coding agent.", max_tokens=100_000)
+        registry = ToolRegistry()
+        registry.register(MockTool(name="file_edit", result=ToolResult.success("ok")))
+        registry.register(MockTool(name="verify", result=ToolResult.success("pass")))
+
+        client = LLMClient(model="test")
+        client.chat = AsyncMock(
+            side_effect=[
+                _multi_tool_call(
+                    [
+                        ("file_edit", {"file_path": "notes.txt", "content": "hello"}),
+                    ]
+                ),
+                _text("Done."),
+            ]
+        )
+
+        with patch(
+            "godspeed.agent.loop._auto_verify_file",
+            new_callable=AsyncMock,
+        ) as mock_auto_verify:
+            await agent_loop(
+                "Edit notes",
+                conversation,
+                client,
+                registry,
+                tool_context,
+                parallel_tool_calls=False,
+            )
+
+        # .txt is not in VERIFIABLE_EXTENSIONS, so verify should not be called
+        mock_auto_verify.assert_not_awaited()

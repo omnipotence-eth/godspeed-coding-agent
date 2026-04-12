@@ -91,6 +91,10 @@ class FileReadTool(Tool):
         if not file_path.is_file():
             return ToolResult.failure(f"Not a file: {file_path}")
 
+        # Notebook: render as structured text
+        if file_path.suffix.lower() == ".ipynb":
+            return self._read_notebook(file_path)
+
         # Size check
         size_kb = file_path.stat().st_size / 1024
         if size_kb > MAX_FILE_SIZE_KB:
@@ -128,3 +132,48 @@ class FileReadTool(Tool):
             output += f"\n\n... ({total_lines - end_idx} more lines)"
 
         return ToolResult.success(output)
+
+    @staticmethod
+    def _read_notebook(file_path: Any) -> ToolResult:
+        """Parse a .ipynb notebook and render cells as structured text."""
+        import json
+
+        try:
+            data = json.loads(file_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            return ToolResult.failure(f"Failed to parse notebook: {exc}")
+
+        cells = data.get("cells", [])
+        if not cells:
+            return ToolResult.success("(empty notebook — no cells)")
+
+        parts: list[str] = []
+        for idx, cell in enumerate(cells):
+            cell_type = cell.get("cell_type", "unknown")
+            source_lines = cell.get("source", [])
+            source = "".join(source_lines) if isinstance(source_lines, list) else str(source_lines)
+
+            parts.append(f"[Cell {idx}: {cell_type}]")
+            parts.append(source.rstrip())
+
+            # Render outputs for code cells
+            outputs = cell.get("outputs", [])
+            for out in outputs:
+                out_type = out.get("output_type", "")
+                if out_type == "stream":
+                    text = "".join(out.get("text", []))
+                    parts.append("[Output: stream]")
+                    parts.append(text.rstrip())
+                elif out_type in ("execute_result", "display_data"):
+                    text_data = out.get("data", {}).get("text/plain", [])
+                    text = "".join(text_data) if isinstance(text_data, list) else str(text_data)
+                    parts.append(f"[Output: {out_type}]")
+                    parts.append(text.rstrip())
+                elif out_type == "error":
+                    ename = out.get("ename", "Error")
+                    evalue = out.get("evalue", "")
+                    parts.append(f"[Output: error] {ename}: {evalue}")
+
+            parts.append("")  # blank line between cells
+
+        return ToolResult.success("\n".join(parts))

@@ -10,6 +10,8 @@ from rich.console import Console
 from godspeed.tui.output import (
     format_assistant_text,
     format_error,
+    format_parallel_results,
+    format_parallel_tool_calls,
     format_permission_denied,
     format_permission_prompt,
     format_session_summary,
@@ -325,3 +327,107 @@ class TestDecorativeElements:
         }
         output = _capture(format_tool_call, "file_edit", args)
         assert "\u2502" in output  # │ gutter
+
+
+class TestFormatParallelToolCalls:
+    """Test grouped header for parallel tool dispatch."""
+
+    def test_shows_count(self) -> None:
+        calls = [
+            ("file_read", {"file_path": "a.py"}),
+            ("grep_search", {"pattern": "TODO"}),
+            ("shell", {"command": "ls"}),
+        ]
+        output = _capture(format_parallel_tool_calls, calls)
+        assert "3 tools" in output
+        assert "parallel" in output
+
+    def test_shows_tool_names(self) -> None:
+        calls = [
+            ("file_read", {"file_path": "main.py"}),
+            ("shell", {"command": "echo hi"}),
+        ]
+        output = _capture(format_parallel_tool_calls, calls)
+        assert "file_read" in output
+        assert "shell" in output
+
+    def test_shows_primary_arg(self) -> None:
+        calls = [("file_read", {"file_path": "src/app.py"})]
+        output = _capture(format_parallel_tool_calls, calls)
+        assert "src/app.py" in output
+
+    def test_truncates_long_arg(self) -> None:
+        long_path = "a/" * 30 + "file.py"
+        calls = [("file_read", {"file_path": long_path})]
+        output = _capture(format_parallel_tool_calls, calls)
+        assert "..." in output
+
+    def test_has_parallel_marker(self) -> None:
+        calls = [("file_read", {"file_path": "x.py"}), ("shell", {"command": "ls"})]
+        output = _capture(format_parallel_tool_calls, calls)
+        assert "\u26a1" in output  # ⚡ parallel marker
+
+    def test_has_tool_markers(self) -> None:
+        calls = [("file_read", {"file_path": "x.py"}), ("shell", {"command": "ls"})]
+        output = _capture(format_parallel_tool_calls, calls)
+        assert "\u25b8" in output  # ▸ tool marker
+
+    def test_empty_args(self) -> None:
+        calls = [("custom_tool", {})]
+        output = _capture(format_parallel_tool_calls, calls)
+        assert "1 tools" in output
+        assert "custom_tool" in output
+
+
+class TestFormatParallelResults:
+    """Test batch summary of parallel tool results."""
+
+    def test_all_success(self) -> None:
+        results = [
+            ("file_read", "contents of file", False),
+            ("shell", "output", False),
+        ]
+        output = _capture(format_parallel_results, results)
+        assert "\u2713" in output  # ✓ success marker
+        assert "file_read" in output
+        assert "shell" in output
+
+    def test_all_errors(self) -> None:
+        results = [
+            ("shell", "command not found", True),
+            ("file_read", "file not found", True),
+        ]
+        output = _capture(format_parallel_results, results)
+        assert "\u2717" in output  # ✗ error marker
+        assert "command not found" in output
+        assert "file not found" in output
+
+    def test_mixed_success_and_error(self) -> None:
+        results = [
+            ("file_read", "ok", False),
+            ("shell", "Permission denied", True),
+        ]
+        output = _capture(format_parallel_results, results)
+        assert "\u2713" in output  # ✓ for success
+        assert "\u2717" in output  # ✗ for error
+        assert "file_read" in output
+        assert "Permission denied" in output
+
+    def test_empty_error_output(self) -> None:
+        results = [("shell", "", True)]
+        output = _capture(format_parallel_results, results)
+        assert "no output" in output
+
+    def test_long_error_truncated(self) -> None:
+        long_line = "x" * 200
+        results = [("shell", long_line, True)]
+        output = _capture(format_parallel_results, results)
+        assert "..." in output
+
+    def test_success_uses_dot_separator(self) -> None:
+        results = [
+            ("file_read", "ok", False),
+            ("shell", "ok", False),
+        ]
+        output = _capture(format_parallel_results, results)
+        assert "\u00b7" in output  # · dot separator

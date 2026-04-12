@@ -45,8 +45,13 @@ class Conversation:
         """Check if we're approaching the context limit."""
         return self.token_count >= int(self.max_tokens * self.compaction_threshold)
 
-    def add_user_message(self, content: str) -> None:
-        """Add a user message."""
+    def add_user_message(self, content: str | list[dict[str, Any]]) -> None:
+        """Add a user message.
+
+        Args:
+            content: Either a plain text string or a list of content blocks
+                (e.g. text + image blocks in OpenAI multimodal format).
+        """
         self._messages.append({"role": "user", "content": content})
 
     def add_assistant_message(
@@ -119,3 +124,51 @@ class Conversation:
     def clear(self) -> None:
         """Clear all messages (keeps system prompt)."""
         self._messages.clear()
+
+
+def build_image_content_block(image_url: str) -> dict[str, Any]:
+    """Create an image content block for multimodal messages.
+
+    Args:
+        image_url: HTTP(S) URL or base64 data URI (data:image/...;base64,...).
+
+    Returns:
+        OpenAI-format image content block.
+
+    Raises:
+        ValueError: If the URL format is invalid.
+    """
+    if not image_url:
+        msg = "image_url must not be empty"
+        raise ValueError(msg)
+    if not (
+        image_url.startswith("http://")
+        or image_url.startswith("https://")
+        or image_url.startswith("data:image/")
+    ):
+        msg = (
+            f"Invalid image URL format: must be http(s):// or data:image/ URI, got {image_url[:50]}"
+        )
+        raise ValueError(msg)
+    return {"type": "image_url", "image_url": {"url": image_url}}
+
+
+def build_multimodal_message(
+    text: str,
+    images: list[str] | None = None,
+) -> list[dict[str, Any]]:
+    """Build a list of content blocks combining text and images.
+
+    Args:
+        text: The text portion of the message.
+        images: Optional list of image URLs or base64 data URIs.
+
+    Returns:
+        List of content blocks suitable for Conversation.add_user_message().
+    """
+    blocks: list[dict[str, Any]] = []
+    if text:
+        blocks.append({"type": "text", "text": text})
+    for url in images or []:
+        blocks.append(build_image_content_block(url))
+    return blocks

@@ -18,8 +18,18 @@ SLASH_COMMANDS: list[tuple[str, str]] = [
     ("/undo", "Undo last git commit"),
     ("/audit", "Show audit trail stats and verify chain"),
     ("/permissions", "Show current permission rules"),
+    ("/autocommit", "Toggle auto-commit or set threshold"),
+    ("/architect", "Toggle architect mode (plan then execute)"),
+    ("/think", "Toggle extended thinking or set token budget"),
+    ("/budget", "Show/set cost budget in USD"),
     ("/quit", "Exit Godspeed"),
     ("/exit", "Exit Godspeed"),
+]
+
+MENTION_TYPES: list[tuple[str, str]] = [
+    ("@file:", "Include file content"),
+    ("@folder:", "Include directory listing"),
+    ("@web:", "Fetch web page content (HTTPS only)"),
 ]
 
 
@@ -51,6 +61,12 @@ class GodspeedCompleter(Completer):
             yield from self._complete_slash_commands(stripped)
             return
 
+        # @-mention completion
+        mention_match = self._find_mention_at_cursor(text)
+        if mention_match is not None:
+            yield from self._complete_mentions(mention_match)
+            return
+
         # File path completion when there's a space (argument position)
         parts = stripped.split(maxsplit=1)
         if len(parts) == 2 and parts[0].startswith("/"):
@@ -65,6 +81,45 @@ class GodspeedCompleter(Completer):
                     cmd,
                     start_position=-len(text),
                     display_meta=description,
+                )
+
+    def _find_mention_at_cursor(self, text: str) -> str | None:
+        """Find an @-mention being typed at the cursor position.
+
+        Returns the partial mention text (e.g. "@file:src/m") or None.
+        """
+        # Walk backwards from cursor to find @ that starts a mention
+        import re
+
+        match = re.search(r"@(\S*)$", text)
+        if match:
+            return match.group(0)
+        return None
+
+    def _complete_mentions(self, partial: str) -> Iterable[Completion]:
+        """Complete @-mentions: type prefixes and file/folder paths."""
+        # If just "@" or partial type, suggest mention types
+        if ":" not in partial:
+            for mention, description in MENTION_TYPES:
+                if mention.startswith(partial):
+                    yield Completion(
+                        mention,
+                        start_position=-len(partial),
+                        display_meta=description,
+                    )
+            return
+
+        # If we have a type prefix (e.g. @file:src/), complete paths
+        prefix, path_part = partial.split(":", 1)
+        mention_type = prefix[1:]  # strip @
+
+        if mention_type in ("file", "folder"):
+            for completion in self._complete_file_paths(path_part):
+                # Re-wrap as full mention
+                yield Completion(
+                    f"{prefix}:{completion.text}",
+                    start_position=-len(partial),
+                    display_meta=completion.display_meta,
                 )
 
     def _complete_file_paths(self, partial: str) -> Iterable[Completion]:

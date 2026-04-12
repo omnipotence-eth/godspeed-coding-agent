@@ -83,6 +83,9 @@ class Commands:
         self._pause_event = pause_event
         self._handlers: dict[str, CommandHandler] = {}
         self.max_iterations: int | None = None  # None = use default
+        self.auto_commit: bool = False
+        self.auto_commit_threshold: int = 5
+        self.architect_mode: bool = False
         self._register_builtins()
 
     def _register_builtins(self) -> None:
@@ -104,6 +107,10 @@ class Commands:
         self._handlers["/tasks"] = self._cmd_tasks
         self._handlers["/reindex"] = self._cmd_reindex
         self._handlers["/stats"] = self._cmd_stats
+        self._handlers["/autocommit"] = self._cmd_autocommit
+        self._handlers["/architect"] = self._cmd_architect
+        self._handlers["/think"] = self._cmd_think
+        self._handlers["/budget"] = self._cmd_budget
         self._handlers["/export"] = self._cmd_export
         self._handlers["/quit"] = self._cmd_quit
         self._handlers["/exit"] = self._cmd_quit
@@ -160,6 +167,10 @@ class Commands:
                 [
                     ("/plan", "Toggle plan mode (read-only)"),
                     ("/extend [N]", "Set max iterations per turn"),
+                    ("/autocommit [on|off|N]", "Toggle auto-commit or set threshold"),
+                    ("/architect", "Toggle architect mode (plan then execute)"),
+                    ("/think [budget]", "Toggle extended thinking or set token budget"),
+                    ("/budget [amount]", "Show/set cost budget in USD"),
                     ("/pause", "Pause the agent loop"),
                     ("/resume", "Resume a paused agent"),
                     ("/guidance <msg>", "Inject guidance and resume"),
@@ -343,6 +354,161 @@ class Commands:
 
         self.max_iterations = value
         format_success(f"Max iterations set to [{BOLD_PRIMARY}]{value}[/{BOLD_PRIMARY}]")
+        return CommandResult(handled=True)
+
+    def _cmd_autocommit(self, args: str = "") -> CommandResult:
+        """Toggle auto-commit or set the file-change threshold."""
+        arg = args.strip().lower()
+
+        if arg == "on":
+            self.auto_commit = True
+            logger.info("autocommit toggled state=on threshold=%d", self.auto_commit_threshold)
+            format_success(
+                f"Auto-commit [{BOLD_PRIMARY}]ON[/{BOLD_PRIMARY}]"
+                f" (threshold: {self.auto_commit_threshold} files)"
+            )
+        elif arg == "off":
+            self.auto_commit = False
+            logger.info("autocommit toggled state=off")
+            format_info(f"Auto-commit [{BOLD_PRIMARY}]OFF[/{BOLD_PRIMARY}]")
+        elif arg:
+            # Numeric threshold
+            try:
+                value = int(arg)
+            except ValueError:
+                format_error(f"Invalid argument: {args.strip()}. Use on, off, or a number.")
+                return CommandResult(handled=True)
+
+            if value < 1:
+                format_error("Threshold must be at least 1.")
+                return CommandResult(handled=True)
+
+            self.auto_commit_threshold = value
+            self.auto_commit = True
+            logger.info(
+                "autocommit threshold_set threshold=%d state=on", self.auto_commit_threshold
+            )
+            format_success(
+                f"Auto-commit [{BOLD_PRIMARY}]ON[/{BOLD_PRIMARY}]"
+                f" — threshold set to [{BOLD_PRIMARY}]{value}[/{BOLD_PRIMARY}] files"
+            )
+        else:
+            # No args — toggle
+            self.auto_commit = not self.auto_commit
+            state = "ON" if self.auto_commit else "OFF"
+            logger.info(
+                "autocommit toggled state=%s threshold=%d",
+                state.lower(),
+                self.auto_commit_threshold,
+            )
+            format_info(
+                f"Auto-commit [{BOLD_PRIMARY}]{state}[/{BOLD_PRIMARY}]"
+                f" (threshold: {self.auto_commit_threshold} files)"
+            )
+
+        return CommandResult(handled=True)
+
+    def _cmd_architect(self, args: str = "") -> CommandResult:
+        """Toggle architect mode — two-phase plan-then-execute."""
+        self.architect_mode = not self.architect_mode
+        if self.architect_mode:
+            format_success(
+                f"Architect mode [{BOLD_PRIMARY}]ON[/{BOLD_PRIMARY}] "
+                "— requests will be planned before execution"
+            )
+        else:
+            format_info(f"Architect mode [{BOLD_PRIMARY}]OFF[/{BOLD_PRIMARY}]")
+        return CommandResult(handled=True)
+
+    def _cmd_think(self, args: str = "") -> CommandResult:
+        """Toggle extended thinking or set the thinking token budget."""
+        arg = args.strip()
+
+        if not arg:
+            # Toggle: off → default 10k, on → off
+            current = self._llm_client.thinking_budget
+            if current > 0:
+                self._llm_client.thinking_budget = 0
+                format_info(f"Extended thinking [{BOLD_PRIMARY}]OFF[/{BOLD_PRIMARY}]")
+            else:
+                self._llm_client.thinking_budget = 10_000
+                format_success(
+                    f"Extended thinking [{BOLD_PRIMARY}]ON[/{BOLD_PRIMARY}] (budget: 10,000 tokens)"
+                )
+            return CommandResult(handled=True)
+
+        if arg.lower() == "off":
+            self._llm_client.thinking_budget = 0
+            format_info(f"Extended thinking [{BOLD_PRIMARY}]OFF[/{BOLD_PRIMARY}]")
+            return CommandResult(handled=True)
+
+        try:
+            budget = int(arg.replace(",", "").replace("_", ""))
+        except ValueError:
+            format_error(f"Invalid budget: {arg}. Use a number or 'off'.")
+            return CommandResult(handled=True)
+
+        if budget < 1000:
+            format_error("Thinking budget must be at least 1,000 tokens.")
+            return CommandResult(handled=True)
+
+        self._llm_client.thinking_budget = budget
+        format_success(
+            f"Extended thinking [{BOLD_PRIMARY}]ON[/{BOLD_PRIMARY}] (budget: {budget:,} tokens)"
+        )
+        return CommandResult(handled=True)
+
+    def _cmd_budget(self, args: str = "") -> CommandResult:
+        """Show or set the cost budget in USD."""
+        from godspeed.llm.cost import format_cost
+
+        arg = args.strip()
+
+        if not arg:
+            # Show current cost and budget
+            spent = self._llm_client.total_cost_usd
+            limit = self._llm_client.max_cost_usd
+            model = self._llm_client.model
+            input_tokens = self._llm_client.total_input_tokens
+            output_tokens = self._llm_client.total_output_tokens
+
+            spent_str = format_cost(spent)
+            if limit > 0:
+                pct = (spent / limit * 100) if limit > 0 else 0
+                format_info(
+                    f"Cost: [{BOLD_PRIMARY}]{spent_str}[/{BOLD_PRIMARY}]"
+                    f" / ${limit:.2f} ({pct:.0f}%)"
+                )
+            else:
+                format_info(
+                    f"Cost: [{BOLD_PRIMARY}]{spent_str}[/{BOLD_PRIMARY}]"
+                    f" [{DIM}](no budget limit)[/{DIM}]"
+                )
+            console.print(
+                f"    [{DIM}]{input_tokens:,} input + {output_tokens:,} output tokens"
+                f" ({model})[/{DIM}]"
+            )
+            return CommandResult(handled=True)
+
+        if arg.lower() in ("off", "unlimited", "0"):
+            self._llm_client.max_cost_usd = 0.0
+            format_info(f"Cost budget [{BOLD_PRIMARY}]unlimited[/{BOLD_PRIMARY}]")
+            return CommandResult(handled=True)
+
+        # Strip $ prefix if present
+        cleaned = arg.lstrip("$")
+        try:
+            limit = float(cleaned)
+        except ValueError:
+            format_error(f"Invalid amount: {arg}. Use a number like 5.00 or 'off'.")
+            return CommandResult(handled=True)
+
+        if limit <= 0:
+            format_error("Budget must be positive. Use 'off' to disable.")
+            return CommandResult(handled=True)
+
+        self._llm_client.max_cost_usd = limit
+        format_success(f"Cost budget set to [{BOLD_PRIMARY}]${limit:.2f}[/{BOLD_PRIMARY}]")
         return CommandResult(handled=True)
 
     def _cmd_context(self, _args: str = "") -> CommandResult:

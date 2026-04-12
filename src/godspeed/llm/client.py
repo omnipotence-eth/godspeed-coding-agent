@@ -26,6 +26,15 @@ def _get_litellm():
     return _litellm
 
 
+class BudgetExceededError(RuntimeError):
+    """Raised when session cost exceeds the configured budget."""
+
+    def __init__(self, spent: float, limit: float) -> None:
+        self.spent = spent
+        self.limit = limit
+        super().__init__(f"Budget exceeded: ${spent:.4f} / ${limit:.2f} limit")
+
+
 @dataclass
 class ChatResponse:
     """Parsed response from an LLM call."""
@@ -34,6 +43,7 @@ class ChatResponse:
     tool_calls: list[dict[str, Any]] = field(default_factory=list)
     finish_reason: str | None = ""
     usage: dict[str, int] = field(default_factory=dict)
+    thinking: str = ""  # Extended thinking content (Anthropic models)
 
     @property
     def has_tool_calls(self) -> bool:
@@ -88,13 +98,18 @@ class LLMClient:
         fallback_models: list[str] | None = None,
         timeout: int = 120,
         router: ModelRouter | None = None,
+        thinking_budget: int = 0,
+        max_cost_usd: float = 0.0,
     ) -> None:
         self.model = model
         self.fallback_models = fallback_models or []
         self.timeout = timeout
         self.router = router or ModelRouter()
+        self.thinking_budget = thinking_budget
+        self.max_cost_usd = max_cost_usd
         self.total_input_tokens = 0
         self.total_output_tokens = 0
+        self.total_cost_usd: float = 0.0
 
     # Ollama models known to support native tool calling
     _TOOLS_CAPABLE_OLLAMA = (
@@ -257,6 +272,16 @@ class LLMClient:
                 cached.append(msg)
         return cached
 
+    def _is_anthropic_model(self, model: str | None = None) -> bool:
+        """Check if the model is an Anthropic/Claude model."""
+        name = (model or self.model).lower()
+        return any(prefix in name for prefix in ("claude", "anthropic"))
+
+    def _check_budget(self) -> None:
+        """Raise BudgetExceededError if session cost exceeds the limit."""
+        if self.max_cost_usd > 0 and self.total_cost_usd > self.max_cost_usd:
+            raise BudgetExceededError(self.total_cost_usd, self.max_cost_usd)
+
     async def _call(
         self,
         model: str,
@@ -264,6 +289,8 @@ class LLMClient:
         tools: list[dict[str, Any]] | None,
     ) -> ChatResponse:
         """Make a single LLM API call."""
+        from godspeed.llm.cost import estimate_cost
+
         # Apply prompt caching for supported providers
         cached_messages = self._apply_prompt_caching(model, messages)
 
@@ -282,11 +309,35 @@ class LLMClient:
                     model,
                 )
 
+        # Extended thinking for Anthropic models
+        if self.thinking_budget > 0 and self._is_anthropic_model(model):
+            kwargs["thinking"] = {"type": "enabled", "budget_tokens": self.thinking_budget}
+
         response = await _get_litellm().acompletion(**kwargs)
 
         # Parse response
         choice = response.choices[0]
         message = choice.message
+
+        # Extract thinking content from Anthropic responses
+        thinking_text = ""
+        if hasattr(message, "thinking") and message.thinking:
+            thinking_text = message.thinking
+        # Also check content blocks for thinking type
+        if not thinking_text and hasattr(message, "content") and isinstance(message.content, list):
+            for block in message.content:
+                if isinstance(block, dict) and block.get("type") == "thinking":
+                    thinking_text = block.get("thinking", "")
+                    break
+
+        # Extract text content (may be in content blocks)
+        content_text = ""
+        if isinstance(message.content, str):
+            content_text = message.content
+        elif isinstance(message.content, list):
+            for block in message.content:
+                if isinstance(block, dict) and block.get("type") == "text":
+                    content_text += block.get("text", "")
 
         # Extract tool calls
         tool_calls = []
@@ -302,18 +353,29 @@ class LLMClient:
                     }
                 )
 
-        # Track usage
+        # Track usage and cost
+        input_tokens = 0
+        output_tokens = 0
         if response.usage:
-            self.total_input_tokens += response.usage.prompt_tokens or 0
-            self.total_output_tokens += response.usage.completion_tokens or 0
+            input_tokens = response.usage.prompt_tokens or 0
+            output_tokens = response.usage.completion_tokens or 0
+            self.total_input_tokens += input_tokens
+            self.total_output_tokens += output_tokens
+
+        call_cost = estimate_cost(model, input_tokens, output_tokens)
+        self.total_cost_usd += call_cost
+
+        # Check budget after tracking
+        self._check_budget()
 
         return ChatResponse(
-            content=message.content or "",
+            content=content_text or "",
             tool_calls=tool_calls,
             finish_reason=choice.finish_reason or "",
+            thinking=thinking_text,
             usage={
-                "input_tokens": response.usage.prompt_tokens or 0,
-                "output_tokens": response.usage.completion_tokens or 0,
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
             }
             if response.usage
             else {},

@@ -77,6 +77,38 @@ def estimate_cost(
     return input_cost + output_cost
 
 
+def get_cheapest_model(models: list[str]) -> str:
+    """Return the model with the lowest per-token cost from a list.
+
+    Used for compaction: pick the cheapest model to summarize history.
+    Returns the first model if all are free (Ollama) or unknown.
+    """
+    if not models:
+        return ""
+
+    best_model = models[0]
+    best_cost = float("inf")
+
+    for model_name in models:
+        model_lower = model_name.lower()
+        # Free models get cost 0
+        if any(model_lower.startswith(prefix) for prefix in _FREE_PREFIXES):
+            return model_name  # Can't beat free
+
+        name = model_lower.split("/")[-1] if "/" in model_lower else model_lower
+        total_cost = 0.0
+        for prefix, (inp, out) in _MODEL_PRICING.items():
+            if name.startswith(prefix):
+                total_cost = inp + out
+                break
+
+        if total_cost < best_cost:
+            best_cost = total_cost
+            best_model = model_name
+
+    return best_model
+
+
 def format_cost(cost: float) -> str:
     """Format a cost value for display.
 

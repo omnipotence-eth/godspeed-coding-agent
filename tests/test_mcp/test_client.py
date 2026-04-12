@@ -26,6 +26,28 @@ class TestMCPServerConfig:
         assert config.args == ["-y", "@modelcontextprotocol/server-github"]
         assert config.env == {"GITHUB_TOKEN": "test"}
 
+    def test_sse_config(self) -> None:
+        """SSE transport config stores url and headers."""
+        config = MCPServerConfig(
+            name="remote",
+            transport="sse",
+            url="http://localhost:3001",
+            headers={"Authorization": "Bearer tok123"},
+        )
+        assert config.transport == "sse"
+        assert config.url == "http://localhost:3001"
+        assert config.headers == {"Authorization": "Bearer tok123"}
+        # stdio fields get defaults
+        assert config.command == ""
+        assert config.args == []
+
+    def test_transport_defaults_to_stdio(self) -> None:
+        """Omitting transport field defaults to stdio (backward compat)."""
+        config = MCPServerConfig(name="legacy", command="/usr/bin/server")
+        assert config.transport == "stdio"
+        assert config.url is None
+        assert config.headers is None
+
 
 class TestMCPToolDefinition:
     """Test tool definition data class."""
@@ -46,10 +68,11 @@ class TestMCPClient:
     """Test MCP client behavior."""
 
     def test_availability_check(self) -> None:
-        """Client reports availability based on mcp package."""
+        """Client reports availability based on installed transport backends."""
         client = MCPClient()
-        # Should be True or False depending on whether mcp is installed
+        # available is True when at least one backend (stdio or sse) is usable
         assert isinstance(client.available, bool)
+        assert isinstance(client.stdio_available, bool)
 
     def test_disconnect_all(self) -> None:
         """Disconnect clears connections without error."""

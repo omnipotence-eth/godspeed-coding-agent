@@ -28,6 +28,7 @@ from godspeed.tui.theme import (
     GUTTER_STYLE,
     MARKER_ERROR,
     MARKER_INFO,
+    MARKER_PARALLEL,
     MARKER_SUCCESS,
     MARKER_TOOL,
     MARKER_WARNING,
@@ -92,6 +93,30 @@ def format_warning(message: str) -> None:
 def format_error(message: str) -> None:
     """Display an error message with ✗ indicator."""
     console.print(f"  {styled(MARKER_ERROR, ERROR)} {styled(f'Error: {message}', BOLD_ERROR)}")
+
+
+# =============================================================================
+# Thinking display
+# =============================================================================
+
+
+def format_thinking(text: str) -> None:
+    """Display extended thinking content in a dim collapsible-style panel."""
+    if not text.strip():
+        return
+    # Truncate very long thinking for display (keep first 2000 chars)
+    display_text = text[:2000]
+    if len(text) > 2000:
+        display_text += f"\n... ({len(text) - 2000} chars truncated)"
+
+    panel = Panel(
+        styled(display_text, DIM),
+        title=styled("Thinking", MUTED),
+        border_style=MUTED,
+        expand=False,
+        padding=(0, 1),
+    )
+    console.print(panel)
 
 
 # =============================================================================
@@ -207,6 +232,75 @@ def format_tool_result(name: str, result: str, is_error: bool = False) -> None:
         else:
             # Long results: show summary
             console.print(f"  {marker} {tool}  {styled(f'({line_count} lines)', DIM)}")
+
+
+# =============================================================================
+# Parallel tool call display
+# =============================================================================
+
+# Max characters for inline argument preview in parallel header
+_PARALLEL_ARG_MAX = 40
+
+
+def _tool_brief(name: str, args: dict[str, Any]) -> str:
+    """Return a short one-line summary of a tool call for parallel headers."""
+    primary = (
+        args.get("file_path")
+        or args.get("command")
+        or args.get("pattern")
+        or args.get("action")
+        or ""
+    )
+    if primary and len(primary) > _PARALLEL_ARG_MAX:
+        primary = "..." + primary[-(_PARALLEL_ARG_MAX - 3) :]
+    if primary:
+        return f"{name} {styled(primary, DIM)}"
+    return name
+
+
+def format_parallel_tool_calls(calls: list[tuple[str, dict[str, Any]]]) -> None:
+    """Display a grouped header for parallel tool dispatch.
+
+    Shows count and brief tool names so the user knows what is running
+    concurrently before results arrive.
+    """
+    count = len(calls)
+    marker = styled(MARKER_PARALLEL, SECONDARY)
+    header = styled(f"Running {count} tools in parallel", BOLD_PRIMARY)
+    console.print(f"\n  {marker} {header}")
+
+    for name, args in calls:
+        brief = _tool_brief(name, args)
+        console.print(f"    {styled(MARKER_TOOL, MUTED)} {brief}")
+
+    console.print()
+
+
+def format_parallel_results(results: list[tuple[str, str, bool]]) -> None:
+    """Display a batch summary of parallel tool results.
+
+    Each entry is (tool_name, output_preview, is_error). Successes get a
+    compact one-liner; errors get the full treatment.
+    """
+    successes = [(n, o) for n, o, err in results if not err]
+    errors = [(n, o) for n, o, err in results if err]
+
+    # Compact success summary
+    if successes:
+        names = [styled(n, MUTED) for n, _ in successes]
+        label = f" {SEPARATOR_DOT} ".join(names)
+        console.print(f"  {styled(MARKER_SUCCESS, SUCCESS)} {label}")
+
+    # Expanded error display
+    for name, output in errors:
+        marker = styled(MARKER_ERROR, ERROR)
+        tool = styled(name, BOLD_ERROR)
+        preview = output.splitlines()[0] if output.strip() else "(no output)"
+        if len(preview) > 120:
+            preview = preview[:117] + "..."
+        console.print(f"  {marker} {tool}  {preview}")
+
+    console.print()
 
 
 def format_assistant_text(text: str) -> None:

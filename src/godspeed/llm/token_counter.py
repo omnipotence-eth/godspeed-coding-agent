@@ -32,6 +32,10 @@ _MODEL_ENCODINGS: dict[str, str] = {
 }
 _DEFAULT_ENCODING = "cl100k_base"
 
+# Approximate token cost for an image content block. OpenAI's high-detail mode
+# uses ~765 tokens per image. This is a safe upper estimate for context budgeting.
+IMAGE_BLOCK_TOKEN_ESTIMATE = 765
+
 
 def get_encoding(model: str) -> tiktoken.Encoding:
     """Get the tiktoken encoding for a model. Falls back to cl100k_base."""
@@ -77,6 +81,10 @@ def count_message_tokens(messages: list[dict[str, Any]], model: str = "gpt-4") -
                 # Tool calls or content blocks
                 for item in value:
                     if isinstance(item, dict):
+                        # Image content blocks get a flat token estimate
+                        if item.get("type") == "image_url":
+                            tokens += IMAGE_BLOCK_TOKEN_ESTIMATE
+                            continue
                         for v in item.values():
                             if isinstance(v, str):
                                 tokens += len(enc.encode(v))

@@ -156,11 +156,43 @@ class GodspeedSettings(BaseSettings):
     # Model routing — map task types to specific models
     routing: dict[str, str] = Field(default_factory=dict)
 
-    # MCP servers
-    mcp_servers: list[dict[str, Any]] = Field(default_factory=list)
+    # MCP servers — each entry is a dict with keys:
+    #   name:      str   — unique server identifier (required)
+    #   transport: str   — "stdio" (default) or "sse"
+    #   command:   str   — executable for stdio transport
+    #   args:      list  — CLI args for stdio transport
+    #   env:       dict  — extra env vars for stdio subprocess
+    #   url:       str   — base URL for sse transport (e.g. "http://localhost:3001")
+    #   headers:   dict  — HTTP headers for sse transport (e.g. Authorization)
+    mcp_servers: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description=(
+            "MCP server configurations. Each entry supports 'stdio' transport "
+            "(command, args, env) or 'sse' transport (url, headers). "
+            "Defaults to stdio when transport is omitted."
+        ),
+    )
 
     # Hooks — shell commands at lifecycle events
     hooks: list[dict[str, Any]] = Field(default_factory=list)
+
+    # Agent behavior
+    parallel_tool_calls: bool = True
+    auto_fix_retries: int = 3  # lint-fix retry rounds (0 = one-shot, no auto-fix)
+    auto_commit: bool = False
+    auto_commit_threshold: int = 5
+
+    # Thinking — extended thinking for Anthropic/Claude models
+    thinking_budget: int = 0  # 0 = disabled; >0 = budget_tokens for thinking blocks
+
+    # Cost budget — hard limit on session spend (0 = unlimited)
+    max_cost_usd: float = 0.0
+
+    # Architect mode — two-model pipeline (plan then execute)
+    architect_model: str = ""  # model for planning phase; empty = use main model
+
+    # Sandboxing
+    sandbox: str = "none"  # "none" | "docker"
 
     # Memory
     memory_enabled: bool = True

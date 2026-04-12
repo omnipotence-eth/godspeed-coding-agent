@@ -71,6 +71,13 @@ class ShellTool(Tool):
                         f"Timeout in seconds (default: {DEFAULT_TIMEOUT}, max: {MAX_TIMEOUT})"
                     ),
                 },
+                "background": {
+                    "type": "boolean",
+                    "description": (
+                        "Run in background and return immediately. "
+                        "Use background_check tool to poll status."
+                    ),
+                },
             },
             "required": ["command"],
         }
@@ -79,6 +86,10 @@ class ShellTool(Tool):
         command = arguments.get("command", "")
         if not isinstance(command, str) or not command.strip():
             return ToolResult.failure("command must be a non-empty string")
+
+        # Background execution
+        if arguments.get("background", False):
+            return await self._execute_background(command, context)
 
         raw_timeout = arguments.get("timeout", DEFAULT_TIMEOUT)
         if not isinstance(raw_timeout, int):
@@ -121,3 +132,51 @@ class ShellTool(Tool):
             return ToolResult.failure(f"Exit code {proc.returncode}\n{output}")
 
         return ToolResult.success(output)
+
+    async def _execute_background(self, command: str, context: ToolContext) -> ToolResult:
+        """Spawn a command in the background and return its process ID."""
+        import asyncio
+        import time
+
+        from godspeed.tools.background import (
+            MAX_CONCURRENT,
+            BackgroundProcess,
+            BackgroundRegistry,
+            _collect_output,
+        )
+
+        registry = BackgroundRegistry.get()
+
+        if registry.active_count >= MAX_CONCURRENT:
+            return ToolResult.failure(
+                f"Too many background processes ({registry.active_count}/{MAX_CONCURRENT}). "
+                "Kill some before starting new ones."
+            )
+
+        shell_prefix = _detect_shell()
+        logger.info("shell.background command=%r", command)
+
+        proc = await asyncio.create_subprocess_exec(
+            *shell_prefix,
+            command,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            cwd=str(context.cwd),
+        )
+
+        pid = registry.next_id()
+        bg_proc = BackgroundProcess(
+            id=pid,
+            command=command,
+            process=proc,
+            started_at=time.monotonic(),
+        )
+        # Start collecting output in background
+        bg_proc._collection_task = asyncio.create_task(_collect_output(bg_proc))
+        registry.add(bg_proc)
+
+        return ToolResult.success(
+            f"Started background process {pid}\n"
+            f"Command: {command}\n"
+            f"Use background_check to poll status."
+        )

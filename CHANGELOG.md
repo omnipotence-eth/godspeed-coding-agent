@@ -7,6 +7,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-04-12
+
+### Added
+
+- **Extended thinking**: Pass `thinking` parameter to Anthropic/Claude models with configurable token budget. `/think [budget]` slash command to toggle. Thinking blocks displayed in collapsed dim panel.
+- **Notebook (.ipynb) support**: `file_read` detects `.ipynb` and renders cells as structured text with outputs. `notebook_edit` tool for cell-level operations (edit, add, delete, move).
+- **Image read tool**: `image_read` reads PNG/JPG/GIF/WebP files, returns base64-encoded content for vision-capable LLMs. Size limits (20MB reject, 5MB warning). Path traversal protection.
+- **PDF read tool**: `pdf_read` extracts text from PDF files with page range support (`pages: "1-5"`). 20-page-per-request limit. Graceful fallback when pymupdf not installed.
+- **Cost budget enforcement**: Hard cost limit via `max_cost_usd` config. `BudgetExceededError` stops agent when exceeded. `/budget [amount]` slash command to set/show budget.
+- **GitHub PR/issue tool**: `github` tool wraps `gh` CLI for create/list/view PRs and issues, add comments. 8 actions with structured JSON output. HIGH risk (modifies external state).
+- **Background command execution**: `shell` tool gains `background: true` parameter. `BackgroundRegistry` singleton tracks processes. `background_check` tool for status/output/kill.
+- **Unified diff apply tool**: `diff_apply` accepts unified diff format, applies hunks in reverse order. Multi-file support, fuzzy context matching (±3 lines), dry-run mode.
+- **Architect mode**: `/architect` toggles two-phase plan-then-execute pipeline. Phase 1 uses read-only tools for planning, Phase 2 uses full tools guided by the plan.
+- **Speculative tool execution**: During streaming, READ_ONLY tool calls are dispatched immediately before the full response completes. Results cached and consumed by the main loop — eliminates dispatch latency for reads.
+- **Risk-based parallel/serial dispatch**: Phase 3 partitions tool calls by risk level. READ_ONLY tools run in parallel via `asyncio.gather()`, write tools run sequentially. Maintains ordering.
+- **Cheapest-model compaction**: `_compact_conversation()` selects the cheapest model from the fallback chain for summarization. `get_cheapest_model()` in cost module.
+- **Typed event system**: `AgentEvent` union type with 11 frozen dataclass event types (ThinkingEvent, TextChunkEvent, ToolCallEvent, etc.) for composable agent loop consumption.
+- 250+ new tests (total: 1,200+ passing)
+
+### Changed
+
+- `agent_loop()` signature expanded: `on_thinking` callback, speculative cache for streaming
+- `LLMClient` tracks `thinking_budget`, `max_cost_usd`, `total_cost_usd`
+- `GodspeedSettings` includes `thinking_budget`, `max_cost_usd`, `architect_model`, `sandbox` fields
+- `_streaming_call()` accepts `tool_registry` and `speculative_cache` for speculative dispatch
+- `/help` updated with new commands under "Agent Control" section
+
+## [2.0.0] - 2026-04-11
+
+### Added
+
+- **Parallel tool execution**: When the LLM returns multiple tool calls, they execute concurrently via `asyncio.gather()`. 3-phase dispatch: parse → permission check (sequential) → execute (parallel). Config: `parallel_tool_calls: true` (default). Falls back to sequential for single calls or when disabled.
+- **Multimodal user messages**: `add_user_message()` accepts `str` or `list[dict]` content blocks. `build_image_content_block()` and `build_multimodal_message()` helpers for image URLs and base64 data URIs. Token counter estimates 765 tokens per image block.
+- **@-mention context injection**: `@file:path`, `@folder:path`, `@web:url` syntax in user input. Parsed via regex, resolved to content blocks injected into conversation. File/folder mentions validate paths via `resolve_tool_path()` (traversal protection). Web mentions enforce HTTPS-only with 100KB size limit.
+- **@-mention tab completion**: Typing `@` suggests mention types; `@file:` and `@folder:` complete file paths relative to project directory.
+- **Auto-commit workflow**: After configurable number of successful edits, generates a conventional commit message via LLM and commits with `Co-Authored-By: Godspeed <noreply@godspeed.dev>` attribution. Config: `auto_commit: false` (default off), `auto_commit_threshold: 5`.
+- **`/autocommit` slash command**: Toggle auto-commit on/off, set threshold. Listed in `/help` and tab-completable.
+- **Lint-fix retry loop**: Auto-verify now retries `ruff check --fix` up to N times for Python/JS files until clean. Config: `auto_fix_retries: 3` (default). Languages without deterministic fixers skip retry.
+- **MCP SSE/HTTP transport**: `MCPSSEClient` connects to remote MCP servers via HTTP/SSE alongside existing stdio transport. Config: `transport: "sse"`, `url`, `headers` fields in MCP server config. Backward compatible — missing `transport` field defaults to "stdio".
+- **Parallel tool TUI output**: `format_parallel_tool_calls()` shows grouped header with tool count and names. `format_parallel_results()` shows batch summary with success/error markers. Callbacks: `on_parallel_start`, `on_parallel_complete`.
+- **Deferred auto-verify/auto-stash for parallel mode**: Auto-verify runs sequentially after parallel batch completes. Auto-stash counts writes across batch.
+- 100+ new tests across 7 test files (total: 960+ passing)
+
+### Changed
+
+- `agent_loop()` signature expanded: `parallel_tool_calls`, `skip_user_message`, `auto_fix_retries`, `auto_commit`, `auto_commit_threshold`, `on_parallel_start`, `on_parallel_complete` parameters
+- `Conversation.add_user_message()` accepts multimodal content blocks (`list[dict]`)
+- Token counter handles `image_url` type blocks with flat 765-token estimate
+- `GodspeedSettings` includes new config fields for all v2.0 features
+
 ## [1.0.0] - 2026-04-11
 
 ### Added

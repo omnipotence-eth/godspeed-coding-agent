@@ -83,6 +83,7 @@ MARKER_ERROR = "\u2717"  # ✗
 MARKER_WARNING = "\u26a0"  # ⚠
 MARKER_TOOL = "\u25b8"  # ▸
 MARKER_INFO = "\u25cf"  # ●
+MARKER_PARALLEL = "\u26a1"  # ⚡ — parallel tool execution
 SEPARATOR_DOT = "\u00b7"  # ·
 
 # Structural characters — Crush-inspired decorative elements

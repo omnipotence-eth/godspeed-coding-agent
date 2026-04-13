@@ -281,7 +281,7 @@ async def agent_loop(
                         logger.debug("Speculative hit tool=%s call_id=%s", tc.tool_name, tc.call_id)
                         coros.append(cached_task)
                     else:
-                        coros.append(tool_registry.dispatch(tc, tool_context))
+                        coros.append(asyncio.create_task(tool_registry.dispatch(tc, tool_context)))
                 parallel_results = list(await asyncio.gather(*coros))
 
             # Dispatch write tools sequentially

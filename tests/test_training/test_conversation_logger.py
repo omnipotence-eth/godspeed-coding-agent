@@ -133,11 +133,13 @@ class TestConversationLogger:
         clog.log_user("Read app.py")
         clog.log_assistant(
             content="",
-            tool_calls=[{
-                "id": "call_1",
-                "type": "function",
-                "function": {"name": "file_read", "arguments": '{"file_path":"app.py"}'},
-            }],
+            tool_calls=[
+                {
+                    "id": "call_1",
+                    "type": "function",
+                    "function": {"name": "file_read", "arguments": '{"file_path":"app.py"}'},
+                }
+            ],
         )
         clog.log_tool_result("call_1", "file_read", "1\tdef main(): pass")
         clog.log_assistant(content="The file has a main function.")

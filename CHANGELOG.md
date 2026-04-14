@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.0] — 2026-04-13
+
+### Added
+
+- **Fine-tuning data pipeline** (Units A-F): Full infrastructure for collecting training data and fine-tuning tool-calling LLMs on Godspeed conversations.
+  - **ConversationLogger**: Persists every conversation message (user, assistant, tool results, compaction summaries) to per-session JSONL at `~/.godspeed/training/`. Gated on `log_conversations` config.
+  - **TrainingExporter**: Converts conversation logs to `openai`, `chatml`, and `sharegpt` fine-tuning formats with filtering (min_tool_calls, success_only, min_turns, tool whitelist). CLI: `godspeed export-training`.
+  - **Per-step reward annotations**: Automatic reward signals for GRPO/DPO — success (+1.0), verify passed (+0.5), dangerous command (-1.0), efficient sequence bonus (+0.5). Session-level summarization.
+  - **Benchmark suite**: 20 hand-crafted tasks (easy/medium/hard) with Jaccard tool selection scoring and LCS sequence quality scoring.
+  - **Tool description enhancement**: All 10 core tools now include inline usage examples and JSON Schema `examples` fields for better training signal.
+  - **Common workflows in system prompt**: 5 canonical multi-step patterns (fix bug, add feature, explore codebase, git workflow, research/debug).
+- 110 new training pipeline tests (total: 1,557 passing)
+
 ## [Unreleased]
 
 ### Added

@@ -26,7 +26,9 @@ class FileWriteTool(Tool):
     def description(self) -> str:
         return (
             "Write content to a file. Creates the file and parent directories if needed. "
-            "Overwrites existing content. Use file_edit for precise modifications."
+            "Overwrites existing content. Use file_edit for precise modifications.\n\n"
+            "Example: file_write(file_path='src/utils.py', content='def helper():\\n    pass')\n"
+            "Example: file_write(file_path='config.json', content='{\"debug\": true}')"
         )
 
     @property
@@ -40,6 +42,7 @@ class FileWriteTool(Tool):
                 "file_path": {
                     "type": "string",
                     "description": "Path to the file to write (relative to project root)",
+                    "examples": ["src/utils.py", "config.json", "tests/test_new.py"],
                 },
                 "content": {
                     "type": "string",

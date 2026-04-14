@@ -260,6 +260,18 @@ async def _run_app(
         # Purge expired audit logs on startup
         audit_trail.cleanup_expired(settings.audit.retention_days)
 
+    # Conversation logger (training data collection)
+    conversation_logger = None
+    if settings.log_conversations:
+        from godspeed.training.conversation_logger import ConversationLogger
+
+        training_dir = settings.global_dir / "training"
+        conversation_logger = ConversationLogger(
+            session_id=session_id,
+            output_dir=training_dir,
+        )
+        logger.info("Conversation logging enabled output_dir=%s", training_dir)
+
     # Tool context
     tool_context = ToolContext(
         cwd=effective_project_dir,
@@ -303,6 +315,7 @@ async def _run_app(
         model=effective_model,
         max_tokens=settings.max_context_tokens,
         compaction_threshold=settings.compaction_threshold,
+        conversation_logger=conversation_logger,
     )
 
     # MCP server discovery
@@ -400,6 +413,10 @@ async def _run_app(
         codebase_index=codebase_index,
     )
     await app.run()
+
+    # Close conversation logger
+    if conversation_logger is not None:
+        conversation_logger.close()
 
     # Post-session hooks
     if hook_executor is not None:
@@ -698,11 +715,23 @@ async def _headless_run(
         max_cost_usd=settings.max_cost_usd,
     )
 
+    # Conversation logger (training data collection)
+    conversation_logger = None
+    if settings.log_conversations:
+        from godspeed.training.conversation_logger import ConversationLogger
+
+        training_dir = settings.global_dir / "training"
+        conversation_logger = ConversationLogger(
+            session_id=session_id,
+            output_dir=training_dir,
+        )
+
     conversation = Conversation(
         system_prompt=system_prompt,
         model=effective_model,
         max_tokens=settings.max_context_tokens,
         compaction_threshold=settings.compaction_threshold,
+        conversation_logger=conversation_logger,
     )
 
     # Callbacks — write to stderr for tool activity, keep stdout for result
@@ -727,6 +756,10 @@ async def _headless_run(
         on_tool_result=on_tool_result,
         max_iterations=max_iterations,
     )
+
+    # Close conversation logger
+    if conversation_logger is not None:
+        conversation_logger.close()
 
     # Output result to stdout
     if json_output:
@@ -785,3 +818,100 @@ def models() -> None:
     c.print(f"    [{DIM}]Env var:[/{DIM}]      GODSPEED_MODEL=gpt-4o godspeed")
     c.print(f"    [{DIM}]Settings:[/{DIM}]     Edit ~/.godspeed/settings.yaml")
     c.print(f"    [{DIM}]At runtime:[/{DIM}]   /model claude-sonnet-4-20250514")
+
+
+@main.command("export-training")
+@click.option(
+    "--format",
+    "fmt",
+    type=click.Choice(["openai", "chatml", "sharegpt"]),
+    default="openai",
+    help="Output format (default: openai).",
+)
+@click.option(
+    "--output",
+    "-o",
+    type=click.Path(path_type=Path),
+    default=Path("training_data.jsonl"),
+    help="Output file path (default: training_data.jsonl).",
+)
+@click.option("--success-only", is_flag=True, help="Only export sessions with no tool errors.")
+@click.option("--min-tools", type=int, default=1, help="Minimum tool calls per session.")
+@click.option("--min-turns", type=int, default=2, help="Minimum user turns per session.")
+@click.option("--max-sessions", type=int, default=0, help="Max sessions to export (0=all).")
+@click.option(
+    "--tools",
+    type=str,
+    default=None,
+    help="Comma-separated tool names to filter by (e.g. 'file_read,file_edit').",
+)
+@click.option(
+    "--max-tool-output",
+    type=int,
+    default=2000,
+    help="Max chars per tool output (default: 2000).",
+)
+def export_training(
+    fmt: str,
+    output: Path,
+    success_only: bool,
+    min_tools: int,
+    min_turns: int,
+    max_sessions: int,
+    tools: str | None,
+    max_tool_output: int,
+) -> None:
+    """Export conversation logs to fine-tuning JSONL.
+
+    Reads conversation logs from ~/.godspeed/training/ and converts them
+    to the specified format for LLM fine-tuning.
+
+    Examples:
+        godspeed export-training --format openai --output training.jsonl
+        godspeed export-training --format sharegpt --success-only --min-tools 3
+        godspeed export-training --format chatml --tools file_read,file_edit
+    """
+    from rich.console import Console as RichConsole
+
+    from godspeed.config import DEFAULT_GLOBAL_DIR
+    from godspeed.training.exporter import ExportFilters, TrainingExporter
+    from godspeed.tui.theme import DIM, ERROR, SUCCESS
+
+    c = RichConsole()
+    training_dir = DEFAULT_GLOBAL_DIR / "training"
+
+    if not training_dir.exists():
+        c.print(f"[{ERROR}]No training data found at {training_dir}[/{ERROR}]")
+        c.print(f"[{DIM}]Enable conversation logging in settings (log_conversations: true)[/{DIM}]")
+        sys.exit(1)
+
+    tool_list = [t.strip() for t in tools.split(",")] if tools else None
+
+    filters = ExportFilters(
+        min_tool_calls=min_tools,
+        success_only=success_only,
+        min_turns=min_turns,
+        tools=tool_list,
+        max_sessions=max_sessions,
+    )
+
+    exporter = TrainingExporter()
+    stats = exporter.export_all(
+        training_dir=training_dir,
+        output_path=output,
+        fmt=fmt,
+        filters=filters,
+        max_tool_output=max_tool_output,
+    )
+
+    c.print(f"[{SUCCESS}]Export complete[/{SUCCESS}]")
+    c.print(f"  Format:   {fmt}")
+    c.print(f"  Output:   {output}")
+    c.print(f"  Sessions: {stats.sessions_exported}/{stats.sessions_scanned} exported")
+    c.print(f"  Filtered: {stats.sessions_filtered}")
+    c.print(f"  Messages: {stats.total_messages}")
+    c.print(f"  Tool calls: {stats.total_tool_calls}")
+    if stats.errors:
+        c.print(f"  [{ERROR}]Errors: {len(stats.errors)}[/{ERROR}]")
+        for err in stats.errors[:5]:
+            c.print(f"    {err}")

@@ -31,7 +31,10 @@ class GlobSearchTool(Tool):
         return (
             "Find files matching a glob pattern (e.g., '**/*.py'). "
             "Returns file paths sorted by modification time (newest first). "
-            "Excludes common directories like node_modules, .venv, __pycache__, .git."
+            "Excludes common directories like node_modules, .venv, __pycache__, .git.\n\n"
+            "Example: glob_search(pattern='**/*.py')\n"
+            "Example: glob_search(pattern='src/**/*.ts', path='frontend/')\n"
+            "Example: glob_search(pattern='**/test_*.py')"
         )
 
     @property
@@ -45,6 +48,7 @@ class GlobSearchTool(Tool):
                 "pattern": {
                     "type": "string",
                     "description": "Glob pattern to match files (e.g., '**/*.py', 'src/**/*.ts')",
+                    "examples": ["**/*.py", "src/**/*.ts", "**/test_*.py"],
                 },
                 "path": {
                     "type": "string",

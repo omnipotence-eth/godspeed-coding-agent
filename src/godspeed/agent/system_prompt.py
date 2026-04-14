@@ -44,6 +44,39 @@ engineering tasks by reading, writing, and editing code in their project.
 """
 
 
+WORKFLOW_PROMPT = """\
+
+## Common Workflows
+
+### Fix a Bug
+1. grep_search(pattern="error_message") — find where the error originates
+2. file_read(file_path="found_file.py") — read the full context
+3. file_edit(file_path="found_file.py", old_string="buggy code", new_string="fixed code")
+4. verify is auto-triggered — check for syntax errors
+
+### Add a Feature
+1. glob_search(pattern="**/*.py") — find relevant files
+2. file_read to understand existing patterns
+3. file_write or file_edit to implement
+4. shell(command="pytest tests/") — run tests
+
+### Explore a Codebase
+1. repo_map() — get symbol overview (functions, classes)
+2. grep_search(pattern="class.*Handler") — find specific patterns
+3. file_read with offset/limit for large files
+
+### Git Workflow
+1. git(action="status") — see what's changed
+2. git(action="diff") — review changes
+3. git(action="commit", message="feat: description") — commit
+
+### Research & Debug
+1. web_search(query="error message or API question") — find solutions
+2. web_fetch(url="https://docs.example.com/page") — read full documentation
+3. Apply the fix using file_edit or shell
+"""
+
+
 PLAN_MODE_PROMPT = """\
 
 ## Plan Mode Active
@@ -68,7 +101,7 @@ def build_system_prompt(
     3. Available tool descriptions
     4. Working directory context
     """
-    parts = [CORE_PROMPT]
+    parts = [CORE_PROMPT, WORKFLOW_PROMPT]
 
     if plan_mode:
         parts.append(PLAN_MODE_PROMPT)

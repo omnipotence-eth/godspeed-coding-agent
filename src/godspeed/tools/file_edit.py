@@ -33,7 +33,13 @@ class FileEditTool(Tool):
         return (
             "Edit a file by replacing old_string with new_string. "
             "The old_string must be unique in the file (include surrounding context "
-            "to ensure uniqueness). Read the file first to get exact content."
+            "to ensure uniqueness). Read the file first to get exact content. "
+            "Falls back to fuzzy matching if whitespace drifts.\n\n"
+            "Example: file_edit(file_path='app.py', "
+            "old_string='def hello():\\n    pass', "
+            "new_string='def hello():\\n    return \"world\"')\n"
+            "Example: file_edit(file_path='config.yaml', "
+            "old_string='debug: false', new_string='debug: true')"
         )
 
     @property
@@ -47,6 +53,7 @@ class FileEditTool(Tool):
                 "file_path": {
                     "type": "string",
                     "description": "Path to the file to edit (relative to project root)",
+                    "examples": ["src/app.py", "config.yaml"],
                 },
                 "old_string": {
                     "type": "string",

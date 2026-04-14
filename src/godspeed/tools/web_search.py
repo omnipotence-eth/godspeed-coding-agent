@@ -40,7 +40,9 @@ class WebSearchTool(Tool):
         return (
             "Search the web for documentation, error messages, API references, "
             "or solutions. Returns titles, URLs, and snippets. No API key required. "
-            "Use web_fetch to read full pages from results."
+            "Use web_fetch to read full pages from results.\n\n"
+            "Example: web_search(query='python asyncio timeout example')\n"
+            "Example: web_search(query='FastAPI dependency injection', max_results=5)"
         )
 
     @property
@@ -54,6 +56,7 @@ class WebSearchTool(Tool):
                 "query": {
                     "type": "string",
                     "description": "Search query (e.g., 'python asyncio timeout example')",
+                    "examples": ["python asyncio timeout example", "FastAPI middleware tutorial"],
                 },
                 "max_results": {
                     "type": "integer",

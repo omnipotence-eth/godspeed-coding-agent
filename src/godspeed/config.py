@@ -198,6 +198,9 @@ class GodspeedSettings(BaseSettings):
     evolution_enabled: bool = False  # enable with /evolve or config
     evolution_model: str = ""  # model for mutations/judging; empty = auto-detect
 
+    # Training data — log full conversations for fine-tuning
+    log_conversations: bool = True
+
     # Memory
     memory_enabled: bool = True
 

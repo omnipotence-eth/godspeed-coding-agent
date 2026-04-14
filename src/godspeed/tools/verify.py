@@ -62,7 +62,9 @@ class VerifyTool(Tool):
         return (
             "Run linter checks on a file to catch syntax errors and style issues. "
             "Supports Python (ruff), JS/TS (biome/eslint), Go (go vet), "
-            "Rust (cargo check), C/C++ (clang-tidy). Returns clean or error details."
+            "Rust (cargo check), C/C++ (clang-tidy). Returns clean or error details.\n\n"
+            "Example: verify(file_path='src/app.py')\n"
+            "Example: verify(file_path='index.ts')"
         )
 
     @property
@@ -76,6 +78,7 @@ class VerifyTool(Tool):
                 "file_path": {
                     "type": "string",
                     "description": "Path to the file to verify (relative to project root)",
+                    "examples": ["src/app.py", "index.ts", "main.go"],
                 },
             },
             "required": ["file_path"],

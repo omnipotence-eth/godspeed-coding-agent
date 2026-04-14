@@ -81,7 +81,10 @@ class GrepSearchTool(Tool):
         return (
             "Search file contents using a regex pattern. "
             "Shows matching lines with line numbers and surrounding context. "
-            "Excludes common directories like node_modules, .venv, __pycache__, .git."
+            "Excludes common directories like node_modules, .venv, __pycache__, .git.\n\n"
+            "Example: grep_search(pattern='def authenticate')\n"
+            "Example: grep_search(pattern='TODO|FIXME', glob='*.py')\n"
+            "Example: grep_search(pattern='import requests', path='src/')"
         )
 
     @property

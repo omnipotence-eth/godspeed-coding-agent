@@ -66,7 +66,9 @@ class WebFetchTool(Tool):
         return (
             "Fetch a URL and return the page content as readable text. "
             "Strips HTML to plain text. Use for documentation, API refs, error lookups. "
-            "Max 10K chars returned."
+            "Max 10K chars returned.\n\n"
+            "Example: web_fetch(url='https://docs.python.org/3/library/asyncio.html')\n"
+            "Example: web_fetch(url='https://fastapi.tiangolo.com/tutorial/dependencies/')"
         )
 
     @property

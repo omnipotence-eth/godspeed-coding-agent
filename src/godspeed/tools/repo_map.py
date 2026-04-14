@@ -28,7 +28,10 @@ class RepoMapTool(Tool):
         return (
             "Generate a symbol map of a directory showing classes, functions, "
             "and methods with line numbers. Uses tree-sitter for accurate parsing. "
-            "Supports Python, JavaScript, TypeScript, and Go."
+            "Supports Python, JavaScript, TypeScript, and Go.\n\n"
+            "Example: repo_map()\n"
+            "Example: repo_map(path='src/', pattern='*.py')\n"
+            "Example: repo_map(path='lib/', max_depth=3)"
         )
 
     @property

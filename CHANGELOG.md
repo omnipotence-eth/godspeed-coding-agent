@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Self-evolution system** (Units 20-27): Learn from execution traces to improve prompts, tool descriptions, and permissions automatically. Runs entirely on Ollama for $0 — optional API acceleration.
+  - **Trace analyzer**: Parse audit trail JSONL into failure patterns, latency stats, permission insights, and repeated tool sequences.
+  - **Evolution engine**: GEPA-style LLM-guided mutations for tool descriptions, system prompt sections, compaction prompts, and auto-generated skills.
+  - **Fitness evaluator**: A/B testing with LLM-as-judge scoring (0.5×correctness + 0.3×procedure + 0.2×conciseness). Length penalty for bloat.
+  - **Safety gate**: Size limit (<2x growth), semantic drift (Jaccard ≥0.3), fitness threshold, confidence check, human review for high-impact artifacts.
+  - **Evolution registry**: Append-only JSONL history with apply/revert/rollback. Originals backed up before mutation.
+  - **Runtime hot-swap**: Update tool descriptions in-memory via `ToolRegistry._description_overrides`. Prompt section overrides loaded on startup.
+  - **Cross-session learning**: Aggregate insights across sessions, model-specific analysis, regression detection with rollback/investigate/monitor recommendations.
+  - **Skill auto-generation**: Detect repeated multi-tool patterns (≥3 occurrences) → generate reusable skill markdown with YAML frontmatter.
+  - **Permission pattern learning**: Analyze denial/approval patterns → suggest allowlist optimizations with rationale.
+  - **Hardware-aware model selection**: Auto-detect VRAM (nvidia-smi + Jetson /proc/meminfo), pick largest fitting model from tier list. Scales candidates and batch sizes by available memory. Jetson Orin Nano 8GB → qwen2.5:3b with 2 candidates.
+  - **`/evolve` command**: status, run, history, rollback, review, approve, reject subcommands.
+- 175 new evolution tests (total: 1,400+ passing)
+
+### Changed
+
+- `ToolRegistry` gains `_description_overrides` dict, `update_description()`, `clear_description_override()`, `get_description()` methods
+- `GodspeedSettings` includes `evolution_enabled` and `evolution_model` fields
+- Trace analyzer uses streaming line-by-line reads instead of `readlines()` for low-memory devices
+
 ## [2.1.0] - 2026-04-12
 
 ### Added

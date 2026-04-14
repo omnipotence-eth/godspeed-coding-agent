@@ -111,6 +111,7 @@ class Commands:
         self._handlers["/architect"] = self._cmd_architect
         self._handlers["/think"] = self._cmd_think
         self._handlers["/budget"] = self._cmd_budget
+        self._handlers["/evolve"] = self._cmd_evolve
         self._handlers["/export"] = self._cmd_export
         self._handlers["/quit"] = self._cmd_quit
         self._handlers["/exit"] = self._cmd_quit
@@ -171,6 +172,7 @@ class Commands:
                     ("/architect", "Toggle architect mode (plan then execute)"),
                     ("/think [budget]", "Toggle extended thinking or set token budget"),
                     ("/budget [amount]", "Show/set cost budget in USD"),
+                    ("/evolve [cmd]", "Self-evolution: status|run|history|rollback|review"),
                     ("/pause", "Pause the agent loop"),
                     ("/resume", "Resume a paused agent"),
                     ("/guidance <msg>", "Inject guidance and resume"),
@@ -509,6 +511,114 @@ class Commands:
 
         self._llm_client.max_cost_usd = limit
         format_success(f"Cost budget set to [{BOLD_PRIMARY}]${limit:.2f}[/{BOLD_PRIMARY}]")
+        return CommandResult(handled=True)
+
+    def _cmd_evolve(self, args: str = "") -> CommandResult:
+        """Self-evolution system commands."""
+        from godspeed.evolution.registry import EvolutionRegistry
+
+        parts = args.strip().split(None, 1)
+        subcmd = parts[0] if parts else "status"
+
+        # Use global dir for evolution storage
+        evo_dir = self._cwd / ".godspeed" / "evolution"
+
+        if subcmd == "status":
+            try:
+                registry = EvolutionRegistry(evo_dir)
+                stats = registry.stats()
+                format_info(
+                    f"[{BOLD_PRIMARY}]Evolution Status[/{BOLD_PRIMARY}]\n"
+                    f"  Total mutations: {stats['total_mutations']}\n"
+                    f"  Active: {stats['active']}\n"
+                    f"  Reverted: {stats['reverted']}\n"
+                    f"  Safety passed: {stats['safety_passed']}\n"
+                    f"  Safety failed: {stats['safety_failed']}\n"
+                    f"  Avg fitness: {stats['avg_fitness']:.3f}"
+                )
+            except Exception:
+                format_info(
+                    "No evolution data yet. "
+                    f"Run [{BOLD_PRIMARY}]/evolve run[/{BOLD_PRIMARY}] to start."
+                )
+            return CommandResult(handled=True)
+
+        if subcmd == "history":
+            artifact_id = parts[1] if len(parts) > 1 else ""
+            if not artifact_id:
+                format_error("Usage: /evolve history <artifact_id>")
+                return CommandResult(handled=True)
+
+            registry = EvolutionRegistry(evo_dir)
+            history = registry.get_history(artifact_id)
+            if not history:
+                format_info(
+                    f"No evolution history for [{BOLD_PRIMARY}]{artifact_id}[/{BOLD_PRIMARY}]"
+                )
+            else:
+                for rec in history:
+                    if rec.applied_at and not rec.reverted_at:
+                        status = "active"
+                    elif rec.reverted_at:
+                        status = "reverted"
+                    else:
+                        status = "candidate"
+                    format_info(
+                        f"  [{DIM}]{rec.record_id}[/{DIM}] fitness={rec.fitness_overall:.3f} "
+                        f"status={status} model={rec.model_used}"
+                    )
+            return CommandResult(handled=True)
+
+        if subcmd == "rollback":
+            record_id = parts[1] if len(parts) > 1 else ""
+            if not record_id:
+                format_error("Usage: /evolve rollback <record_id>")
+                return CommandResult(handled=True)
+
+            registry = EvolutionRegistry(evo_dir)
+            record = registry.get_record(record_id)
+            if record is None:
+                format_error(f"Record not found: {record_id}")
+            else:
+                registry.mark_reverted(record_id)
+                format_success(f"Rolled back [{BOLD_PRIMARY}]{record_id}[/{BOLD_PRIMARY}]")
+            return CommandResult(handled=True)
+
+        if subcmd == "review":
+            registry = EvolutionRegistry(evo_dir)
+            records = [
+                r
+                for r in registry._load_records()
+                if r.safety_passed and not r.applied_at and r.requires_review
+            ]
+            if not records:
+                format_info("No pending reviews.")
+            else:
+                for rec in records:
+                    format_info(
+                        f"  [{BOLD_PRIMARY}]{rec.record_id}[/{BOLD_PRIMARY}] "
+                        f"{rec.artifact_type}:{rec.artifact_id} "
+                        f"fitness={rec.fitness_overall:.3f}"
+                    )
+                format_info(f"\nApprove with: [{DIM}]/evolve approve <id>[/{DIM}]")
+            return CommandResult(handled=True)
+
+        if subcmd == "run":
+            format_info(
+                f"[{BOLD_PRIMARY}]Evolution run[/{BOLD_PRIMARY}] — analyzing traces...\n"
+                f"  [{DIM}]This runs asynchronously. Results will appear when complete.[/{DIM}]"
+            )
+            # The actual run is kicked off by the agent loop when it sees this message
+            return CommandResult(
+                handled=True,
+                message=(
+                    "Run evolution cycle: analyze traces → mutate → evaluate → apply improvements."
+                ),
+            )
+
+        format_error(
+            f"Unknown subcommand: {subcmd}\n  Usage: /evolve [status|run|history|rollback|review]"
+        )
         return CommandResult(handled=True)
 
     def _cmd_context(self, _args: str = "") -> CommandResult:

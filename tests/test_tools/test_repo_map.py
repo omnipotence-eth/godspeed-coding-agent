@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 from pathlib import Path
 
 import pytest
@@ -9,6 +10,8 @@ import pytest
 from godspeed.context.repo_map import RepoMapper, Symbol
 from godspeed.tools.base import ToolContext
 from godspeed.tools.repo_map import RepoMapTool
+
+_has_tree_sitter = importlib.util.find_spec("tree_sitter_language_pack") is not None
 
 
 @pytest.fixture
@@ -21,6 +24,13 @@ def tool() -> RepoMapTool:
     return RepoMapTool()
 
 
+_skip_no_treesitter = pytest.mark.skipif(
+    not _has_tree_sitter,
+    reason="requires godspeed[context]",
+)
+
+
+@_skip_no_treesitter
 class TestRepoMapper:
     """Test the tree-sitter symbol extraction."""
 
@@ -144,6 +154,7 @@ class TestSymbol:
         assert "  method(L3)" in formatted
 
 
+@_skip_no_treesitter
 class TestRepoMapTool:
     """Test the tool wrapper."""
 

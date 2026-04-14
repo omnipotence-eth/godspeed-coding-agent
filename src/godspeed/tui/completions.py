@@ -22,6 +22,7 @@ SLASH_COMMANDS: list[tuple[str, str]] = [
     ("/architect", "Toggle architect mode (plan then execute)"),
     ("/think", "Toggle extended thinking or set token budget"),
     ("/budget", "Show/set cost budget in USD"),
+    ("/evolve", "Self-evolution: status|run|history|rollback|review"),
     ("/quit", "Exit Godspeed"),
     ("/exit", "Exit Godspeed"),
 ]

@@ -19,6 +19,7 @@ class ToolRegistry:
 
     def __init__(self) -> None:
         self._tools: dict[str, Tool] = {}
+        self._description_overrides: dict[str, str] = {}  # tool_name -> override
 
     def register(self, tool: Tool) -> None:
         """Register a tool. Raises ValueError on duplicate names."""
@@ -40,20 +41,48 @@ class ToolRegistry:
         """Return all registered tools."""
         return list(self._tools.values())
 
+    def update_description(self, tool_name: str, description: str) -> bool:
+        """Set a runtime description override for a tool.
+
+        The override is used in get_schemas() instead of the tool's built-in
+        description. Used by the self-evolution system to hot-swap descriptions.
+
+        Returns:
+            True if the tool exists and the override was set.
+        """
+        if tool_name not in self._tools:
+            return False
+        self._description_overrides[tool_name] = description
+        logger.debug("Description override set tool=%s len=%d", tool_name, len(description))
+        return True
+
+    def clear_description_override(self, tool_name: str) -> None:
+        """Remove a description override, reverting to the built-in description."""
+        self._description_overrides.pop(tool_name, None)
+
+    def get_description(self, tool_name: str) -> str | None:
+        """Get the effective description for a tool (override or built-in)."""
+        if tool_name in self._description_overrides:
+            return self._description_overrides[tool_name]
+        tool = self._tools.get(tool_name)
+        return tool.description if tool else None
+
     def get_schemas(self) -> list[dict[str, Any]]:
         """Generate tool schemas in the format expected by LLM APIs.
 
         Returns a list of tool definitions compatible with OpenAI/Anthropic
-        function calling format (LiteLLM normalizes this).
+        function calling format (LiteLLM normalizes this). Uses description
+        overrides from the self-evolution system when available.
         """
         schemas = []
         for tool in self._tools.values():
+            description = self._description_overrides.get(tool.name, tool.description)
             schemas.append(
                 {
                     "type": "function",
                     "function": {
                         "name": tool.name,
-                        "description": tool.description,
+                        "description": description,
                         "parameters": tool.get_schema(),
                     },
                 }

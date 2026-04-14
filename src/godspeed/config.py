@@ -194,6 +194,10 @@ class GodspeedSettings(BaseSettings):
     # Sandboxing
     sandbox: str = "none"  # "none" | "docker"
 
+    # Self-evolution — learn from execution traces to improve prompts/tools
+    evolution_enabled: bool = False  # enable with /evolve or config
+    evolution_model: str = ""  # model for mutations/judging; empty = auto-detect
+
     # Memory
     memory_enabled: bool = True
 

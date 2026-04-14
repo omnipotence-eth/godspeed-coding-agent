@@ -1,7 +1,7 @@
-# Godspeed Architecture (v0.6.0)
+# Godspeed Architecture (v2.2.0)
 
 > Security-first coding agent. Hand-rolled ReAct loop. No framework overhead.
-> 53 modules · 6,988 LOC · 626 tests · 90% coverage
+> 1,417+ tests passing
 
 ---
 
@@ -9,14 +9,14 @@
 
 ## Part 1: Core Loop
 
-**Files**: `agent/loop.py` (365 lines), `agent/conversation.py` (121 lines)
+**Files**: `agent/loop.py`, `agent/conversation.py`, `agent/events.py`
 
 ### ReAct Cycle
 
-The agent loop (`async agent_loop()`) follows the pattern proven by mini-swe-agent (74%+ SWE-bench):
+The agent loop (`async agent_loop()`) follows the pattern proven by mini-swe-agent (74%+ SWE-bench), extended with parallel tool execution, speculative dispatch, and cost budget enforcement:
 
 ```
-User input → Conversation → LLM call → Tool calls? → Execute → Loop
+User input → Conversation → LLM call → Tool calls? → Parallel/Serial Split → Execute → Loop
                                       → Text only?  → Return (done)
 ```
 
@@ -24,23 +24,29 @@ User input → Conversation → LLM call → Tool calls? → Execute → Loop
 flowchart TD
     A[User Input] --> B[Add to Conversation]
     B --> C{Near Token Limit?}
-    C -->|Yes| D[Compact Conversation]
-    C -->|No| E[LLM Call]
+    C -->|Yes| D[Compact via Cheapest Model]
+    C -->|No| E{Budget OK?}
     D --> E
-    E --> F{Has Tool Calls?}
-    F -->|No| G[Return Final Text]
-    F -->|Yes| H[Check Permissions]
-    H -->|Denied| I[Record Denial]
-    H -->|Allowed| J[Execute Tool]
-    I --> K{More Tool Calls?}
-    J --> L[Auto-Verify if .py]
-    L --> M[Auto-Stash if 3+ writes]
-    M --> N[Stuck Loop Check]
-    N --> K
-    K -->|Yes| H
-    K -->|No| O{Under Iteration Limit?}
-    O -->|Yes| C
-    O -->|No| P[Return Max Iterations Error]
+    E -->|No| F[Return BudgetExceededError]
+    E -->|Yes| G[LLM Call / Stream]
+    G --> H{Has Tool Calls?}
+    H -->|No| I[Return Final Text]
+    H -->|Yes| J[Speculative Dispatch READ_ONLY]
+    J --> K[Check Permissions]
+    K -->|Denied| L[Record Denial]
+    K -->|Allowed| M{Risk-Based Split}
+    M -->|READ_ONLY| N[Parallel Dispatch]
+    M -->|Write| O[Serial Dispatch]
+    L --> P{More Tool Calls?}
+    N --> Q[Auto-Verify if .py]
+    O --> Q
+    Q --> R[Auto-Stash if 3+ writes]
+    R --> S[Stuck Loop Check]
+    S --> P
+    P -->|Yes| K
+    P -->|No| T{Under Iteration Limit?}
+    T -->|Yes| C
+    T -->|No| U[Return Max Iterations Error]
 ```
 
 ### Constants
@@ -52,7 +58,7 @@ flowchart TD
 | `STUCK_LOOP_THRESHOLD` | 3 | Identical errors before intervention |
 | `AUTO_STASH_THRESHOLD` | 3 | Consecutive writes before git stash |
 
-### Five Callback Types
+### Callback Types
 
 All optional parameters to `agent_loop()`:
 
@@ -63,8 +69,20 @@ All optional parameters to `agent_loop()`:
 | `OnToolResult` | `(str, ToolResult) → None` | After tool execution |
 | `OnPermissionDenied` | `(str, str) → None` | Permission engine blocks a call |
 | `OnChunk` | `(str) → None` | Each streaming text delta |
+| `OnThinking` | `(str) → None` | Extended thinking block from Claude |
 
 **Streaming vs Batch**: When `on_assistant_chunk` is provided, uses `llm_client.stream_chat()` (async generator). Otherwise uses `llm_client.chat()` (batch). The `on_assistant_text` callback is skipped when streaming was used (prevents double-render).
+
+### Speculative Tool Dispatch
+
+During LLM streaming, tool calls are parsed incrementally. When a complete READ_ONLY tool call is detected before generation finishes, it is dispatched immediately as a background `asyncio.Task`. When the full response arrives, cached results are used instead of re-executing. This significantly reduces latency for read-heavy workflows.
+
+### Parallel / Serial Tool Dispatch
+
+When the LLM returns multiple tool calls in a single response:
+- **READ_ONLY** tools (file_read, glob_search, grep_search, repo_map, verify) are dispatched in parallel via `asyncio.gather()`
+- **Write** tools (file_edit, file_write, shell, git) are dispatched sequentially to prevent race conditions
+- Results are ordered: read results first, then write results
 
 ### Pause/Resume
 
@@ -99,7 +117,7 @@ Token counting via `count_message_tokens(messages, model)` from the tokenizer mo
 
 ## Part 2: Security Model
 
-**Files**: `security/permissions.py` (197 lines), `security/dangerous.py` (139 lines), `security/secrets.py` (176 lines)
+**Files**: `security/permissions.py`, `security/dangerous.py`, `security/secrets.py`
 
 ### Permission Evaluation Order
 
@@ -200,7 +218,7 @@ redact_secrets(text) -> str  # replaces with [REDACTED]
 
 ## Part 3: Tool System
 
-**Files**: `tools/base.py` (166 lines), `tools/registry.py` (89 lines)
+**Files**: `tools/base.py`, `tools/registry.py`
 
 ### Tool ABC
 
@@ -264,21 +282,40 @@ class ToolRegistry:
     async dispatch(tool_call, context) -> ToolResult
 ```
 
-### Built-In Tools (9)
+### Built-In Tools (18+)
+
+**Core Tools (always registered):**
 
 | Tool | Risk Level | Purpose |
 |------|-----------|---------|
 | `file_read` | READ_ONLY | Read file content with line numbers |
 | `file_write` | LOW | Create or overwrite file |
 | `file_edit` | LOW | Search/replace in existing file |
-| `shell` | HIGH | Run bash commands (cwd-sandboxed) |
+| `shell` | HIGH | Run bash commands (cwd-sandboxed, supports `background` mode) |
 | `git` | HIGH | Git operations (status, commit, diff, stash, etc.) |
 | `glob_search` | READ_ONLY | Find files by glob pattern |
 | `grep_search` | READ_ONLY | Search file content with regex |
 | `repo_map` | READ_ONLY | Tree-sitter symbol extraction |
-| `verify` | READ_ONLY | Run linter checks (ruff for Python) |
+| `verify` | READ_ONLY | Run linter checks (ruff for Python, with lint-fix retry) |
+| `test_runner` | HIGH | Run pytest/npm test with output capture |
+| `web_search` | READ_ONLY | Search the web via DuckDuckGo |
+| `web_fetch` | READ_ONLY | Fetch URL content as markdown |
+| `notebook_edit` | LOW | Cell-level Jupyter notebook operations |
+| `background_check` | LOW | Poll/read/kill background shell processes |
+| `task` | LOW | Create and manage task lists |
+| `spawn_agent` | HIGH | Delegate work to sub-agents |
 
-Plus `spawn_agent` (HIGH) when sub-agents are enabled, and any MCP tools (HIGH) when MCP servers are configured.
+**Optional Tools (registered when dependencies available):**
+
+| Tool | Risk Level | Extra | Purpose |
+|------|-----------|-------|---------|
+| `image_read` | READ_ONLY | `[image]` | Read PNG/JPG/GIF/WebP as base64 for vision LLMs |
+| `pdf_read` | READ_ONLY | `[pdf]` | Extract text from PDF with page ranges |
+| `github` | HIGH | (requires `gh` CLI) | Create PRs, read issues, comment |
+| `diff_apply` | LOW | — | Apply unified diff patches to files |
+| `code_search` | READ_ONLY | `[search]` | Semantic code search via embeddings |
+
+Plus any MCP tools (HIGH) dynamically registered from configured MCP servers.
 
 ---
 
@@ -286,7 +323,7 @@ Plus `spawn_agent` (HIGH) when sub-agents are enabled, and any MCP tools (HIGH) 
 
 ## Part 4: Intelligence
 
-**Files**: `agent/system_prompt.py` (85 lines), `context/compaction.py` (98 lines), `llm/client.py` (382 lines), `context/checkpoint.py` (80 lines), `context/repo_map.py` (238 lines), `tools/verify.py` (87 lines)
+**Files**: `agent/system_prompt.py`, `context/compaction.py`, `llm/client.py`, `llm/cost.py`, `context/checkpoint.py`, `context/repo_map.py`, `tools/verify.py`
 
 ### System Prompt Assembly
 
@@ -319,8 +356,11 @@ class LLMClient:
     model: str                          # Primary model
     fallback_models: list[str]          # Fallback chain
     router: ModelRouter | None          # Task-type routing
+    thinking_budget: int                # Extended thinking token budget (0 = disabled)
+    max_cost_usd: float                 # Hard cost limit (0.0 = unlimited)
     total_input_tokens: int             # Running total
     total_output_tokens: int
+    total_cost_usd: float               # Running cost estimate
 
     async chat(messages, tools, task_type) -> ChatResponse
     async stream_chat(messages, tools) -> AsyncGenerator[ChatResponse]
@@ -333,6 +373,32 @@ class LLMClient:
 **Fallback Chain**: On failure, retries primary after 1s sleep, then tries each fallback model in order. Skips retries entirely if connection error detected (server unreachable).
 
 **Ollama Upgrade**: Models prefixed `ollama/` are upgraded to `ollama_chat/` for tool-capable chat completions.
+
+**Prompt Caching**: For Anthropic models, system messages are wrapped in content blocks with `cache_control: {"type": "ephemeral"}` to reduce repeated input costs.
+
+### Extended Thinking
+
+For Claude models with `thinking_budget > 0`, passes `thinking={"type": "enabled", "budget_tokens": N}` to LiteLLM. The response includes `thinking` content blocks displayed in a collapsed dim panel before the main response. Toggled via `/think [budget]` command.
+
+### Cost Estimation & Budget Enforcement
+
+`llm/cost.py` provides model pricing and cost tracking:
+
+```python
+estimate_cost(model, input_tokens, output_tokens) -> float  # USD
+format_cost(cost) -> str              # "$1.50" or "free"
+get_cheapest_model(models) -> str     # Lowest $/token from a list
+```
+
+- Ollama models always return `$0.0` (local inference)
+- Provider prefixes (`anthropic/`, `openai/`) are stripped for pricing lookup
+- Unknown models default to free (conservative — avoids false budget blocks)
+
+After each `chat()` call, `LLMClient` updates `total_cost_usd`. If `max_cost_usd > 0` and cost exceeds the limit, raises `BudgetExceededError(spent, limit)`. The agent loop catches this and returns an informative message.
+
+### Cheapest-Model Compaction
+
+When conversation compaction triggers, `_compact_conversation()` selects the cheapest model from `[main_model, *fallback_models]` via `get_cheapest_model()`. If only Ollama models are available (all free), uses the main model. Falls back to main model on error.
 
 ### Checkpoint Save/Restore
 
@@ -369,7 +435,7 @@ class RepoMapper:
 
 ## Part 5: Autonomy
 
-**Files**: `agent/coordinator.py` (140 lines), `tools/spawn_agent.py`, `mcp/client.py` (119 lines), `mcp/tool_adapter.py` (85 lines)
+**Files**: `agent/coordinator.py`, `agent/architect.py`, `tools/spawn_agent.py`, `mcp/client.py`, `mcp/tool_adapter.py`
 
 ### Sub-Agent Architecture
 
@@ -402,6 +468,19 @@ Results returned in order. No cancellation on individual failure — each sub-ag
 
 Registered as a standard tool: `name="spawn_agent"`, `risk_level=HIGH`. The agent calls it like any other tool to delegate work. Arguments: `task` (string description), optionally `parallel_tasks` (list of strings).
 
+### Architect Mode
+
+Two-phase pipeline toggled via `/architect`:
+
+1. **Plan phase** — Calls the architect model (configurable, defaults to main model with planning system prompt) with **read-only tools only**. Produces a detailed implementation plan.
+2. **Execute phase** — Injects the plan as a user message, calls the main model with **full tool access** to implement the plan.
+
+```python
+async architect_loop(task, llm_client, tool_registry, ...) -> str
+```
+
+Controlled by `config.architect_model` (separate model for planning) and the `/architect` toggle command.
+
 ### MCP Client (Model Context Protocol)
 
 ```python
@@ -410,7 +489,7 @@ class MCPServerConfig:
     command: str                     # e.g. "npx", "python"
     args: list[str] | None           # e.g. ["-m", "mcp_server"]
     env: dict[str, str] | None
-    transport: str = "stdio"         # Only stdio supported
+    transport: str = "stdio"         # "stdio" or "sse"
 
 class MCPClient:
     async connect(config) -> list[MCPToolDefinition]
@@ -418,7 +497,7 @@ class MCPClient:
     async disconnect_all()
 ```
 
-**Transport**: Stdio — spawns subprocess, communicates via stdin/stdout JSON-RPC.
+**Transport**: Stdio (spawns subprocess, communicates via stdin/stdout JSON-RPC) or SSE (connects to HTTP server with Server-Sent Events).
 
 **Graceful degradation**: Returns empty tool list if `mcp` package not installed.
 
@@ -451,7 +530,7 @@ Three TUI commands enable mid-session intervention:
 
 ## Part 6: Memory & TUI
 
-**Files**: `memory/user_memory.py` (174 lines), `memory/session.py` (161 lines), `memory/corrections.py` (89 lines), `tui/theme.py` (103 lines), `tui/output.py` (245 lines), `tui/commands.py` (478 lines), `tui/completions.py` (97 lines)
+**Files**: `memory/user_memory.py`, `memory/session.py`, `memory/corrections.py`, `tui/theme.py`, `tui/output.py`, `tui/commands.py`, `tui/completions.py`
 
 ### User Memory (Persistent)
 
@@ -564,7 +643,7 @@ Helpers: `styled(text, style)` → Rich markup, `brand(version)` → branded str
 | `format_stats()` | Token usage table |
 | `format_error()` | Bold red error |
 
-### Slash Commands (16)
+### Slash Commands (25)
 
 | Command | Purpose |
 |---------|---------|
@@ -582,6 +661,15 @@ Helpers: `styled(text, style)` → Rich markup, `brand(version)` → branded str
 | `/pause` | Pause agent at next iteration |
 | `/resume` | Resume paused agent |
 | `/guidance <msg>` | Inject guidance, resume agent |
+| `/tasks` | Show current task list and status |
+| `/reindex` | Rebuild code search index |
+| `/stats` | Show session statistics (tokens, cost, tools) |
+| `/autocommit` | Toggle auto-commit after file writes |
+| `/architect` | Toggle architect mode (plan → execute pipeline) |
+| `/think [budget]` | Toggle extended thinking, set token budget |
+| `/budget [amount]` | Show/set cost budget limit |
+| `/evolve [action]` | Self-evolution management (run/status/review/rollback) |
+| `/export` | Export conversation as markdown |
 | `/quit` | Exit with session stats |
 | `/exit` | Alias for `/quit` |
 
@@ -607,7 +695,7 @@ Key bindings: Enter (submit), Escape+Enter (newline), Ctrl+C (abort input).
 
 ## Audit Trail
 
-**File**: `audit/trail.py`
+**Files**: `audit/trail.py`, `audit/events.py`
 
 Hash-chained audit log for tamper detection:
 
@@ -615,6 +703,78 @@ Hash-chained audit log for tamper detection:
 - Events: `session_start`, `session_end`, `tool_call` (with latency), errors
 - `/audit` command verifies chain integrity
 - Secrets redacted before recording
+- JSONL format consumed by the self-evolution trace analyzer for cross-session learning
+
+---
+
+<!-- PART 7: Self-Evolution -->
+
+## Part 7: Self-Evolution System
+
+**Files**: `evolution/trace_analyzer.py`, `evolution/mutator.py`, `evolution/fitness.py`, `evolution/safety.py`, `evolution/registry.py`, `evolution/applier.py`, `evolution/hardware.py`, `evolution/cross_session.py`, `evolution/skill_gen.py`, `evolution/permissions.py`
+
+Inspired by [NousResearch/hermes-agent-self-evolution](https://github.com/NousResearch/hermes-agent-self-evolution). Runs the entire evolution loop locally via Ollama for **$0**. Optional paid API acceleration.
+
+### Pipeline
+
+```
+Audit Trail (JSONL) → Trace Analyzer → Evolution Engine (GEPA mutations)
+    → Fitness Evaluator (LLM-as-judge) → Safety Gate → Registry → Hot-Swap
+```
+
+### Trace Analyzer
+
+Parses audit trail JSONL into actionable insights:
+- **Tool failure patterns** — grouped by tool + error category, ranked by frequency
+- **Tool latency stats** — p50/p95/p99 per tool
+- **Permission patterns** — tools repeatedly denied → suggest allowlist
+- **Multi-tool sequences** — repeated tool chains → candidates for skill auto-generation
+
+Streaming line-by-line reads (not `readlines()`) for low-memory devices like Jetson Orin.
+
+### Evolution Engine (GEPA Mutations)
+
+Generates improved candidates for tool descriptions, system prompt sections, and compaction prompts using LLM-guided mutations. Produces 1–5 candidates per mutation based on available VRAM.
+
+### Fitness Evaluator
+
+Scores candidates via A/B testing with LLM-as-judge:
+- **Correctness** (weight 0.5) — did the tool/prompt produce correct results?
+- **Procedure following** (weight 0.3) — did it follow the right steps?
+- **Conciseness** (weight 0.2) — was output appropriately sized?
+- Length penalty if mutated text exceeds 2× original
+
+### Safety Gate
+
+All mutations must pass before applying:
+1. 100% test suite pass with mutation in place
+2. Size limit — mutated text ≤ 2× original length
+3. Semantic drift — word overlap stays above threshold
+4. Minimum fitness score ≥ 0.6
+5. Human review required for system prompt core sections and HIGH-risk tool descriptions
+
+### Evolution Registry
+
+Append-only JSONL at `~/.godspeed/evolution/registry.jsonl`. Full mutation history with rollback support.
+
+### Hardware-Aware Model Selection
+
+Auto-detects available VRAM and selects the best Ollama model for evolution:
+
+| VRAM | Model | Candidates | Eval Cases |
+|------|-------|-----------|------------|
+| ≥ 10 GB | `ollama/gemma3:12b` | 5 | 5 |
+| ≥ 6 GB | `ollama/gemma3:4b` | 3 | 3 |
+| ≥ 3 GB | `ollama/qwen2.5:3b` | 2 | 2 |
+| < 3 GB | `ollama/qwen2.5:1.5b` | 1 | 1 |
+
+Detection: `nvidia-smi` for discrete GPUs, `/proc/meminfo` for Jetson (60% shared RAM factor). API models (Claude, GPT) bypass detection entirely.
+
+### Additional Modules
+
+- **Cross-Session Learning** — aggregates insights across sessions, detects regressions, produces model-specific description tuning
+- **Skill Auto-Generation** — detects repeated multi-tool patterns (≥3 occurrences), generates skill markdown with YAML frontmatter
+- **Permission Advisor** — analyzes denial/approval patterns, suggests allowlist optimizations
 
 ---
 
@@ -639,10 +799,24 @@ mcp_servers:
   - name: filesystem
     command: npx
     args: ["-y", "@anthropic/mcp-server-filesystem"]
+    transport: stdio  # or "sse"
 model_routing:
   plan: "claude-sonnet-4-20250514"
   edit: "ollama_chat/qwen3:8b"
   chat: "ollama_chat/gemma3:4b"
+
+# Extended thinking (Claude models)
+thinking_budget: 0            # 0 = disabled, N = token budget
+
+# Cost management
+max_cost_usd: 0.0            # 0.0 = unlimited
+
+# Architect mode
+architect_model: ""           # Separate model for planning phase
+
+# Self-evolution
+evolution_enabled: false
+evolution_model: ""           # Auto-detected from VRAM if empty
 ```
 
 ---

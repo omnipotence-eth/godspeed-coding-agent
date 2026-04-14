@@ -22,7 +22,7 @@ An AI coding agent that treats security as a first-class concern -- not an after
 
 Every open-source coding agent gives an LLM the ability to read files, write code, and run shell commands. None of them ship with a deny-first permission engine, a tamper-evident audit trail, or multi-layer secret protection out of the box. You are expected to bolt security on yourself, or trust the model not to `rm -rf /`.
 
-Godspeed closes that gap. It pairs full coding capability (8 tools, 200+ LLM providers, sub-agents, MCP) with a security model that fails closed by default. Every tool call passes through a 4-tier permission engine. Every action is recorded in a hash-chained audit log you can cryptographically verify. Secrets are caught at four separate layers before they ever reach the model or the log file.
+Godspeed closes that gap. It pairs full coding capability (18+ tools, 200+ LLM providers, sub-agents, MCP) with a security model that fails closed by default. Every tool call passes through a 4-tier permission engine. Every action is recorded in a hash-chained audit log you can cryptographically verify. Secrets are caught at four separate layers before they ever reach the model or the log file.
 
 If you want a coding agent you can actually point at a production codebase, this is it.
 
@@ -39,12 +39,19 @@ If you want a coding agent you can actually point at a production codebase, this
 ### Capability
 
 - **200+ LLM providers** -- Claude, GPT, Gemini, Ollama, and everything else LiteLLM supports. Configure fallback chains so work never stops.
-- **12 built-in tools** -- `file_read`, `file_write`, `file_edit` (fuzzy matching), `shell`, `glob`, `grep`, `git`, `verify` (6 languages), `test_runner` (5 frameworks), `web_search`, `web_fetch`, and `repo_map`. Everything a coding agent needs.
+- **18+ built-in tools** -- `file_read` (images, PDFs, notebooks), `file_write`, `file_edit` (fuzzy matching), `notebook_edit`, `image_read`, `pdf_read`, `shell` (foreground + background), `glob`, `grep`, `git`, `github` (PR/issue workflow via `gh`), `diff_apply` (unified diffs), `verify` (6 languages), `test_runner` (5 frameworks), `web_search`, `web_fetch`, `repo_map`, and `background_check`.
+- **Parallel tool execution** -- when the LLM returns multiple tool calls, they execute concurrently via `asyncio.gather()`. 3-phase dispatch: parse → permission check (sequential) → execute (parallel). READ_ONLY tools always parallel, write tools always serial.
+- **Speculative tool dispatch** -- during streaming, READ_ONLY tool calls are dispatched as background `asyncio.Task`s before the full response completes. The main loop awaits cached results instead of re-dispatching, eliminating dispatch latency for reads.
+- **Extended thinking** -- pass `thinking` parameter to Anthropic/Claude models with configurable token budget. `/think [budget]` slash command. Thinking blocks displayed in collapsed dim panel.
+- **Architect mode** -- `/architect` toggles a two-phase pipeline. Phase 1 uses read-only tools to produce a plan. Phase 2 uses full tools guided by the plan. Configurable architect model.
+- **Cost budget enforcement** -- hard cost limit via `max_cost_usd` config or `/budget` command. Agent stops when exceeded. Ollama always free.
+- **Self-evolution** -- learn from execution traces to improve tool descriptions, system prompt sections, and permission configs. GEPA-style LLM-guided mutations scored by A/B testing with LLM-as-judge. Safety gate prevents regressions (size limits, semantic drift caps, human review). Runs entirely on Ollama for $0 with hardware-aware model selection (RTX 5070 Ti down to Jetson Orin Nano). `/evolve` command.
 - **Sub-agent coordinator** -- spawn isolated sub-agents for parallel tasks, each with their own conversation context. Depth limit 3, reuses the same async agent loop.
-- **MCP client** -- connect to Model Context Protocol servers via stdio transport. Remote tools are auto-adapted to Godspeed's Tool ABC with HIGH risk level.
+- **MCP client** -- connect to Model Context Protocol servers via stdio or SSE transport. Remote tools are auto-adapted to Godspeed's Tool ABC with HIGH risk level.
 - **Model routing** -- route LLM calls by task type (plan/edit/chat) to different models. Use a cheap model for edits and a frontier model for planning.
 - **Human-in-the-loop** -- `/pause` stops the agent at the next iteration, `/guidance <msg>` injects mid-conversation correction and resumes.
-- **Conversation compaction** -- model-aware summarization when approaching the token limit. Small models get aggressive compaction, frontier models get detailed preservation.
+- **Conversation compaction** -- model-aware summarization when approaching the token limit. Small models get aggressive compaction, frontier models get detailed preservation. Uses cheapest model in fallback chain.
+- **Background commands** -- `shell` tool gains `background: true` parameter. `BackgroundRegistry` tracks processes. `background_check` tool for status/output/kill.
 - **Checkpoint save/restore** -- `/checkpoint name` saves conversation state, `/restore name` loads it back. Never lose context again.
 - **Memory** -- SQLite-backed persistent preferences, session event logging, and automatic correction tracking across sessions.
 - **Cross-agent project instructions** -- loads `GODSPEED.md`, `AGENTS.md` (Linux Foundation standard), `CLAUDE.md`, and `.cursorrules`. Zero-friction migration from any agent.
@@ -52,7 +59,7 @@ If you want a coding agent you can actually point at a production codebase, this
 - **Prompt caching** -- system prompt marked with `cache_control` for Anthropic/OpenAI. ~50% cost reduction on repeated prefixes.
 - **Headless/CI mode** -- `godspeed run "task" --headless` for non-interactive execution. Auto-approve levels, JSON output, exit codes for CI/CD integration.
 - **Web tools** -- `web_search` (DuckDuckGo, no API key) and `web_fetch` (HTML-to-text extraction) let the agent look up documentation and error messages.
-- **Multi-language verify** -- auto-verification after edits supports Python (ruff), JS/TS (biome/eslint), Go (go vet), Rust (cargo check), C/C++ (clang-tidy).
+- **Multi-language verify** -- auto-verification after edits supports Python (ruff), JS/TS (biome/eslint), Go (go vet), Rust (cargo check), C/C++ (clang-tidy). Lint-fix retry loop up to 3 rounds.
 - **Test runner** -- auto-detect pytest, jest, vitest, go test, cargo test. Run targeted or full test suites. Agent-accessible for edit-test-fix loops.
 - **Conversation export** -- `/export` saves the full session as formatted markdown for sharing or review.
 - **Rich TUI** -- syntax highlighting, unified diff rendering, streaming output, and slash commands via Rich and prompt-toolkit.
@@ -64,8 +71,11 @@ flowchart LR
     User([User]) --> TUI["TUI\n(Rich + prompt-toolkit)"]
     TUI --> Loop["Agent Loop\n(loop.py)"]
     Loop --> LLM["LLM\n(LiteLLM + ModelRouter)"]
+    LLM -->|streaming| Spec["Speculative\nDispatch"]
+    Spec -->|READ_ONLY| Tools
     LLM -->|tool calls| Perm["Permission\nEngine"]
-    Perm -->|allowed| Tools["Tools\n(8 built-in + MCP)"]
+    Perm -->|allowed| Dispatch["Parallel/Serial\nDispatch"]
+    Dispatch --> Tools["Tools\n(18+ built-in + MCP)"]
     Perm -->|denied| Deny[Deny + Log]
     Tools --> Audit["Audit Trail\n(SHA-256 JSONL)"]
     Deny --> Audit
@@ -73,28 +83,33 @@ flowchart LR
     Loop -->|sub-agents| Loop
     Loop -->|response| TUI
     Loop --> Memory["Memory\n(SQLite)"]
+    Audit -->|traces| Evo["Self-Evolution\n(Ollama, $0)"]
+    Evo -->|improved descriptions| Tools
 
     style Perm fill:#e74c3c,color:#fff
     style Audit fill:#2ecc71,color:#fff
     style Memory fill:#3498db,color:#fff
+    style Spec fill:#9b59b6,color:#fff
+    style Evo fill:#e67e22,color:#fff
 ```
 
 **How it works:**
 
-The agent loop is hand-rolled (no framework) following the same pattern proven by top-performing coding agents. The LLM decides when to stop. On each turn, the LLM either responds with text (done) or requests tool calls. Every tool call passes through the **permission engine** before execution: deny rules are evaluated first and always win, then dangerous command detection (72+ regex patterns) blocks destructive operations, then session grants and allow rules, and finally the tool's risk level determines the default. If anything is ambiguous, it fails closed. After execution, the tool call, its result, and the permission decision are recorded in the **audit trail** -- a hash-chained JSONL file where each record includes the SHA-256 hash of the previous record. Secrets are redacted at four layers: file access deny rules, context cleaning before the LLM sees content, output filtering on LLM responses, and audit log redaction. The loop also includes **stuck-loop detection** (3 identical errors triggers a replan), **auto-verification** (linter check after file edits in 6 languages), **auto-stash** (git stash after 3+ consecutive writes), and **pause/resume** for human-in-the-loop intervention.
+The agent loop is hand-rolled (no framework) following the same pattern proven by top-performing coding agents. The LLM decides when to stop. On each turn, the LLM either responds with text (done) or requests tool calls. During streaming, **speculative dispatch** starts READ_ONLY tool calls as background `asyncio.Task`s before the full response completes — the main loop awaits cached results instead of re-dispatching. Every tool call passes through the **permission engine** before execution: deny rules are evaluated first and always win, then dangerous command detection (72+ regex patterns) blocks destructive operations, then session grants and allow rules, and finally the tool's risk level determines the default. If anything is ambiguous, it fails closed. Permitted calls are split by risk level: **READ_ONLY tools run in parallel** via `asyncio.gather()`, **write tools run sequentially**. After execution, the tool call, its result, and the permission decision are recorded in the **audit trail** -- a hash-chained JSONL file where each record includes the SHA-256 hash of the previous record. Secrets are redacted at four layers: file access deny rules, context cleaning before the LLM sees content, output filtering on LLM responses, and audit log redaction. The loop also includes **stuck-loop detection** (3 identical errors triggers a replan), **auto-verification** (linter check after file edits in 6 languages with retry), **auto-stash** (git stash after 3+ consecutive writes), **cost budget enforcement**, and **pause/resume** for human-in-the-loop intervention. The **self-evolution system** mines audit trails for failure patterns and uses LLM-guided mutations to improve tool descriptions and prompts over time.
 
 **Key modules:**
 
 | Module | Path | Purpose |
 |--------|------|---------|
-| Agent loop | `src/godspeed/agent/` | Conversation management, LLM interaction, tool dispatch, sub-agent coordinator |
+| Agent loop | `src/godspeed/agent/` | Conversation management, LLM interaction, parallel + speculative dispatch, sub-agent coordinator |
 | Security | `src/godspeed/security/` | Permission engine, dangerous command detection, secret scanning |
 | Audit | `src/godspeed/audit/` | Hash-chained event logging, redaction, verification, compression |
-| Tools | `src/godspeed/tools/` | 12 built-in tools with JSON schemas |
-| LLM | `src/godspeed/llm/` | LiteLLM client wrapper, model routing, token counting |
+| Tools | `src/godspeed/tools/` | 18+ built-in tools with JSON schemas |
+| LLM | `src/godspeed/llm/` | LiteLLM client wrapper, model routing, token counting, cost tracking |
 | Context | `src/godspeed/context/` | Project instructions, compaction, checkpoints, repo map |
-| MCP | `src/godspeed/mcp/` | Model Context Protocol client and tool adapter |
+| MCP | `src/godspeed/mcp/` | Model Context Protocol client (stdio + SSE) and tool adapter |
 | Memory | `src/godspeed/memory/` | SQLite-backed preferences, session events, correction tracking |
+| Evolution | `src/godspeed/evolution/` | Trace analysis, GEPA mutations, LLM-as-judge fitness, safety gate, registry |
 | TUI | `src/godspeed/tui/` | Terminal UI, rich output, permission prompts, slash commands |
 
 ## Getting Started
@@ -164,6 +179,11 @@ The agent will read your code, answer questions, write files, and run commands -
 | `/extend [N]` | Set max iterations per turn (default: 50) |
 | `/context` | Show context window usage (tokens, percentage) |
 | `/plan` | Toggle plan mode (read-only, explore and plan only) |
+| `/architect` | Toggle architect mode (plan with read-only tools, then execute) |
+| `/think [budget]` | Toggle extended thinking for Claude models |
+| `/budget [amount]` | Show or set cost budget for the session |
+| `/autocommit` | Toggle auto-commit after successful edits |
+| `/evolve [cmd]` | Self-evolution: status, run, history, rollback, review |
 | `/checkpoint [name]` | Save conversation checkpoint, or list if no name |
 | `/restore <name>` | Restore a saved checkpoint |
 | `/pause` | Pause the agent loop at next iteration |
@@ -236,6 +256,12 @@ Permission rules use glob-style matching against `ToolName(argument)` strings. D
 | Deny-first permission engine | **Yes** (4-tier, 72+ dangerous patterns) | Proprietary | No | No | No |
 | Hash-chained audit trail | **Yes** (SHA-256 JSONL, verifiable) | No | No | No | No |
 | Secret protection | **4 layers** (deny, context clean, output filter, audit redact) | Limited | No | No | No |
+| Parallel tool execution | **Yes** (READ_ONLY parallel, write serial) | Yes | No | No | No |
+| Speculative tool dispatch | **Yes** (READ_ONLY pre-dispatched during streaming) | No | No | No | No |
+| Extended thinking | **Yes** (configurable budget, Claude models) | Yes | No | No | No |
+| Self-evolution | **Yes** (trace analysis → GEPA mutations → LLM judge → safety gate) | No | No | No | No |
+| Cost budgets | **Yes** (hard limit, `/budget` command) | No | No | No | No |
+| Architect mode | **Yes** (plan-then-execute, two-model) | No | No | Yes | No |
 | Multi-language verify | **6 languages** (Python, JS/TS, Go, Rust, C/C++) | Python | No | Python | LSP |
 | Test runner (auto-detect) | **5 frameworks** (pytest, jest, vitest, go, cargo) | Yes | No | Yes | No |
 | Web search & fetch | **Yes** (DuckDuckGo, no API key) | Yes | No | No | No |
@@ -244,12 +270,12 @@ Permission rules use glob-style matching against `ToolName(argument)` strings. D
 | Cross-agent config | **Yes** (GODSPEED.md, AGENTS.md, CLAUDE.md, .cursorrules) | CLAUDE.md only | .cursorrules only | No | AGENTS.md |
 | Prompt caching | **Yes** (Anthropic/OpenAI) | Yes | No | No | No |
 | Sub-agents | **Yes** (isolated, parallel, depth 3) | Yes | No | No | No |
-| MCP support | **Yes** (stdio transport) | Yes | Yes | No | No |
+| MCP support | **Yes** (stdio + SSE transport) | Yes | Yes | No | No |
 | Free by default | **Yes** (Ollama, zero API cost) | No (paid API) | No (subscription) | Yes | Yes |
 | 200+ LLM providers | **Yes** (LiteLLM) | Claude only | OpenAI/Claude | ~75 | 75+ |
 | Open source | **MIT** | No | No | Apache 2.0 | MIT |
 
-Godspeed is the only open-source coding agent that ships with production security primitives, multi-language verification, and cost tracking out of the box.
+Godspeed is the only open-source coding agent that ships with production security primitives, speculative tool dispatch, self-evolution, and multi-language verification out of the box.
 
 ## Development
 

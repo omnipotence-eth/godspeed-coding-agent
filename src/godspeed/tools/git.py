@@ -31,7 +31,11 @@ class GitTool(Tool):
         return (
             "Run git operations: status, diff, commit, log, undo, stash, stash_pop. "
             "Commit stages all changes and commits with the given message. "
-            "Undo reverts the last commit (soft reset, changes remain staged)."
+            "Undo reverts the last commit (soft reset, changes remain staged).\n\n"
+            "Example: git(action='status')\n"
+            "Example: git(action='diff')\n"
+            "Example: git(action='commit', message='feat: add auth module')\n"
+            "Example: git(action='undo')"
         )
 
     @property

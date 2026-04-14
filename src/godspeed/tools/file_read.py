@@ -30,7 +30,9 @@ class FileReadTool(Tool):
         return (
             "Read a file's contents with line numbers. "
             "Supports offset and limit for reading portions of large files. "
-            "Always read a file before editing it."
+            "Always read a file before editing it.\n\n"
+            "Example: file_read(file_path='src/main.py')\n"
+            "Example: file_read(file_path='app.py', offset=50, limit=20)"
         )
 
     @property
@@ -44,6 +46,7 @@ class FileReadTool(Tool):
                 "file_path": {
                     "type": "string",
                     "description": "Path to the file to read (relative to project root)",
+                    "examples": ["src/main.py", "tests/test_app.py", "README.md"],
                 },
                 "offset": {
                     "type": "integer",

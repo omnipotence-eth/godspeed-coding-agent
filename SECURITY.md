@@ -4,7 +4,9 @@
 
 | Version | Supported          |
 |---------|--------------------|
-| 0.1.x   | :white_check_mark: |
+| 2.3.x   | :white_check_mark: |
+| 2.2.x   | :white_check_mark: |
+| < 2.2   | :x:                |
 
 ## Reporting a Vulnerability
 
@@ -27,7 +29,7 @@ days indicating next steps.
 Godspeed is built with a security-first architecture:
 
 - **4-tier permission engine**: deny-first evaluation (deny > ask > allow)
-- **Dangerous command detection**: 46 regex patterns for destructive operations
+- **Dangerous command detection**: 72+ regex patterns for destructive operations
 - **Secret protection**: 4-layer defense (access control, context cleaning, output
   filtering, audit redaction) with 27 regex patterns + Shannon entropy analysis
 - **Hash-chained audit trail**: tamper-evident JSONL logs with SHA-256 chain

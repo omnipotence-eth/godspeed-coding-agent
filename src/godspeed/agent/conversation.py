@@ -15,6 +15,9 @@ class Conversation:
 
     Tracks messages, monitors token usage, and triggers compaction
     when approaching the context limit.
+
+    Optionally logs every message to a :class:`ConversationLogger` for
+    fine-tuning data collection.
     """
 
     def __init__(
@@ -23,12 +26,16 @@ class Conversation:
         model: str = "gpt-4",
         max_tokens: int = 100_000,
         compaction_threshold: float = 0.8,
+        conversation_logger: Any | None = None,
     ) -> None:
         self.model = model
         self.max_tokens = max_tokens
         self.compaction_threshold = compaction_threshold
         self._system_message: dict[str, Any] = {"role": "system", "content": system_prompt}
         self._messages: list[dict[str, Any]] = []
+        self._logger = conversation_logger
+        if self._logger is not None:
+            self._logger.log_system(system_prompt)
 
     @property
     def messages(self) -> list[dict[str, Any]]:
@@ -53,6 +60,8 @@ class Conversation:
                 (e.g. text + image blocks in OpenAI multimodal format).
         """
         self._messages.append({"role": "user", "content": content})
+        if self._logger is not None:
+            self._logger.log_user(content)
 
     def add_assistant_message(
         self,
@@ -73,6 +82,11 @@ class Conversation:
                 normalized.append(entry)
             msg["tool_calls"] = normalized
         self._messages.append(msg)
+        if self._logger is not None:
+            self._logger.log_assistant(
+                content=content,
+                tool_calls=msg.get("tool_calls"),
+            )
 
     def add_tool_result(self, tool_call_id: str, content: str) -> None:
         """Add a tool result message."""
@@ -83,6 +97,12 @@ class Conversation:
                 "content": content,
             }
         )
+        if self._logger is not None:
+            self._logger.log_tool_result(
+                tool_call_id=tool_call_id,
+                tool_name="",  # caller can enrich via direct logger access
+                content=content,
+            )
 
     def compact(self, summary: str) -> None:
         """Replace conversation history with a summary.
@@ -90,11 +110,18 @@ class Conversation:
         Preserves the system prompt and adds the summary as context,
         then clears the message history.
         """
+        msg_count_before = len(self._messages)
         logger.info(
             "Compacting conversation tokens_before=%d message_count=%d",
             self.token_count,
-            len(self._messages),
+            msg_count_before,
         )
+        if self._logger is not None:
+            self._logger.log_compaction(
+                summary=summary,
+                messages_before=msg_count_before,
+                messages_after=1,
+            )
         self._messages = [
             {
                 "role": "user",

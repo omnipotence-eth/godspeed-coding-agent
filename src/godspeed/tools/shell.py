@@ -50,7 +50,12 @@ class ShellTool(Tool):
         return (
             "Run a shell command and capture stdout/stderr. "
             "Each command runs independently (stateless). "
-            "Use absolute paths or paths relative to the project root."
+            "Use absolute paths or paths relative to the project root. "
+            "Set background=true for long-running commands, then use "
+            "background_check to poll status.\n\n"
+            "Example: shell(command='pytest tests/ -v')\n"
+            "Example: shell(command='pip install requests', timeout=60)\n"
+            "Example: shell(command='npm run build', background=true)"
         )
 
     @property

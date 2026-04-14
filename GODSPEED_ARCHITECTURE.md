@@ -1,7 +1,7 @@
-# Godspeed Architecture (v2.2.0)
+# Godspeed Architecture (v2.3.0)
 
 > Security-first coding agent. Hand-rolled ReAct loop. No framework overhead.
-> 1,417+ tests passing
+> 1,559+ tests passing
 
 ---
 
@@ -834,5 +834,77 @@ Click-based CLI with subcommands:
 | `godspeed version` | Print version |
 | `godspeed models` | List available models (cost/context/free) |
 | `godspeed audit verify` | Verify audit chain integrity |
+| `godspeed export-training` | Export conversation logs to fine-tuning JSONL |
 
-`_run_app()` wires everything: settings → LLM client → tools → permissions → audit → conversation → TUIApp.
+`_run_app()` wires everything: settings → LLM client → tools → permissions → audit → conversation logger → conversation → TUIApp.
+
+---
+
+## Part 8: Training Data Pipeline
+
+**Files**: `training/conversation_logger.py`, `training/exporter.py`, `training/rewards.py`, `training/benchmark.py`
+
+### Why This Exists
+
+The audit trail captures tool metadata (name, arguments, latency, outcome) but **not** the actual conversation: user requests, assistant reasoning, full tool results, and compaction summaries are all lost when a session ends. This module closes that gap, enabling fine-tuning of tool-calling LLMs on real Godspeed sessions.
+
+Research backing: FireAct (500-1000 expert traces for 80% capability), AgentQ (GRPO adds 10-15% over SFT), AgentTuning (5-10% agent data mixing prevents catastrophic forgetting).
+
+### ConversationLogger
+
+Append-only JSONL writer hooked into `Conversation.add_user_message()`, `add_assistant_message()`, `add_tool_result()`, and `compact()`. One file per session at `~/.godspeed/training/{session_id}.conversation.jsonl`.
+
+```
+{"role":"system","content":"You are Godspeed...","timestamp":"...","session_id":"..."}
+{"role":"user","content":"Fix the bug in auth.py","timestamp":"...","session_id":"..."}
+{"role":"assistant","content":"","tool_calls":[{"id":"call_1","name":"grep_search","arguments":{"pattern":"auth"}}],...}
+{"role":"tool","tool_call_id":"call_1","name":"grep_search","content":"auth.py:15: def authenticate(...)","is_error":false,"step":1,...}
+{"role":"meta","event":"compaction","summary":"...","messages_before":45,"messages_after":8,...}
+```
+
+Gated on `GodspeedSettings.log_conversations` (default: `true`). Wired in both `_run_app()` (TUI) and `_headless_run()` (CI mode).
+
+### TrainingExporter
+
+Converts raw conversation JSONL into fine-tuning formats:
+
+| Format | Target | Key Feature |
+|--------|--------|-------------|
+| `openai` | OpenAI fine-tuning API | `tool_calls` with `id` linking to `role: "tool"` responses, arguments as JSON strings |
+| `chatml` | Qwen/Mistral native templates | `<\|im_start\|>` tokens, `<tool_call>` / `<tool_response>` blocks |
+| `sharegpt` | Unsloth dataset loading | `conversations` array with `from`/`value` pairs |
+
+**CLI**: `godspeed export-training --format openai --output training.jsonl`
+
+Filtering options: `--min-tools`, `--min-turns`, `--success-only`, `--tools file_read,file_edit`, `--max-sessions`, `--max-tool-output`.
+
+### Per-Step Reward Annotations
+
+Automatic reward signals for GRPO/DPO fine-tuning:
+
+| Signal | Value | When |
+|--------|-------|------|
+| Successful execution | +1.0 | `result.is_error == False` |
+| Failed execution | -0.5 | `result.is_error == True` |
+| Permission denied | -0.5 | Tool blocked by permission engine |
+| Verify passed first try | +0.5 | Auto-verify succeeds after file_edit |
+| Verify failed → retry fixed | +0.25 | Second verify passes (self-correction) |
+| Dangerous command attempted | -1.0 | Shell command flagged by `detect_dangerous_command()` |
+| Efficient tool sequence | +0.5 | grep → read → edit (canonical pattern) detected |
+
+`annotate_session_rewards(messages)` interleaves `role: "reward"` entries into message lists. `summarize_rewards()` computes aggregate statistics.
+
+### Benchmark Suite
+
+20 hand-crafted tasks across easy/medium/hard difficulty, stored in `benchmarks/tasks.jsonl`:
+
+```jsonl
+{"task_id":"easy-fix-syntax-01","prompt":"There's a syntax error in app.py line 15","expected_tools":["file_read","file_edit"],"difficulty":"easy"}
+{"task_id":"medium-find-fix-01","prompt":"Find where the database connection string is hardcoded and move it to an env var","expected_tools":["grep_search","file_read","file_edit"],"difficulty":"medium"}
+{"task_id":"hard-multi-file-01","prompt":"Add error handling to all API endpoints in the routes/ directory","expected_tools":["glob_search","grep_search","file_read","file_edit"],"difficulty":"hard"}
+```
+
+**Scoring**:
+- **Tool selection** (0-1): Jaccard similarity between expected and actual tool sets
+- **Sequence quality** (0-1): Longest common subsequence / expected sequence length
+- **Overall**: 0.6 × tool_selection + 0.4 × sequence_quality

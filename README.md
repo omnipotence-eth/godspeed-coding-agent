@@ -64,6 +64,14 @@ If you want a coding agent you can actually point at a production codebase, this
 - **Conversation export** -- `/export` saves the full session as formatted markdown for sharing or review.
 - **Rich TUI** -- syntax highlighting, unified diff rendering, streaming output, and slash commands via Rich and prompt-toolkit.
 
+### Training & Fine-Tuning
+
+- **Conversation logger** -- automatically persists every conversation message (user, assistant, tool calls, tool results, compaction summaries) to per-session JSONL at `~/.godspeed/training/`. Captures the full conversation flow that the audit trail misses. Gated on `log_conversations` config (default: on).
+- **Training data exporter** -- `godspeed export-training` converts conversation logs to `openai`, `chatml`, or `sharegpt` fine-tuning formats. Filtering by tool count, success rate, turn count, and tool whitelist. Designed for Qwen/Mistral/Llama fine-tuning via Unsloth + TRL.
+- **Per-step reward annotations** -- automatic reward signals for GRPO/DPO: success (+1.0), verify passed (+0.5), dangerous command (-1.0), efficient tool sequence (+0.5). Session-level summarization for training pipeline integration.
+- **Benchmark suite** -- 20 hand-crafted tasks (easy/medium/hard) with Jaccard tool selection scoring and LCS sequence quality scoring for evaluating fine-tuned models against base models.
+- **Enhanced tool descriptions** -- all tools include inline usage examples and JSON Schema `examples` fields, improving both live agent performance and training data quality.
+
 ## Architecture
 
 ```mermaid
@@ -85,17 +93,20 @@ flowchart LR
     Loop --> Memory["Memory\n(SQLite)"]
     Audit -->|traces| Evo["Self-Evolution\n(Ollama, $0)"]
     Evo -->|improved descriptions| Tools
+    Loop -->|messages| Train["Training Logger\n(JSONL)"]
+    Train -->|export| FT["Fine-Tuning\n(openai/chatml/sharegpt)"]
 
     style Perm fill:#e74c3c,color:#fff
     style Audit fill:#2ecc71,color:#fff
     style Memory fill:#3498db,color:#fff
     style Spec fill:#9b59b6,color:#fff
     style Evo fill:#e67e22,color:#fff
+    style Train fill:#1abc9c,color:#fff
 ```
 
 **How it works:**
 
-The agent loop is hand-rolled (no framework) following the same pattern proven by top-performing coding agents. The LLM decides when to stop. On each turn, the LLM either responds with text (done) or requests tool calls. During streaming, **speculative dispatch** starts READ_ONLY tool calls as background `asyncio.Task`s before the full response completes — the main loop awaits cached results instead of re-dispatching. Every tool call passes through the **permission engine** before execution: deny rules are evaluated first and always win, then dangerous command detection (72+ regex patterns) blocks destructive operations, then session grants and allow rules, and finally the tool's risk level determines the default. If anything is ambiguous, it fails closed. Permitted calls are split by risk level: **READ_ONLY tools run in parallel** via `asyncio.gather()`, **write tools run sequentially**. After execution, the tool call, its result, and the permission decision are recorded in the **audit trail** -- a hash-chained JSONL file where each record includes the SHA-256 hash of the previous record. Secrets are redacted at four layers: file access deny rules, context cleaning before the LLM sees content, output filtering on LLM responses, and audit log redaction. The loop also includes **stuck-loop detection** (3 identical errors triggers a replan), **auto-verification** (linter check after file edits in 6 languages with retry), **auto-stash** (git stash after 3+ consecutive writes), **cost budget enforcement**, and **pause/resume** for human-in-the-loop intervention. The **self-evolution system** mines audit trails for failure patterns and uses LLM-guided mutations to improve tool descriptions and prompts over time.
+The agent loop is hand-rolled (no framework) following the same pattern proven by top-performing coding agents. The LLM decides when to stop. On each turn, the LLM either responds with text (done) or requests tool calls. During streaming, **speculative dispatch** starts READ_ONLY tool calls as background `asyncio.Task`s before the full response completes — the main loop awaits cached results instead of re-dispatching. Every tool call passes through the **permission engine** before execution: deny rules are evaluated first and always win, then dangerous command detection (72+ regex patterns) blocks destructive operations, then session grants and allow rules, and finally the tool's risk level determines the default. If anything is ambiguous, it fails closed. Permitted calls are split by risk level: **READ_ONLY tools run in parallel** via `asyncio.gather()`, **write tools run sequentially**. After execution, the tool call, its result, and the permission decision are recorded in the **audit trail** -- a hash-chained JSONL file where each record includes the SHA-256 hash of the previous record. Secrets are redacted at four layers: file access deny rules, context cleaning before the LLM sees content, output filtering on LLM responses, and audit log redaction. The loop also includes **stuck-loop detection** (3 identical errors triggers a replan), **auto-verification** (linter check after file edits in 6 languages with retry), **auto-stash** (git stash after 3+ consecutive writes), **cost budget enforcement**, and **pause/resume** for human-in-the-loop intervention. The **self-evolution system** mines audit trails for failure patterns and uses LLM-guided mutations to improve tool descriptions and prompts over time. The **training logger** captures the full conversation flow (user messages, assistant reasoning, tool results) to JSONL for fine-tuning tool-calling LLMs.
 
 **Key modules:**
 
@@ -110,6 +121,7 @@ The agent loop is hand-rolled (no framework) following the same pattern proven b
 | MCP | `src/godspeed/mcp/` | Model Context Protocol client (stdio + SSE) and tool adapter |
 | Memory | `src/godspeed/memory/` | SQLite-backed preferences, session events, correction tracking |
 | Evolution | `src/godspeed/evolution/` | Trace analysis, GEPA mutations, LLM-as-judge fitness, safety gate, registry |
+| Training | `src/godspeed/training/` | Conversation logger, fine-tuning exporter (openai/chatml/sharegpt), reward annotations, benchmark suite |
 | TUI | `src/godspeed/tui/` | Terminal UI, rich output, permission prompts, slash commands |
 
 ## Getting Started

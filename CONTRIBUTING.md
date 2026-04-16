@@ -80,6 +80,38 @@ module:
 - Permission engine changes need edge case tests
 - Audit trail changes must maintain hash chain integrity
 
+## Versioning Policy
+
+Godspeed follows [Semantic Versioning](https://semver.org/) under a strict
+interpretation, because the version number is a signal to users about stability
+and to reviewers about project maturity. Inflated versions damage both.
+
+| Bump | When | Evidence required in PR |
+|------|------|-------------------------|
+| **Patch** (`2.4.0 → 2.4.1`) | Bug fix, dependency refresh, documentation, internal refactor | Linked issue or CHANGELOG entry under *Fixed* |
+| **Minor** (`2.4.0 → 2.5.0`) | New user-facing capability added **without** breaking existing usage | New CLI command / tool / configuration field documented in README or CHANGELOG under *Added* |
+| **Major** (`2.x.y → 3.0.0`) | A breaking change to a documented public API or CLI surface | Breaking-change note in CHANGELOG under *Changed* with migration guidance, AND the PR description states the break explicitly |
+
+A release with *no user-observable change* must not bump any digit. Lockfile
+refreshes, CI tweaks, and internal hardening go out as patch releases at most,
+and usually ride the next feature release.
+
+### Why this matters
+
+Version numbers are a conversation with your users. A project that ships `v2.x`
+after 5 days implies stability guarantees it cannot keep, and a reviewer seeing
+13 releases in a week will read that as version-number inflation, not momentum.
+For comparison: the \`Development Status :: 3 - Alpha\` classifier in
+\`pyproject.toml\` says "breaking changes are expected" — which is incompatible
+with shipping major versions as fast as we can open PRs.
+
+**Checklist before bumping the major digit**:
+1. Is there a documented public API or CLI that this PR changes in a way users must adapt to?
+2. Is the breaking change called out in the CHANGELOG under *Changed* with migration guidance?
+3. Has the `Development Status` classifier graduated past *Alpha*? If no, reconsider.
+
+If any answer is "no," bump minor or patch.
+
 ## Reporting Vulnerabilities
 
 See [SECURITY.md](SECURITY.md) for our vulnerability disclosure policy.

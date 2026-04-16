@@ -973,6 +973,7 @@ name = "godspeed"
 version = "2.4.0"
 source = { editable = "." }
 dependencies = [
+    { name = "aiohttp" },
     { name = "click" },
     { name = "diff-match-patch" },
     { name = "gitpython" },
@@ -1012,6 +1013,7 @@ mcp = [
 
 [package.metadata]
 requires-dist = [
+    { name = "aiohttp", specifier = ">=3.13.4" },
     { name = "bandit", marker = "extra == 'dev'", specifier = ">=1.7.0,<2.0" },
     { name = "chromadb", marker = "extra == 'index'", specifier = ">=1.0.0,<2.0" },
     { name = "click", specifier = ">=8.1.0,<9.0" },

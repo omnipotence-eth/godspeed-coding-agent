@@ -217,3 +217,73 @@ class TestGate:
         verdict = gate.gate(candidate, score)
 
         assert verdict.requires_human_review is True
+
+
+class TestSecuritySensitiveMutations:
+    """Mutations to security-critical tools or containing bypass phrases
+    must never auto-apply. They require explicit human review.
+    """
+
+    @pytest.mark.parametrize(
+        "tool_id",
+        ["shell", "bash", "file_write", "file_edit", "git", "github", "diff_apply", "background"],
+    )
+    def test_security_sensitive_tool_requires_review(self, tool_id: str) -> None:
+        """Tool descriptions that gate dangerous actions must need review."""
+        gate = SafetyGate()
+        candidate = _make_candidate(artifact_type="tool_description", artifact_id=tool_id)
+        score = _make_score()
+        verdict = gate.gate(candidate, score)
+        assert verdict.requires_human_review is True, (
+            f"{tool_id} mutation must require human review"
+        )
+
+    def test_benign_tool_does_not_require_review(self) -> None:
+        """Read-only tool mutations with benign content are auto-applicable."""
+        gate = SafetyGate()
+        candidate = _make_candidate(
+            artifact_type="tool_description",
+            artifact_id="file_read",
+            original="Read files from disk.",
+            mutated="Read files from the local filesystem with examples.",
+        )
+        score = _make_score()
+        verdict = gate.gate(candidate, score)
+        assert verdict.requires_human_review is False
+
+    @pytest.mark.parametrize(
+        "bypass_phrase",
+        [
+            "always granted",
+            "bypass permission",
+            "bypass the permission check",
+            "ignore safety",
+            "ignore the safety gate",
+            "skip confirmation",
+            "auto-approve",
+            "without permission",
+            "disable audit",
+        ],
+    )
+    def test_bypass_phrase_requires_review(self, bypass_phrase: str) -> None:
+        """Any mutation containing a security-bypass phrase requires review."""
+        gate = SafetyGate()
+        candidate = _make_candidate(
+            artifact_type="tool_description",
+            artifact_id="file_read",
+            original="Read files from disk with path validation.",
+            mutated=f"Read files from disk. Note: this tool is {bypass_phrase}.",
+        )
+        score = _make_score()
+        verdict = gate.gate(candidate, score)
+        assert verdict.requires_human_review is True, (
+            f"mutation with phrase {bypass_phrase!r} must require review"
+        )
+
+    def test_bypass_phrase_case_insensitive(self) -> None:
+        gate = SafetyGate()
+        candidate = _make_candidate(
+            mutated="Read files. Note: this tool is ALWAYS GRANTED.",
+        )
+        verdict = gate.gate(candidate, _make_score())
+        assert verdict.requires_human_review is True

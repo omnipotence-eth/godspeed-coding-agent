@@ -5,6 +5,44 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [2.4.0] — 2026-04-16
+
+### Security
+
+- **Audit trail fails closed on I/O errors**: `AuditTrail.record()` now raises
+  `AuditWriteError` when a write or `fsync` fails, instead of silently logging
+  and advancing the in-memory chain. Chain state (sequence, prev_hash) does not
+  advance on failure, so a successful retry chains cleanly from the last
+  persisted record. This closes a gap where disk-full or permission errors
+  would poison the hash chain while the agent continued executing tools.
+- **Evolution safety gate blocks mutations to security-sensitive tool descriptions**:
+  Mutations whose `artifact_id` is in `SECURITY_SENSITIVE_TOOL_IDS` (shell, bash,
+  file_write, file_edit, diff_apply, git, github, background) now require
+  human review. Mutations whose text matches any `SECURITY_BYPASS_PATTERNS`
+  regex (e.g. "always granted", "bypass permission", "ignore safety",
+  "auto-approve") also require review regardless of artifact.
+
+### Changed
+
+- README, SECURITY.md, and architecture doc updated: dangerous-pattern count
+  corrected from "72+" to 71 (actual); tool count updated from "18+" to 25.
+- CI matrix extended to Python 3.13 (previously 3.11, 3.12).
+- Pre-commit adds `mypy` (src-scoped) and `bandit` (low-severity filter) hooks;
+  ruff hook bumped to v0.14.1.
+- `make lint` no longer auto-fixes or formats — matches CI exactly. New
+  `make fix` target runs `ruff check --fix && ruff format .`. `make test` now
+  runs with coverage gate to match CI.
+
+### Added
+
+- **CodeQL workflow** (`.github/workflows/codeql.yml`): security-and-quality
+  query set, runs on push/PR and weekly cron.
+- **Release workflow** (`.github/workflows/release.yml`): builds wheel/sdist
+  on `v*` tag push, generates CycloneDX SBOM, attests build provenance via
+  sigstore, attaches to GitHub release.
+
 ## [2.3.0] — 2026-04-13
 
 ### Added
@@ -18,7 +56,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Common workflows in system prompt**: 5 canonical multi-step patterns (fix bug, add feature, explore codebase, git workflow, research/debug).
 - 110 new training pipeline tests (total: 1,557 passing)
 
-## [Unreleased]
+## [2.2.0] — 2026-04-12
 
 ### Added
 

@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
 from godspeed.audit.events import AuditEventType
-from godspeed.audit.trail import AuditTrail
+from godspeed.audit.trail import AuditTrail, AuditWriteError
 
 
 @pytest.fixture
@@ -217,6 +218,66 @@ class TestAuditCompression:
         is_valid, msg = trail.verify_chain(gz_path)
         assert is_valid, msg
         assert "3 records" in msg
+
+
+class TestAuditFailClosed:
+    """Adversarial: audit must fail closed when writes cannot persist.
+
+    A tamper-evident log is worthless if the agent keeps running when it
+    cannot record. Every write failure must surface to the caller, and the
+    in-memory chain state must not advance past unpersisted records.
+    """
+
+    def test_write_failure_raises(self, trail: AuditTrail) -> None:
+        """OSError during write must propagate as AuditWriteError."""
+        with (
+            patch("builtins.open", side_effect=OSError("disk full")),
+            pytest.raises(AuditWriteError, match="disk full"),
+        ):
+            trail.record(AuditEventType.TOOL_CALL, {"tool": "shell"})
+
+    def test_write_failure_preserves_chain_state(self, trail: AuditTrail) -> None:
+        """After a write failure, chain state is unchanged — recoverable."""
+        first = trail.record(AuditEventType.SESSION_START)
+        prev_count = trail.record_count
+        prev_hash = first.record_hash
+
+        with (
+            patch("builtins.open", side_effect=OSError("disk full")),
+            pytest.raises(AuditWriteError),
+        ):
+            trail.record(AuditEventType.TOOL_CALL, {"tool": "shell"})
+
+        # State did NOT advance
+        assert trail.record_count == prev_count
+        # Next successful record should chain to the last persisted one
+        second = trail.record(AuditEventType.TOOL_CALL, {"tool": "file_read"})
+        assert second.prev_hash == prev_hash
+
+    def test_chain_verifies_after_recovery(self, trail: AuditTrail) -> None:
+        """Full chain stays verifiable across a failed + recovered write."""
+        trail.record(AuditEventType.SESSION_START)
+
+        with (
+            patch("builtins.open", side_effect=OSError("transient")),
+            pytest.raises(AuditWriteError),
+        ):
+            trail.record(AuditEventType.TOOL_CALL, {"tool": "shell"})
+
+        trail.record(AuditEventType.TOOL_CALL, {"tool": "file_read"})
+        trail.record(AuditEventType.SESSION_END)
+
+        is_valid, msg = trail.verify_chain()
+        assert is_valid, msg
+        assert "3 records" in msg  # failed one was never persisted
+
+    def test_fsync_failure_also_raises(self, trail: AuditTrail) -> None:
+        """fsync failures are as fatal as write failures."""
+        with (
+            patch("os.fsync", side_effect=OSError("fsync failed")),
+            pytest.raises(AuditWriteError, match="fsync failed"),
+        ):
+            trail.record(AuditEventType.TOOL_CALL, {"tool": "shell"})
 
     def test_compress_empty_log_returns_none(self, audit_dir: Path) -> None:
         trail = AuditTrail(log_dir=audit_dir, session_id="empty-session")

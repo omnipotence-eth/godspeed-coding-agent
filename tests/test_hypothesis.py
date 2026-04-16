@@ -252,3 +252,129 @@ class TestSecretPatternConsistency:
         findings = detect_secrets(text)
         gh_findings = [f for f in findings if f.secret_type == "github_pat"]
         assert len(gh_findings) >= 1, f"GitHub PAT not found in: {text!r}"
+
+
+# ---------------------------------------------------------------------------
+# Evolution safety gate properties
+# ---------------------------------------------------------------------------
+
+
+class TestSafetyGateProperties:
+    """Invariants of the evolution safety gate.
+
+    The gate runs on every LLM-proposed mutation before it can be applied to
+    a live agent. Its verdicts must be deterministic, monotonic in obvious
+    dimensions, and symmetric where the math requires it.
+    """
+
+    @staticmethod
+    def _candidate(original: str, mutated: str, artifact_id: str = "file_read"):
+        from godspeed.evolution.mutator import MutationCandidate
+
+        return MutationCandidate(
+            artifact_type="tool_description",
+            artifact_id=artifact_id,
+            original=original,
+            mutated=mutated,
+            mutation_rationale="property-test",
+            model_used="test",
+        )
+
+    @staticmethod
+    def _score(overall: float = 0.8, confidence: float = 1.0):
+        from godspeed.evolution.fitness import FitnessScore
+
+        return FitnessScore(
+            correctness=0.9,
+            procedure_following=0.8,
+            conciseness=0.7,
+            overall=overall,
+            length_penalty=0.0,
+            confidence=confidence,
+        )
+
+    @given(
+        original=st.text(min_size=1, max_size=200),
+        mutated=st.text(min_size=1, max_size=400),
+    )
+    @settings(max_examples=100)
+    def test_gate_is_deterministic(self, original: str, mutated: str) -> None:
+        """Running the gate twice with identical inputs yields identical verdicts."""
+        from godspeed.evolution.safety import SafetyGate
+
+        gate = SafetyGate()
+        candidate = self._candidate(original, mutated)
+        score = self._score()
+
+        v1 = gate.gate(candidate, score)
+        v2 = gate.gate(candidate, score)
+
+        assert v1.passed == v2.passed
+        assert v1.requires_human_review == v2.requires_human_review
+        assert v1.checks == v2.checks
+
+    @given(
+        original=st.text(min_size=5, max_size=100),
+        growth_factor=st.floats(min_value=0.1, max_value=5.0, allow_nan=False),
+    )
+    @settings(max_examples=100)
+    def test_size_limit_is_monotonic(self, original: str, growth_factor: float) -> None:
+        """If mutated/original ratio exceeds max_growth, size_limit must fail;
+        if within limit, size_limit must pass. No ambiguous middle ground."""
+        from godspeed.evolution.safety import SafetyGate
+
+        max_growth = 2.0
+        gate = SafetyGate(max_growth=max_growth)
+
+        # Build mutated text whose length is growth_factor * len(original)
+        target_len = max(1, int(len(original) * growth_factor))
+        mutated = ("x" * target_len) if target_len > 0 else "x"
+
+        candidate = self._candidate(original, mutated)
+        score = self._score()
+        verdict = gate.gate(candidate, score)
+
+        size_check = next(c for c in verdict.checks if c[0] == "size_limit")
+        ratio = len(mutated) / len(original)
+        if ratio > max_growth:
+            assert size_check[1] is False, f"ratio={ratio:.2f} > {max_growth} but check passed"
+        else:
+            assert size_check[1] is True, f"ratio={ratio:.2f} <= {max_growth} but check failed"
+
+    @given(
+        a=st.text(min_size=1, max_size=200),
+        b=st.text(min_size=1, max_size=200),
+    )
+    @settings(max_examples=100)
+    def test_semantic_drift_is_symmetric(self, a: str, b: str) -> None:
+        """Jaccard similarity is symmetric: gate(a→b) matches gate(b→a) on drift."""
+        from godspeed.evolution.safety import SafetyGate
+
+        gate = SafetyGate()
+        c_ab = self._candidate(a, b)
+        c_ba = self._candidate(b, a)
+
+        drift_ab = next(
+            c for c in gate.gate(c_ab, self._score()).checks if c[0] == "semantic_drift"
+        )
+        drift_ba = next(
+            c for c in gate.gate(c_ba, self._score()).checks if c[0] == "semantic_drift"
+        )
+
+        # Both directions must agree on whether similarity meets the threshold.
+        assert drift_ab[1] == drift_ba[1]
+
+    @given(
+        mutated_text=st.text(min_size=1, max_size=300),
+    )
+    @settings(max_examples=100)
+    def test_security_sensitive_tool_always_requires_review(self, mutated_text: str) -> None:
+        """Regardless of content, a mutation targeting a security-sensitive tool
+        description must require human review."""
+        from godspeed.evolution.safety import SECURITY_SENSITIVE_TOOL_IDS, SafetyGate
+
+        gate = SafetyGate()
+        for tool_id in SECURITY_SENSITIVE_TOOL_IDS:
+            candidate = self._candidate("original text", mutated_text, artifact_id=tool_id)
+            verdict = gate.gate(candidate, self._score())
+            assert verdict.requires_human_review is True, f"{tool_id} mutation slipped past review"

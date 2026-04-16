@@ -1,6 +1,10 @@
-.PHONY: lint format type-check security test test-cov clean install
+.PHONY: lint fix format type-check security test test-cov clean install all
 
 lint:
+	ruff check .
+	ruff format --check .
+
+fix:
 	ruff check . --fix
 	ruff format .
 
@@ -8,14 +12,14 @@ format:
 	ruff format .
 
 type-check:
-	ty check src/ || mypy src/
+	ty check src/ || mypy src/ --ignore-missing-imports
 
 security:
 	pip-audit
-	bandit -r src/ -c pyproject.toml || bandit -r src/
+	bandit -r src/ -c pyproject.toml -ll || bandit -r src/ -ll
 
 test:
-	pytest -x -q
+	pytest --cov --cov-report=term-missing --cov-fail-under=80 -q
 
 test-cov:
 	pytest --cov --cov-report=term-missing --cov-report=html

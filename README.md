@@ -22,7 +22,7 @@ An AI coding agent that treats security as a first-class concern -- not an after
 
 Every open-source coding agent gives an LLM the ability to read files, write code, and run shell commands. None of them ship with a deny-first permission engine, a tamper-evident audit trail, or multi-layer secret protection out of the box. You are expected to bolt security on yourself, or trust the model not to `rm -rf /`.
 
-Godspeed closes that gap. It pairs full coding capability (18+ tools, 200+ LLM providers, sub-agents, MCP) with a security model that fails closed by default. Every tool call passes through a 4-tier permission engine. Every action is recorded in a hash-chained audit log you can cryptographically verify. Secrets are caught at four separate layers before they ever reach the model or the log file.
+Godspeed closes that gap. It pairs full coding capability (25 built-in tools, 200+ LLM providers, sub-agents, MCP) with a security model that fails closed by default. Every tool call passes through a 4-tier permission engine. Every action is recorded in a hash-chained audit log you can cryptographically verify. Secrets are caught at four separate layers before they ever reach the model or the log file.
 
 If you want a coding agent you can actually point at a production codebase, this is it.
 
@@ -30,8 +30,8 @@ If you want a coding agent you can actually point at a production codebase, this
 
 ### Security
 
-- **4-tier permission engine** -- deny-first evaluation with pattern matching, dangerous command detection (72+ patterns), and fail-closed defaults. No tool call executes without explicit permission.
-- **Hash-chained audit trail** -- SHA-256 JSONL log where each entry chains to the previous. Tamper-evident, compressible, and verifiable with `godspeed audit verify`.
+- **4-tier permission engine** -- deny-first evaluation with pattern matching, dangerous command detection (71 patterns), and fail-closed defaults. No tool call executes without explicit permission.
+- **Hash-chained audit trail** -- SHA-256 JSONL log where each entry chains to the previous. Tamper-evident, compressible, and verifiable with `godspeed audit verify`. Writes fail closed: any I/O error raises `AuditWriteError` and the chain state does not advance.
 - **Secret protection** -- 4 layers of defense: file deny-listing, context cleaning, output filtering, and audit redaction. 27 regex patterns plus Shannon entropy analysis catch API keys, tokens, and credentials before they leak.
 - **Plan mode** -- `/plan` toggles read-only mode where only READ_ONLY tools are allowed, letting you explore safely before committing to changes.
 - **Rich permission prompts** -- contextual detail in permission dialogs: file edits show mini-diffs, shell commands are syntax-highlighted, file writes show previews.
@@ -39,7 +39,7 @@ If you want a coding agent you can actually point at a production codebase, this
 ### Capability
 
 - **200+ LLM providers** -- Claude, GPT, Gemini, Ollama, and everything else LiteLLM supports. Configure fallback chains so work never stops.
-- **18+ built-in tools** -- `file_read` (images, PDFs, notebooks), `file_write`, `file_edit` (fuzzy matching), `notebook_edit`, `image_read`, `pdf_read`, `shell` (foreground + background), `glob`, `grep`, `git`, `github` (PR/issue workflow via `gh`), `diff_apply` (unified diffs), `verify` (6 languages), `test_runner` (5 frameworks), `web_search`, `web_fetch`, `repo_map`, and `background_check`.
+- **25 built-in tools** -- `file_read` (images, PDFs, notebooks), `file_write`, `file_edit` (fuzzy matching), `notebook_edit`, `image_read`, `pdf_read`, `shell` (foreground + background), `glob`, `grep`, `git`, `github` (PR/issue workflow via `gh`), `diff_apply` (unified diffs), `verify` (6 languages), `test_runner` (5 frameworks), `web_search`, `web_fetch`, `repo_map`, `code_search`, `tasks`, and `background_check`.
 - **Parallel tool execution** -- when the LLM returns multiple tool calls, they execute concurrently via `asyncio.gather()`. 3-phase dispatch: parse → permission check (sequential) → execute (parallel). READ_ONLY tools always parallel, write tools always serial.
 - **Speculative tool dispatch** -- during streaming, READ_ONLY tool calls are dispatched as background `asyncio.Task`s before the full response completes. The main loop awaits cached results instead of re-dispatching, eliminating dispatch latency for reads.
 - **Extended thinking** -- pass `thinking` parameter to Anthropic/Claude models with configurable token budget. `/think [budget]` slash command. Thinking blocks displayed in collapsed dim panel.
@@ -83,7 +83,7 @@ flowchart LR
     Spec -->|READ_ONLY| Tools
     LLM -->|tool calls| Perm["Permission\nEngine"]
     Perm -->|allowed| Dispatch["Parallel/Serial\nDispatch"]
-    Dispatch --> Tools["Tools\n(18+ built-in + MCP)"]
+    Dispatch --> Tools["Tools\n(25 built-in + MCP)"]
     Perm -->|denied| Deny[Deny + Log]
     Tools --> Audit["Audit Trail\n(SHA-256 JSONL)"]
     Deny --> Audit
@@ -106,7 +106,7 @@ flowchart LR
 
 **How it works:**
 
-The agent loop is hand-rolled (no framework) following the same pattern proven by top-performing coding agents. The LLM decides when to stop. On each turn, the LLM either responds with text (done) or requests tool calls. During streaming, **speculative dispatch** starts READ_ONLY tool calls as background `asyncio.Task`s before the full response completes — the main loop awaits cached results instead of re-dispatching. Every tool call passes through the **permission engine** before execution: deny rules are evaluated first and always win, then dangerous command detection (72+ regex patterns) blocks destructive operations, then session grants and allow rules, and finally the tool's risk level determines the default. If anything is ambiguous, it fails closed. Permitted calls are split by risk level: **READ_ONLY tools run in parallel** via `asyncio.gather()`, **write tools run sequentially**. After execution, the tool call, its result, and the permission decision are recorded in the **audit trail** -- a hash-chained JSONL file where each record includes the SHA-256 hash of the previous record. Secrets are redacted at four layers: file access deny rules, context cleaning before the LLM sees content, output filtering on LLM responses, and audit log redaction. The loop also includes **stuck-loop detection** (3 identical errors triggers a replan), **auto-verification** (linter check after file edits in 6 languages with retry), **auto-stash** (git stash after 3+ consecutive writes), **cost budget enforcement**, and **pause/resume** for human-in-the-loop intervention. The **self-evolution system** mines audit trails for failure patterns and uses LLM-guided mutations to improve tool descriptions and prompts over time. The **training logger** captures the full conversation flow (user messages, assistant reasoning, tool results) to JSONL for fine-tuning tool-calling LLMs.
+The agent loop is hand-rolled (no framework) following the same pattern proven by top-performing coding agents. The LLM decides when to stop. On each turn, the LLM either responds with text (done) or requests tool calls. During streaming, **speculative dispatch** starts READ_ONLY tool calls as background `asyncio.Task`s before the full response completes — the main loop awaits cached results instead of re-dispatching. Every tool call passes through the **permission engine** before execution: deny rules are evaluated first and always win, then dangerous command detection (71 regex patterns) blocks destructive operations, then session grants and allow rules, and finally the tool's risk level determines the default. If anything is ambiguous, it fails closed. Permitted calls are split by risk level: **READ_ONLY tools run in parallel** via `asyncio.gather()`, **write tools run sequentially**. After execution, the tool call, its result, and the permission decision are recorded in the **audit trail** -- a hash-chained JSONL file where each record includes the SHA-256 hash of the previous record. Secrets are redacted at four layers: file access deny rules, context cleaning before the LLM sees content, output filtering on LLM responses, and audit log redaction. The loop also includes **stuck-loop detection** (3 identical errors triggers a replan), **auto-verification** (linter check after file edits in 6 languages with retry), **auto-stash** (git stash after 3+ consecutive writes), **cost budget enforcement**, and **pause/resume** for human-in-the-loop intervention. The **self-evolution system** mines audit trails for failure patterns and uses LLM-guided mutations to improve tool descriptions and prompts over time. The **training logger** captures the full conversation flow (user messages, assistant reasoning, tool results) to JSONL for fine-tuning tool-calling LLMs.
 
 **Key modules:**
 
@@ -115,7 +115,7 @@ The agent loop is hand-rolled (no framework) following the same pattern proven b
 | Agent loop | `src/godspeed/agent/` | Conversation management, LLM interaction, parallel + speculative dispatch, sub-agent coordinator |
 | Security | `src/godspeed/security/` | Permission engine, dangerous command detection, secret scanning |
 | Audit | `src/godspeed/audit/` | Hash-chained event logging, redaction, verification, compression |
-| Tools | `src/godspeed/tools/` | 18+ built-in tools with JSON schemas |
+| Tools | `src/godspeed/tools/` | 25 built-in tools with JSON schemas |
 | LLM | `src/godspeed/llm/` | LiteLLM client wrapper, model routing, token counting, cost tracking |
 | Context | `src/godspeed/context/` | Project instructions, compaction, checkpoints, repo map |
 | MCP | `src/godspeed/mcp/` | Model Context Protocol client (stdio + SSE) and tool adapter |
@@ -265,7 +265,7 @@ Permission rules use glob-style matching against `ToolName(argument)` strings. D
 
 | Feature | Godspeed | Claude Code | Cursor | Aider | OpenCode |
 |---------|----------|-------------|--------|-------|----------|
-| Deny-first permission engine | **Yes** (4-tier, 72+ dangerous patterns) | Proprietary | No | No | No |
+| Deny-first permission engine | **Yes** (4-tier, 71 dangerous patterns) | Proprietary | No | No | No |
 | Hash-chained audit trail | **Yes** (SHA-256 JSONL, verifiable) | No | No | No | No |
 | Secret protection | **4 layers** (deny, context clean, output filter, audit redact) | Limited | No | No | No |
 | Parallel tool execution | **Yes** (READ_ONLY parallel, write serial) | Yes | No | No | No |

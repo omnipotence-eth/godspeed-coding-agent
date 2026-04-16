@@ -38,6 +38,37 @@ class SafetyVerdict:
 HIGH_IMPACT_ARTIFACT_TYPES = frozenset({"prompt_section"})
 HIGH_IMPACT_ARTIFACT_IDS = frozenset({"core", "security", "permissions"})
 
+# Tool IDs whose descriptions gate dangerous or destructive actions.
+# Mutations to these tool descriptions must be reviewed by a human before
+# taking effect — the LLM reads the description to decide when to use the
+# tool, so an innocuous-looking reword can materially weaken safety.
+SECURITY_SENSITIVE_TOOL_IDS = frozenset(
+    {
+        "shell",
+        "bash",
+        "file_write",
+        "file_edit",
+        "diff_apply",
+        "git",
+        "github",
+        "background",
+    }
+)
+
+# Phrases that indicate a mutation is trying to relax or disable safety,
+# regardless of which artifact it targets. Matched case-insensitively as
+# regular expressions (whitespace is flexible).
+SECURITY_BYPASS_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"always\s+granted", re.IGNORECASE),
+    re.compile(r"bypass\s+(?:the\s+)?permission", re.IGNORECASE),
+    re.compile(r"ignore\s+(?:the\s+)?safety", re.IGNORECASE),
+    re.compile(r"skip\s+confirmation", re.IGNORECASE),
+    re.compile(r"auto[-\s]?approve", re.IGNORECASE),
+    re.compile(r"without\s+permission", re.IGNORECASE),
+    re.compile(r"disable\s+audit", re.IGNORECASE),
+    re.compile(r"no\s+(?:permission|audit|confirmation)\s+(?:needed|required)", re.IGNORECASE),
+)
+
 
 # ---------------------------------------------------------------------------
 # Safety Gate
@@ -136,10 +167,26 @@ class SafetyGate:
         return passed, msg
 
     def requires_human_review(self, candidate: MutationCandidate) -> bool:
-        """Determine if this mutation needs human approval."""
+        """Determine if this mutation needs human approval.
+
+        A mutation requires review when any of the following is true:
+        - artifact_type is in HIGH_IMPACT_ARTIFACT_TYPES (e.g. prompt_section)
+        - artifact_id is in HIGH_IMPACT_ARTIFACT_IDS (core/security/permissions)
+        - artifact_type is "tool_description" AND artifact_id names a
+          security-sensitive tool whose description gates dangerous actions
+        - the mutated text contains any SECURITY_BYPASS_PATTERNS phrase
+          (matched case-insensitively), regardless of artifact
+        """
         if candidate.artifact_type in HIGH_IMPACT_ARTIFACT_TYPES:
             return True
-        return candidate.artifact_id in HIGH_IMPACT_ARTIFACT_IDS
+        if candidate.artifact_id in HIGH_IMPACT_ARTIFACT_IDS:
+            return True
+        if (
+            candidate.artifact_type == "tool_description"
+            and candidate.artifact_id in SECURITY_SENSITIVE_TOOL_IDS
+        ):
+            return True
+        return any(pattern.search(candidate.mutated) for pattern in SECURITY_BYPASS_PATTERNS)
 
     @staticmethod
     def _tokenize(text: str) -> set[str]:

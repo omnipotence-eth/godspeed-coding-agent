@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import sys
 
 import pytest
 
@@ -77,6 +78,10 @@ async def test_shell_background_starts_process(tmp_path):
 
 
 @pytest.mark.asyncio
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Windows ProactorEventLoop subprocess cleanup is flaky; CI covers this on Linux.",
+)
 async def test_shell_background_max_concurrent(tmp_path):
     """Rejects background process when max concurrent reached."""
     from godspeed.tools.background import MAX_CONCURRENT

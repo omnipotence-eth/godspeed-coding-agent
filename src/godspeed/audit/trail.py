@@ -21,6 +21,14 @@ from godspeed.audit.redactor import redact_audit_detail
 logger = logging.getLogger(__name__)
 
 
+class AuditWriteError(OSError):
+    """Raised when an audit record cannot be durably persisted.
+
+    A tamper-evident log is only meaningful if every event reaches disk.
+    Callers must fail closed: stop executing tool calls until audit recovers.
+    """
+
+
 class AuditTrail:
     """Append-only, hash-chained JSONL audit log.
 
@@ -59,14 +67,12 @@ class AuditTrail:
         """Append a record to the audit trail.
 
         Thread-safe. Redacts secrets, computes hash chain, writes to JSONL.
-        Uses fsync for durable writes. On I/O failure, logs error but does
-        not crash the agent — the audit chain will be broken for this session.
+        Uses fsync for durable writes. On I/O failure, raises AuditWriteError
+        and leaves chain state unchanged — callers must fail closed.
         """
-        # Redact secrets from detail
         safe_detail = redact_audit_detail(detail or {})
 
         with self._lock:
-            # Create record with sequence number
             event = AuditRecord(
                 session_id=self._session_id,
                 sequence=self._sequence,
@@ -78,11 +84,9 @@ class AuditTrail:
                 prev_hash=self._prev_hash,
             )
 
-            # Compute this record's hash before writing
             record_json = event.model_dump_json(exclude={"record_hash"})
             event.record_hash = hashlib.sha256(record_json.encode()).hexdigest()
 
-            # Write with durability guarantees
             try:
                 line = event.model_dump_json() + "\n"
                 with open(self._log_path, "a", encoding="utf-8") as f:
@@ -91,14 +95,15 @@ class AuditTrail:
                     os.fsync(f.fileno())
             except OSError as exc:
                 logger.error(
-                    "Audit write failed path=%s error=%s — chain may be broken",
+                    "Audit write failed path=%s error=%s — refusing to advance chain",
                     self._log_path,
                     exc,
                 )
-                # Still update chain state so subsequent records link correctly
-                # to the record we attempted (even if it didn't persist)
+                # Fail closed: do NOT advance _prev_hash / _sequence.
+                # The next call will reuse the same sequence and prev_hash,
+                # so a successful retry chains cleanly from the last persisted record.
+                raise AuditWriteError(f"audit write failed: {exc}") from exc
 
-            # Update chain
             self._prev_hash = event.record_hash
             self._sequence += 1
             self._record_count += 1

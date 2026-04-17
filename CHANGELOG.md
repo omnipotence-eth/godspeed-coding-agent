@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.7.0] — 2026-04-17
+
+Quality-tooling minor release, continuation of v2.6.0. Closes two more
+deferred items from the v2.5.1 review and adds an integration-level
+invariant check between the audit trail and training log.
+
+### Added
+
+- **`complexity` tool** (`src/godspeed/tools/complexity.py`) — wraps
+  `radon cc` (Python, with grade mapping from the McCabe CC threshold)
+  and `lizard` (polyglot, when installed). Functions above `max_cc`
+  (default 10) fail the call — lets the agent enforce a complexity
+  budget on edits rather than catching it in code review.
+- **`dep_audit` tool** (`src/godspeed/tools/dep_audit.py`) — auto-detects
+  the project's package manager from manifests (`pyproject.toml` /
+  `requirements.txt` → pip-audit; `package.json` → npm audit;
+  `Cargo.toml` → cargo-audit) and runs the matching CVE scanner.
+  Vulnerabilities produce an error result so the agent treats them as
+  gating. Explicit `manager` argument overrides detection.
+- **E2E drift test** (`tests/test_audit_log_drift.py`) — integration-level
+  assertion that the audit trail's `session_end` detail and
+  `ConversationLogger.log_session_end` record agree on every field
+  (`exit_reason`, `exit_code`, all metrics). Catches regressions where
+  the two streams could drift after independent edits.
+
+### Changed
+
+- `_build_tool_registry` (`cli.py`) registers `ComplexityTool` and
+  `DepAuditTool` alongside the existing quality tools.
+
 ## [2.6.0] — 2026-04-17
 
 Quality-tooling minor release. Two new tools the agent can call to enforce

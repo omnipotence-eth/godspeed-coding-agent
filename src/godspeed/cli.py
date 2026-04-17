@@ -132,7 +132,9 @@ def _build_tool_registry() -> tuple:
     risk_levels: dict[str, RiskLevel] = {}
 
     from godspeed.tools.background import BackgroundCheckTool
+    from godspeed.tools.complexity import ComplexityTool
     from godspeed.tools.coverage import CoverageTool
+    from godspeed.tools.dep_audit import DepAuditTool
     from godspeed.tools.git import GitTool
     from godspeed.tools.glob_search import GlobSearchTool
     from godspeed.tools.grep_search import GrepSearchTool
@@ -158,6 +160,8 @@ def _build_tool_registry() -> tuple:
         TestRunnerTool(),
         CoverageTool(),
         SecurityScanTool(),
+        ComplexityTool(),
+        DepAuditTool(),
         WebSearchTool(),
         WebFetchTool(),
         NotebookEditTool(),

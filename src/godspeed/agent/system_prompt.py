@@ -77,6 +77,19 @@ WORKFLOW_PROMPT = """\
 """
 
 
+QUALITY_PROMPT = """\
+
+## Code Quality Defaults
+- Type hints on public functions. No bare except. No print() in committed code.
+- When adding behavior, write a failing test first where practical.
+- Match existing patterns in the file you're editing — read it first if you
+  haven't already this turn.
+- Default to no comments. Add one only when the WHY is non-obvious.
+- Never hardcode secrets; validate at system boundaries; parameterized queries only.
+- Prefer 3 similar lines to a premature abstraction for a hypothetical case.
+"""
+
+
 PLAN_MODE_PROMPT = """\
 
 ## Plan Mode Active
@@ -101,7 +114,7 @@ def build_system_prompt(
     3. Available tool descriptions
     4. Working directory context
     """
-    parts = [CORE_PROMPT, WORKFLOW_PROMPT]
+    parts = [CORE_PROMPT, WORKFLOW_PROMPT, QUALITY_PROMPT]
 
     if plan_mode:
         parts.append(PLAN_MODE_PROMPT)

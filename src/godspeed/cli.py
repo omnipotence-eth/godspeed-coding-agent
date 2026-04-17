@@ -576,7 +576,7 @@ def init() -> None:
 
 
 @main.command("run")
-@click.argument("task")
+@click.argument("task", required=False, default="")
 @click.option("--model", "-m", default="", help="Model to use.")
 @click.option(
     "--project-dir",
@@ -593,7 +593,19 @@ def init() -> None:
     help="Auto-approve permission level (default: reads).",
 )
 @click.option("--max-iterations", type=int, default=50, help="Max agent loop iterations.")
+@click.option(
+    "--timeout",
+    type=int,
+    default=0,
+    help="Wall-clock session timeout in seconds (0 = no limit).",
+)
 @click.option("--json-output", is_flag=True, help="Output result as JSON.")
+@click.option(
+    "--prompt-file",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    default=None,
+    help="Read the task from a file instead of the positional argument.",
+)
 def headless_run(
     task: str,
     model: str,
@@ -601,26 +613,80 @@ def headless_run(
     verbose: bool,
     auto_approve: str,
     max_iterations: int,
+    timeout: int,
     json_output: bool,
+    prompt_file: Path | None,
 ) -> None:
     """Run a task non-interactively (headless/CI mode).
 
     Executes the agent loop without a TUI. Permissions are auto-approved
     based on --auto-approve level. Outputs the final response to stdout.
 
+    Task input precedence:
+        1. --prompt-file FILE          (read task from file)
+        2. TASK positional argument    (passed as argument)
+        3. stdin                       (when TASK is '-' or omitted and stdin is a pipe)
+
+    Exit codes:
+        0   success — model stopped with a final text response
+        1   tool error — final response starts with "Error:"
+        2   max iterations reached without the model stopping
+        3   cost budget exceeded
+        4   LLM provider failure (all fallbacks exhausted)
+        5   invalid input (no task provided)
+        6   wall-clock timeout (--timeout exceeded)
+        130 keyboard interrupt (SIGINT)
+
     Examples:
         godspeed run "Fix the failing test in test_auth.py"
-        godspeed run "Add type hints to utils.py" --auto-approve all
-        godspeed run "Explain main.py" --json-output
+        godspeed run --prompt-file experiment.prompt --json-output
+        cat task.md | godspeed run -
+        godspeed run "Long running task" --timeout 1800
     """
+    from godspeed.agent.result import ExitCode
+
     _setup_logging(verbose)
-    try:
-        result = asyncio.run(
-            _headless_run(task, model, project_dir, auto_approve, max_iterations, json_output)
+
+    resolved_task = _resolve_task_input(task, prompt_file)
+    if not resolved_task:
+        sys.stderr.write(
+            "Error: No task provided. Pass a positional argument, use --prompt-file, "
+            "or pipe via stdin with `godspeed run -`.\n"
         )
-        sys.exit(0 if result else 1)
+        sys.exit(ExitCode.INVALID_INPUT)
+
+    try:
+        exit_code = asyncio.run(
+            _headless_run(
+                resolved_task,
+                model,
+                project_dir,
+                auto_approve,
+                max_iterations,
+                timeout,
+                json_output,
+            )
+        )
+        sys.exit(int(exit_code))
     except KeyboardInterrupt:
-        sys.exit(130)
+        sys.exit(ExitCode.INTERRUPTED)
+
+
+def _resolve_task_input(task_arg: str, prompt_file: Path | None) -> str:
+    """Resolve the task text from the available sources (in precedence order).
+
+    Returns an empty string when no task is available — the caller treats
+    that as INVALID_INPUT.
+    """
+    if prompt_file is not None:
+        return prompt_file.read_text(encoding="utf-8").strip()
+    if task_arg == "-":
+        return sys.stdin.read().strip()
+    if task_arg:
+        return task_arg
+    if not sys.stdin.isatty():
+        return sys.stdin.read().strip()
+    return ""
 
 
 async def _headless_run(
@@ -629,14 +695,23 @@ async def _headless_run(
     project_dir: Path,
     auto_approve: str,
     max_iterations: int,
+    timeout: int,
     json_output: bool,
-) -> bool:
-    """Execute the headless agent loop."""
+) -> int:
+    """Execute the headless agent loop.
+
+    Returns an ExitCode-compatible integer:
+        0 SUCCESS, 1 TOOL_ERROR, 2 MAX_ITERATIONS, 3 BUDGET_EXCEEDED,
+        4 LLM_ERROR, 6 TIMEOUT. Never returns INTERRUPTED (130) — the
+        caller translates KeyboardInterrupt.
+    """
     import json as json_module
 
     from godspeed.agent.conversation import Conversation
     from godspeed.agent.loop import agent_loop
+    from godspeed.agent.result import AgentMetrics, ExitCode, ExitReason
     from godspeed.agent.system_prompt import build_system_prompt
+    from godspeed.audit.trail import AuditTrail
     from godspeed.config import GodspeedSettings
     from godspeed.context.project_instructions import load_project_instructions
     from godspeed.llm.client import LLMClient, ModelRouter
@@ -651,6 +726,21 @@ async def _headless_run(
     effective_model = model or settings.model
     effective_project_dir = project_dir.resolve()
     session_id = str(uuid4())
+
+    # Audit trail — headless must have an audit trail by default. A
+    # security-first agent without a tamper-evident log in unattended mode
+    # is the worst of both worlds.
+    audit_dir = settings.global_dir / "audit"
+    audit_trail = AuditTrail(log_dir=audit_dir, session_id=session_id)
+    audit_trail.record(
+        event_type="session_start",
+        detail={
+            "mode": "headless",
+            "task": task[:500],  # clipped; full task goes to training logger
+            "model": effective_model,
+            "auto_approve": auto_approve,
+        },
+    )
 
     # Tools
     registry, risk_levels = _build_tool_registry()
@@ -688,12 +778,11 @@ async def _headless_run(
     if effective_model.lower().startswith("ollama"):
         _ensure_ollama()
 
-    # Build components
     tool_context = ToolContext(
         cwd=effective_project_dir,
         session_id=session_id,
         permissions=_HeadlessPermissionProxy(permission_engine, auto_approve),
-        audit=None,
+        audit=audit_trail,
     )
 
     project_instructions = load_project_instructions(
@@ -745,8 +834,12 @@ async def _headless_run(
         if is_error:
             logger.warning("Tool error: %s", name)
 
-    # Run agent loop
-    final_text = await agent_loop(
+    metrics = AgentMetrics()
+    timed_out = False
+    final_text: str
+
+    # Run agent loop, optionally under a wall-clock timeout.
+    loop_coro = agent_loop(
         user_input=task,
         conversation=conversation,
         llm_client=llm_client,
@@ -755,11 +848,47 @@ async def _headless_run(
         on_tool_call=on_tool_call,
         on_tool_result=on_tool_result,
         max_iterations=max_iterations,
+        metrics=metrics,
     )
+    try:
+        if timeout > 0:
+            final_text = await asyncio.wait_for(loop_coro, timeout=timeout)
+        else:
+            final_text = await loop_coro
+    except TimeoutError:
+        timed_out = True
+        final_text = f"Error: Session exceeded wall-clock timeout of {timeout}s."
+        metrics.finalize(ExitReason.TIMEOUT)
 
     # Close conversation logger
     if conversation_logger is not None:
         conversation_logger.close()
+
+    # Resolve final exit code. TOOL_ERROR overrides STOPPED when the model's
+    # final message starts with "Error:" (common pattern for tool failures
+    # that the model surfaces rather than silently ignoring).
+    exit_code = int(metrics.exit_code)
+    if (
+        not timed_out
+        and metrics.exit_reason == ExitReason.STOPPED
+        and final_text.startswith("Error:")
+    ):
+        exit_code = int(ExitCode.TOOL_ERROR)
+        metrics.exit_reason = ExitReason.TOOL_ERROR
+
+    audit_trail.record(
+        event_type="session_end",
+        detail={
+            "exit_reason": metrics.exit_reason.value,
+            "exit_code": exit_code,
+            "iterations_used": metrics.iterations_used,
+            "tool_call_count": metrics.tool_call_count,
+            "tool_error_count": metrics.tool_error_count,
+            "duration_seconds": round(metrics.duration_seconds, 3),
+            "cost_usd": round(llm_client.total_cost_usd, 6),
+        },
+        outcome="success" if exit_code == 0 else "error",
+    )
 
     # Output result to stdout
     if json_output:
@@ -768,14 +897,23 @@ async def _headless_run(
             "model": effective_model,
             "session_id": session_id,
             "response": final_text,
+            "exit_reason": metrics.exit_reason.value,
+            "exit_code": exit_code,
+            "iterations_used": metrics.iterations_used,
+            "tool_calls": [{"name": tc.name, "is_error": tc.is_error} for tc in metrics.tool_calls],
+            "tool_call_count": metrics.tool_call_count,
+            "tool_error_count": metrics.tool_error_count,
+            "duration_seconds": round(metrics.duration_seconds, 3),
             "input_tokens": llm_client.total_input_tokens,
             "output_tokens": llm_client.total_output_tokens,
+            "cost_usd": round(llm_client.total_cost_usd, 6),
+            "audit_log_path": str(audit_trail.log_path),
         }
         sys.stdout.write(json_module.dumps(output, indent=2) + "\n")
     else:
         sys.stdout.write(final_text + "\n")
 
-    return not final_text.startswith("Error:")
+    return exit_code
 
 
 @main.command()

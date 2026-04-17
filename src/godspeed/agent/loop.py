@@ -15,6 +15,7 @@ from collections.abc import Callable
 from typing import Any
 
 from godspeed.agent.conversation import Conversation
+from godspeed.agent.result import AgentMetrics, ExitReason
 from godspeed.llm.client import ChatResponse, LLMClient
 from godspeed.tools.base import ToolCall, ToolContext, ToolResult
 from godspeed.tools.registry import ToolRegistry
@@ -73,6 +74,7 @@ async def agent_loop(
     on_parallel_start: OnParallelStart | None = None,
     on_parallel_complete: OnParallelComplete | None = None,
     on_thinking: OnThinking | None = None,
+    metrics: AgentMetrics | None = None,
 ) -> str:
     """Run the agent loop until the model stops calling tools.
 
@@ -158,8 +160,14 @@ async def agent_loop(
                     "Use /budget to increase the limit."
                 )
                 logger.warning("Budget exceeded spent=%.4f limit=%.2f", exc.spent, exc.limit)
+                if metrics is not None:
+                    metrics.iterations_used = iteration
+                    metrics.finalize(ExitReason.BUDGET_EXCEEDED)
                 return msg
             logger.error("LLM call failed error=%s", exc, exc_info=True)
+            if metrics is not None:
+                metrics.iterations_used = iteration
+                metrics.finalize(ExitReason.LLM_ERROR)
             return f"Error: LLM call failed — {exc}"
 
         # Display thinking blocks (extended thinking for Anthropic models)
@@ -174,6 +182,9 @@ async def agent_loop(
                 # Skip Markdown re-render if we already streamed the text
                 if on_assistant_text and on_assistant_chunk is None:
                     on_assistant_text(final_text)
+            if metrics is not None:
+                metrics.iterations_used = iteration + 1
+                metrics.finalize(ExitReason.STOPPED)
             return final_text
 
         # Handle tool calls
@@ -197,6 +208,9 @@ async def agent_loop(
             if tool_call is None:
                 retries += 1
                 if retries > MAX_RETRIES:
+                    if metrics is not None:
+                        metrics.iterations_used = iteration + 1
+                        metrics.finalize(ExitReason.TOOL_ERROR)
                     return "Error: Too many malformed tool calls from the model."
                 conversation.add_tool_result(
                     tool_call_id=raw_tc.get("id", ""),
@@ -310,6 +324,9 @@ async def agent_loop(
 
                 if on_tool_result:
                     on_tool_result(tool_call.tool_name, result)
+
+                if metrics is not None:
+                    metrics.record_tool_call(tool_call.tool_name, result.is_error)
 
                 # Audit — use batch latency split evenly as approximation
                 if tool_context.audit is not None:
@@ -486,6 +503,9 @@ async def agent_loop(
                 if on_tool_result:
                     on_tool_result(tool_call.tool_name, result)
 
+                if metrics is not None:
+                    metrics.record_tool_call(tool_call.tool_name, result.is_error)
+
                 # Record audit event with latency
                 if tool_context.audit is not None:
                     tool_context.audit.record(
@@ -612,6 +632,9 @@ async def agent_loop(
                 else:
                     recent_error_hashes.clear()
 
+    if metrics is not None:
+        metrics.iterations_used = iteration_limit
+        metrics.finalize(ExitReason.MAX_ITERATIONS)
     return "Error: Reached maximum iterations. The task may be too complex for a single turn."
 
 

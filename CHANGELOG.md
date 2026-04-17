@@ -7,7 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [2.4.0] — 2026-04-16
+## [2.5.0] — 2026-04-16
+
+MLOps-readiness release. Closes the headless/pipeline gaps found in the
+feature + logic audit on 2026-04-16. The `godspeed run` command is now
+suitable for unattended use in CI, W&B sweeps, and ML research pipelines.
+
+### Added
+
+- **Exit code contract** (`godspeed.agent.result.ExitCode`). `godspeed run`
+  now returns differentiated exit codes so orchestrators can switch on them:
+  `0` success, `1` tool error, `2` max iterations, `3` budget exceeded,
+  `4` LLM error, `5` invalid input, `6` timeout, `130` interrupted. Codes
+  are stable across minor versions.
+- **JSON output schema extended** with `exit_reason`, `exit_code`,
+  `iterations_used`, `tool_calls` (list of `{name, is_error}`),
+  `tool_call_count`, `tool_error_count`, `duration_seconds`, `cost_usd`,
+  and `audit_log_path`. Existing fields preserved.
+- **`--timeout N`** wall-clock session cap on `godspeed run`. Wraps the
+  agent loop in `asyncio.wait_for`; exits with code 6 on timeout. Default
+  `0` (no limit) preserves existing behavior.
+- **`--prompt-file FILE`** flag on `godspeed run` reads the task from a
+  file. Task input precedence: `--prompt-file` > positional > stdin.
+  Passing `-` as the positional task reads from stdin; an empty positional
+  with a piped stdin also reads from stdin.
+- **Rate-limit retry with exponential backoff + jitter** in `LLMClient`.
+  429/quota errors now retry up to 4 times on the same model (delays
+  1s/2s/4s/8s ± 25% jitter, capped at 60s) before falling over to the
+  next model. Honors `Retry-After` when the provider supplies it
+  (upward-only jitter — we don't retry earlier than the provider asked).
+- **`AgentMetrics`** accumulator on `agent_loop()` via the new optional
+  `metrics` kwarg. Populates `iterations_used`, `tool_calls`,
+  `exit_reason`, `duration_seconds`.
+
+### Changed
+
+- **Headless mode now has an audit trail by default**. Previously
+  `godspeed run` wired `audit=None` into the tool context — unattended
+  sessions had no tamper-evident log, the opposite of the project's
+  security posture. Audit now writes to `~/.godspeed/audit/{session}.audit.jsonl`
+  with session-start and session-end records bookending every run.
+- `agent_loop()` gains the optional `metrics: AgentMetrics | None` kwarg.
+  Omitting it preserves the prior behavior exactly — backwards-compatible.
+
+### Fixed
+
+- Addresses G1–G7 from the 2026-04-16 feature audit.
 
 ### Security
 

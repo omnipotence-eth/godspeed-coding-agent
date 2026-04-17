@@ -390,10 +390,14 @@ async def agent_loop(
                             file_path,
                             "passed" in verify_result.output.lower(),
                         )
+                        # After v2.8.0, verify returns a failure ToolResult
+                        # when issues remain, so the fingerprint is in .error.
+                        # Fall back to .output for backwards compatibility.
+                        verify_text = verify_result.error or verify_result.output or ""
                         must_fix_injections = _maybe_inject_must_fix(
                             conversation,
                             file_path,
-                            verify_result.output or "",
+                            verify_text,
                             must_fix_injections,
                             metrics,
                         )
@@ -560,10 +564,14 @@ async def agent_loop(
                             file_path,
                             "passed" in verify_result.output.lower(),
                         )
+                        # After v2.8.0, verify returns a failure ToolResult
+                        # when issues remain, so the fingerprint is in .error.
+                        # Fall back to .output for backwards compatibility.
+                        verify_text = verify_result.error or verify_result.output or ""
                         must_fix_injections = _maybe_inject_must_fix(
                             conversation,
                             file_path,
-                            verify_result.output or "",
+                            verify_text,
                             must_fix_injections,
                             metrics,
                         )

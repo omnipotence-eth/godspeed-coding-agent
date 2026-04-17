@@ -105,8 +105,10 @@ class TestVerifyFixRetry:
                 max_retries=3,
             )
 
-        assert "some remaining" in result.output
-        assert not result.is_error
+        # After v2.8.0 the retry path returns a failure result when issues
+        # remain, so is_error=True and the fingerprint lives in result.error.
+        assert "some remaining" in (result.error or "")
+        assert result.is_error
         # Fix was attempted max_retries times
         assert mock_fix.call_count == 3
 
@@ -131,7 +133,9 @@ class TestVerifyFixRetry:
                 max_retries=1,
             )
 
-        assert "some remaining" in result.output
+        # Fingerprint is in the error field post-v2.8.0 failure-semantic fix.
+        assert "some remaining" in (result.error or "")
+        assert result.is_error
         assert mock_fix.call_count == 1
 
     def test_retry_disabled_when_zero(self, tmp_py_file: Path) -> None:

@@ -106,6 +106,20 @@ class AuditRecorder(Protocol):
         ...
 
 
+@runtime_checkable
+class LLMInvoker(Protocol):
+    """Protocol for tools that need to make LLM calls.
+
+    Separated from the LLMClient concrete class so tools can accept any
+    callable with an ``async chat(messages=...) -> response-with-content``
+    surface. Avoids a hard dependency from tools/ on llm/.
+    """
+
+    async def chat(self, messages: list[dict[str, Any]], **kwargs: Any) -> Any:  # pragma: no cover
+        """Send messages; return an object with a ``.content`` string attribute."""
+        ...
+
+
 class ToolContext(BaseModel):
     """Execution context passed to every tool."""
 
@@ -113,6 +127,7 @@ class ToolContext(BaseModel):
     session_id: str
     permissions: PermissionEvaluator | None = None
     audit: AuditRecorder | None = None
+    llm_client: LLMInvoker | None = None
 
     model_config = {"arbitrary_types_allowed": True}
 

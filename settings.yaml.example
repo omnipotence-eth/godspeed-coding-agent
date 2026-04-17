@@ -22,12 +22,16 @@ fallback_models: []
 # ─── Popular model examples (uncomment one) ─────────────────────────────
 #
 # Free local models (Ollama — no API key):
-#   model: ollama/qwen3:4b          # 4B params, fast, good tool calling
-#   model: ollama/qwen3:8b          # 8B params, better reasoning
-#   model: ollama/gemma4:e4b        # Google Gemma 4, excellent coding
-#   model: ollama/llama3.3:8b       # Meta Llama 3.3
-#   model: ollama/mistral:7b        # Mistral 7B
-#   model: ollama/deepseek-r1:8b    # DeepSeek R1, strong reasoning
+#   model: ollama/qwen3:4b               # 4B params, fast, good tool calling
+#   model: ollama/qwen3:8b               # 8B params, better reasoning
+#   model: ollama/qwen3:14b              # 14B params, ~75 tok/s, fits fully in 16GB VRAM
+#   model: ollama/qwen3-coder:latest     # MoE 30B total / 3B active, coder-tuned,
+#                                        # ~18GB, ~53 tok/s. Tool calls via Godspeed's
+#                                        # Qwen3-Coder parser shim (llm/qwen3_coder_parser.py)
+#   model: ollama/gemma4:e4b             # Google Gemma 4, excellent coding
+#   model: ollama/llama3.3:8b            # Meta Llama 3.3
+#   model: ollama/mistral:7b             # Mistral 7B
+#   model: ollama/deepseek-r1:8b         # DeepSeek R1, strong reasoning
 #
 # Paid cloud models (set API key as env var):
 #   model: claude-sonnet-4-20250514    # ANTHROPIC_API_KEY

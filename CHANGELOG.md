@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.9.1] — 2026-04-17
+
+Patch release — compatibility shim and local-model documentation. Shipped
+alongside the Stage A findings from the Track B re-evaluation plan.
+
+### Added
+
+- **`src/godspeed/llm/qwen3_coder_parser.py`** — regex extractor for
+  Qwen3-Coder's `<function=name>\n<parameter=key>\nvalue\n</parameter>\n</function>`
+  tool-call XML. Ollama 0.20.x doesn't recognize this format — calls come
+  back in the `content` field instead of `tool_calls`. The parser
+  synthesizes OpenAI-shaped tool_calls so the rest of Godspeed's pipeline
+  sees a standard response. Hooked into `LLMClient._call()` as a no-op
+  when `tool_calls` is already populated.
+- Model table entries for `ollama/qwen3:14b` and
+  `ollama/qwen3-coder:latest` in the `models` CLI command and
+  `settings.yaml.example` — documented but not promoted to default.
+- `scripts/run_benchmark.py` — measurement runner that shells out
+  `godspeed run` per task and scores via `training.benchmark`. Not a
+  shipped CLI command; a tool for Stage A / future benchmark runs.
+- Per-file ignore for `scripts/**/*.py` in `pyproject.toml` — `print()`
+  is intentional in CLI scripts.
+- `.godspeed/training/`, `.godspeed/checkpoints/`, `.godspeed/memory.db*`
+  added to `.gitignore` — session artifacts should not track into repos.
+
+### Tests (+20 new)
+
+- `tests/test_qwen3_coder_parser.py` covers the parser's detector, the
+  type-coercion (bool/int/float/JSON/string), multi-call responses,
+  malformed input, and uniqueness of synthesized IDs.
+
 ## [2.9.0] — 2026-04-17
 
 Final entry in the v2.5.1 review follow-up chain. Auto-index on session

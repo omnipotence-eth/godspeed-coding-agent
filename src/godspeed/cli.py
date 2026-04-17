@@ -974,6 +974,13 @@ def models() -> None:
     # Free local models
     table.add_row("ollama/qwen3:4b", "Ollama", free, "None (local)")
     table.add_row("ollama/qwen3:8b", "Ollama", free, "None (local)")
+    table.add_row("ollama/qwen3:14b", "Ollama", free, "None (local, 8GB)")
+    table.add_row(
+        "ollama/qwen3-coder:latest",
+        "Ollama",
+        free,
+        "None (local, 18GB, MoE 30B-A3B, coder-tuned)",
+    )
     table.add_row("ollama/gemma4:e4b", "Ollama", free, "None (local)")
     table.add_row("ollama/llama3.3:8b", "Ollama", free, "None (local)")
     table.add_row("ollama/deepseek-r1:8b", "Ollama", free, "None (local)")

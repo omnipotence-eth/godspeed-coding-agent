@@ -1,0 +1,16 @@
+{
+  "model": "ollama/qwen3-coder:latest",
+  "total_tasks": 20,
+  "pass_count_jaccard_ge_0_6": 1,
+  "mean_tool_selection": 0.098,
+  "mean_sequence_quality": 0.163,
+  "mean_overall": 0.124,
+  "by_difficulty": {
+    "easy": 0.25,
+    "medium": 0.125,
+    "hard": 0.031
+  },
+  "mean_tok_per_sec": 11.3,
+  "total_duration_s": 1040.4,
+  "total_output_tokens": 11801
+}

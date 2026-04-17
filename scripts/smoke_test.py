@@ -73,7 +73,7 @@ async def smoke_test(model: str) -> bool:
             registry,
             ctx,
             on_tool_call=lambda name, args: console.print(f"  [dim]> tool: {name}({args})[/dim]"),
-            on_assistant_chunk=lambda chunk: print(chunk, end="", flush=True),  # noqa: T201
+            on_assistant_chunk=lambda chunk: print(chunk, end="", flush=True),
         )
         console.print(f"\n  [green]Response:[/green] {result[:200]}")
 
@@ -100,7 +100,7 @@ async def smoke_test(model: str) -> bool:
             registry,
             ctx,
             on_tool_call=lambda name, args: console.print(f"  [dim]> tool: {name}({args})[/dim]"),
-            on_assistant_chunk=lambda chunk: print(chunk, end="", flush=True),  # noqa: T201
+            on_assistant_chunk=lambda chunk: print(chunk, end="", flush=True),
         )
         console.print(f"\n  [green]Response:[/green] {result2[:200]}")
 

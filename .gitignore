@@ -33,6 +33,10 @@ Thumbs.db
 # Godspeed
 .godspeed/audit/
 .godspeed/sessions/
+.godspeed/training/
+.godspeed/checkpoints/
+.godspeed/memory.db
+.godspeed/memory.db-*
 
 # Testing
 .hypothesis/

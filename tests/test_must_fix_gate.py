@@ -15,6 +15,7 @@ import pytest
 
 from godspeed.agent.conversation import Conversation
 from godspeed.agent.loop import MUST_FIX_CAP, _maybe_inject_must_fix, agent_loop
+from godspeed.agent.result import AgentMetrics
 from godspeed.llm.client import ChatResponse, LLMClient
 from godspeed.tools.base import ToolResult
 from godspeed.tools.registry import ToolRegistry
@@ -77,6 +78,23 @@ class TestMaybeInjectMustFix:
         convo = Conversation("sys", max_tokens=100_000)
         assert _maybe_inject_must_fix(convo, "x.py", "", 0) == 0
         assert _maybe_inject_must_fix(convo, "x.py", None, 0) == 0  # type: ignore[arg-type]
+
+    def test_injection_records_on_metrics(self) -> None:
+        """When metrics is provided, each injection bumps the counter."""
+        convo = Conversation("sys", max_tokens=100_000)
+        metrics = AgentMetrics()
+        verify_output = "Auto-fixed 2 rounds, some remaining: app.py\nF401"
+        out = _maybe_inject_must_fix(convo, "app.py", verify_output, 0, metrics)
+        assert out == 1
+        assert metrics.must_fix_injections == 1
+
+    def test_cap_reached_does_not_record_on_metrics(self) -> None:
+        """After the cap the gate doesn't inject — metrics should not increment."""
+        convo = Conversation("sys", max_tokens=100_000)
+        metrics = AgentMetrics()
+        verify_output = "Auto-fixed rounds, some remaining: app.py"
+        _maybe_inject_must_fix(convo, "app.py", verify_output, MUST_FIX_CAP, metrics)
+        assert metrics.must_fix_injections == 0
 
 
 class TestMustFixGateInAgentLoop:

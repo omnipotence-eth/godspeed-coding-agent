@@ -132,11 +132,13 @@ def _build_tool_registry() -> tuple:
     risk_levels: dict[str, RiskLevel] = {}
 
     from godspeed.tools.background import BackgroundCheckTool
+    from godspeed.tools.coverage import CoverageTool
     from godspeed.tools.git import GitTool
     from godspeed.tools.glob_search import GlobSearchTool
     from godspeed.tools.grep_search import GrepSearchTool
     from godspeed.tools.notebook import NotebookEditTool
     from godspeed.tools.repo_map import RepoMapTool
+    from godspeed.tools.security_scan import SecurityScanTool
     from godspeed.tools.shell import ShellTool
     from godspeed.tools.test_runner import TestRunnerTool
     from godspeed.tools.verify import VerifyTool
@@ -154,6 +156,8 @@ def _build_tool_registry() -> tuple:
         VerifyTool(),
         RepoMapTool(),
         TestRunnerTool(),
+        CoverageTool(),
+        SecurityScanTool(),
         WebSearchTool(),
         WebFetchTool(),
         NotebookEditTool(),
@@ -880,6 +884,7 @@ async def _headless_run(
             "iterations_used": metrics.iterations_used,
             "tool_call_count": metrics.tool_call_count,
             "tool_error_count": metrics.tool_error_count,
+            "must_fix_injections": metrics.must_fix_injections,
             "duration_seconds": round(metrics.duration_seconds, 3),
             "cost_usd": round(llm_client.total_cost_usd, 6),
         },
@@ -895,6 +900,7 @@ async def _headless_run(
             iterations_used=metrics.iterations_used,
             tool_call_count=metrics.tool_call_count,
             tool_error_count=metrics.tool_error_count,
+            must_fix_injections=metrics.must_fix_injections,
             duration_seconds=metrics.duration_seconds,
             cost_usd=llm_client.total_cost_usd,
         )
@@ -913,6 +919,7 @@ async def _headless_run(
             "tool_calls": [{"name": tc.name, "is_error": tc.is_error} for tc in metrics.tool_calls],
             "tool_call_count": metrics.tool_call_count,
             "tool_error_count": metrics.tool_error_count,
+            "must_fix_injections": metrics.must_fix_injections,
             "duration_seconds": round(metrics.duration_seconds, 3),
             "input_tokens": llm_client.total_input_tokens,
             "output_tokens": llm_client.total_output_tokens,

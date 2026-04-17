@@ -65,8 +65,15 @@ class TestAgentMetrics:
         assert m.iterations_used == 0
         assert m.tool_call_count == 0
         assert m.tool_error_count == 0
+        assert m.must_fix_injections == 0
         assert m.end_time is None
         assert m.exit_reason == ExitReason.STOPPED
+
+    def test_record_must_fix_injection_increments(self) -> None:
+        m = AgentMetrics()
+        m.record_must_fix_injection()
+        m.record_must_fix_injection()
+        assert m.must_fix_injections == 2
 
     def test_record_tool_call(self) -> None:
         m = AgentMetrics()
@@ -89,11 +96,13 @@ class TestAgentMetrics:
         assert m.exit_code == ExitCode.MAX_ITERATIONS
 
     def test_duration_before_finalize(self) -> None:
-        """duration_seconds should work even before finalize() is called."""
+        """duration_seconds should return a non-negative value (doesn't raise)
+        even before finalize() has set end_time. Windows monotonic() has
+        coarse granularity so we only assert non-negative, not >0."""
         m = AgentMetrics()
         time.sleep(0.01)
         d = m.duration_seconds
-        assert d > 0
+        assert d >= 0.0
 
 
 class TestAgentLoopPopulatesMetrics:

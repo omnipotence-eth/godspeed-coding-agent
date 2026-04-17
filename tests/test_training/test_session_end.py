@@ -30,6 +30,7 @@ def test_log_session_end_writes_expected_record(tmp_path: Path) -> None:
             tool_error_count=0,
             duration_seconds=12.3456,
             cost_usd=0.012345,
+            must_fix_injections=2,
         )
     finally:
         logger.close()
@@ -43,6 +44,7 @@ def test_log_session_end_writes_expected_record(tmp_path: Path) -> None:
     assert end["iterations_used"] == 3
     assert end["tool_call_count"] == 5
     assert end["tool_error_count"] == 0
+    assert end["must_fix_injections"] == 2
     # Fields rounded as documented
     assert end["duration_seconds"] == 12.346
     assert end["cost_usd"] == 0.012345

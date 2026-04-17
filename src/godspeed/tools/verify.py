@@ -27,6 +27,12 @@ _FIXABLE_LANGUAGES: frozenset[str] = frozenset({"python", "javascript", "typescr
 # Timeout for linter subprocess
 VERIFY_TIMEOUT = 30
 
+# Sentinel substring embedded in the output when auto-fix-with-retry exhausts
+# retries with lint errors still present. loop.py's MUST-FIX gate matches this
+# substring to detect silent-success-with-remaining-errors. Keep in sync if
+# the output format ever changes.
+REMAINING_ERRORS_FINGERPRINT = "some remaining"
+
 # Extension → verifier function mapping
 _EXTENSION_MAP: dict[str, str] = {
     ".py": "python",
@@ -312,7 +318,7 @@ def _verify_with_retry(
     remaining_output = final.output if not final.is_error else (final.error or "")
     return ToolResult.success(
         f"Auto-fixed {total_fixed} round(s) of issues, "
-        f"some remaining: {display_path}\n{remaining_output}"
+        f"{REMAINING_ERRORS_FINGERPRINT}: {display_path}\n{remaining_output}"
     )
 
 

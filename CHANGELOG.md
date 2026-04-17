@@ -7,6 +7,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.6.0] — 2026-04-17
+
+Quality-tooling minor release. Two new tools the agent can call to enforce
+production-grade code; efficiency telemetry in training logs; follow-up
+cleanup from v2.5.1.
+
+### Added
+
+- **`coverage` tool** (`src/godspeed/tools/coverage.py`) — wraps
+  `coverage run pytest` + `coverage report -m`. Optional `min_percent`
+  argument fails the call below the threshold, turning coverage into a
+  quality gate the agent can enforce per-session. Auto-detects `--source`
+  (`./src` if present, else cwd). Graceful error when `coverage` isn't
+  installed.
+- **`security_scan` tool** (`src/godspeed/tools/security_scan.py`) —
+  wraps `bandit` (Python) and `semgrep` (polyglot, when installed). Both
+  optional; falls back when neither is available. Non-zero findings
+  produce an error result so the agent treats them as gating rather than
+  advisory. Configurable minimum severity (`low` / `medium` / `high`).
+- **`AgentMetrics.must_fix_injections`** counter — increments each time
+  the MUST-FIX gate injects a fix-required message. Exposed in headless
+  JSON output, audit trail `session_end` detail, and `ConversationLogger`
+  `log_session_end` record. Training signal: agents that trigger many
+  MUST-FIX injections are less efficient per unit of successful work;
+  downstream RL (GRPO) can penalize against this counter.
+
+### Changed
+
+- **Fingerprint coupling reduced** — `verify.REMAINING_ERRORS_FINGERPRINT`
+  is now a module-level constant imported by `loop._maybe_inject_must_fix`.
+  Eliminates the duplicated `"some remaining"` string literal identified
+  in the v2.5.1 review follow-ups.
+- `ConversationLogger.log_session_end(...)` accepts a new
+  `must_fix_injections` keyword argument (defaulted to 0 for
+  backwards-compatibility with existing callers).
+- `_build_tool_registry` (`cli.py`) registers `CoverageTool` and
+  `SecurityScanTool` alongside the existing quality tools.
+
+### Fixed
+
+- `tests/test_agent_result.py::test_duration_before_finalize` — flaked on
+  Windows where `time.monotonic()` granularity could return identical
+  values across a `0.01s` sleep. Assertion relaxed to `>= 0.0` (the
+  semantically correct invariant — duration is never negative).
+
 ## [2.5.1] — 2026-04-17
 
 Patch release — code-quality enforcement and training-record alignment. No new

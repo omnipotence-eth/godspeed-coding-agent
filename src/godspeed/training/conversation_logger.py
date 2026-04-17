@@ -107,6 +107,7 @@ class ConversationLogger:
         tool_error_count: int,
         duration_seconds: float,
         cost_usd: float,
+        must_fix_injections: int = 0,
     ) -> None:
         """Terminal record per session.
 
@@ -114,6 +115,10 @@ class ConversationLogger:
         stay comparable. Downstream RL (GRPO) reads exit_code to shape
         rewards: +1.0 on SUCCESS, -0.5 on TOOL_ERROR, -1.0 on
         MAX_ITERATIONS, etc. See ml-lab phase4_grpo.yaml for the mapping.
+
+        `must_fix_injections` (v2.6.0+) is a quality signal: agents that
+        triggered many fix-required injections are less efficient per unit
+        of successful work.
         """
         self._write(
             {
@@ -123,6 +128,7 @@ class ConversationLogger:
                 "iterations_used": iterations_used,
                 "tool_call_count": tool_call_count,
                 "tool_error_count": tool_error_count,
+                "must_fix_injections": must_fix_injections,
                 "duration_seconds": round(duration_seconds, 3),
                 "cost_usd": round(cost_usd, 6),
             }

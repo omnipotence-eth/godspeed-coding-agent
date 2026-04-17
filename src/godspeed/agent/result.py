@@ -77,11 +77,21 @@ class AgentMetrics:
     iterations_used: int = 0
     exit_reason: ExitReason = ExitReason.STOPPED
     tool_calls: list[ToolCallRecord] = dataclasses.field(default_factory=list)
+    must_fix_injections: int = 0
     start_time: float = dataclasses.field(default_factory=time.monotonic)
     end_time: float | None = None
 
     def record_tool_call(self, name: str, is_error: bool) -> None:
         self.tool_calls.append(ToolCallRecord(name=name, is_error=is_error))
+
+    def record_must_fix_injection(self) -> None:
+        """Increment when the MUST-FIX gate injects a fix-required message.
+
+        Training signal: agents that trigger many MUST-FIX injections are
+        less efficient per unit of successful work. GRPO can penalize on
+        this counter.
+        """
+        self.must_fix_injections += 1
 
     def finalize(self, reason: ExitReason) -> None:
         self.exit_reason = reason

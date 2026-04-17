@@ -395,6 +395,7 @@ async def agent_loop(
                             file_path,
                             verify_result.output or "",
                             must_fix_injections,
+                            metrics,
                         )
 
             # Auto-stash: count writes in batch
@@ -564,6 +565,7 @@ async def agent_loop(
                             file_path,
                             verify_result.output or "",
                             must_fix_injections,
+                            metrics,
                         )
 
                 # Auto-stash: track consecutive write operations
@@ -695,21 +697,28 @@ def _maybe_inject_must_fix(
     file_path: str,
     verify_output: str,
     injections: int,
+    metrics: AgentMetrics | None = None,
 ) -> int:
     """Force the model to address unresolved lint errors after auto-verify.
 
     verify_with_retry returns a success ToolResult even when lint errors
-    persist (fingerprint: "some remaining"). Without this gate the model
-    sees a success marker and can proceed to unrelated edits while quality
-    silently degrades. On detection, inject a user-role message naming the
-    file and errors so the constraint is in-conversation.
+    persist (fingerprint: verify.REMAINING_ERRORS_FINGERPRINT). Without
+    this gate the model sees a success marker and can proceed to unrelated
+    edits while quality silently degrades. On detection, inject a
+    user-role message naming the file and errors so the constraint is
+    in-conversation.
 
     Caps at MUST_FIX_CAP injections per session. After the cap we log a
     warning and fail open — better to let the agent try a different tack
     than to deadlock on a fundamentally unfixable error (broken ruff
     config, upstream dep bug, etc.).
+
+    When `metrics` is provided, each successful injection is recorded so
+    downstream RL can shape rewards against agent efficiency.
     """
-    if "some remaining" not in (verify_output or ""):
+    from godspeed.tools.verify import REMAINING_ERRORS_FINGERPRINT
+
+    if REMAINING_ERRORS_FINGERPRINT not in (verify_output or ""):
         return injections
     if injections >= MUST_FIX_CAP:
         logger.warning(
@@ -728,6 +737,8 @@ def _maybe_inject_must_fix(
         injections + 1,
         MUST_FIX_CAP,
     )
+    if metrics is not None:
+        metrics.record_must_fix_injection()
     return injections + 1
 
 

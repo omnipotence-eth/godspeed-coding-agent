@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.9.0] — 2026-04-17
+
+Final entry in the v2.5.1 review follow-up chain. Auto-index on session
+start so the agent has semantic code search available by default instead
+of requiring a manual `/reindex`.
+
+### Added
+
+- **Auto-index on session start** (`src/godspeed/context/auto_index.py`).
+  New helper `maybe_start_auto_index(project_dir, auto_index_enabled)`
+  that:
+  - Returns `None` when disabled, when `chromadb` isn't installed (graceful
+    degradation via the `[index]` extra), or when the index is already
+    fresh (`needs_reindex()` returns `False`).
+  - Otherwise schedules `build_index_async()` as an `asyncio.Task` so the
+    session continues without blocking on index construction.
+  - Swallows exceptions in the build coroutine so an indexing failure
+    never crashes the agent.
+
+  Wired into both the TUI and headless paths in `cli.py`, right after
+  the `ToolContext` is constructed.
+- **`GodspeedSettings.auto_index`** field (default `True`). Disable with
+  `auto_index: false` in `~/.godspeed/settings.yaml` or `GODSPEED_AUTO_INDEX=false`.
+
+### Changed
+
+- Sessions started without a fresh codebase index now rebuild it in the
+  background automatically (assuming `[index]` extra is installed). The
+  previous behavior required a manual `/reindex`.
+
 ## [2.8.0] — 2026-04-17
 
 Closes the last of the v2.5.1 review follow-ups. New LLM-driven test

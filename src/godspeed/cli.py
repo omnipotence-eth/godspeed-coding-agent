@@ -321,6 +321,11 @@ async def _run_app(
         llm_client=llm_client,  # type: ignore[arg-type]
     )
 
+    # Kick off background codebase index if needed (non-blocking).
+    from godspeed.context.auto_index import maybe_start_auto_index
+
+    maybe_start_auto_index(effective_project_dir, settings.auto_index)
+
     # Conversation
     conversation = Conversation(
         system_prompt=system_prompt,
@@ -818,6 +823,11 @@ async def _headless_run(
         audit=audit_trail,
         llm_client=llm_client,  # type: ignore[arg-type]
     )
+
+    # Kick off background codebase index if needed (non-blocking).
+    from godspeed.context.auto_index import maybe_start_auto_index
+
+    maybe_start_auto_index(effective_project_dir, settings.auto_index)
 
     # Conversation logger (training data collection)
     conversation_logger = None

@@ -204,6 +204,12 @@ class GodspeedSettings(BaseSettings):
     # Memory
     memory_enabled: bool = True
 
+    # Codebase auto-indexing — build a ChromaDB semantic index in the
+    # background on session start (when the `[index]` extra is installed
+    # and the project has no fresh index). Non-blocking; the session
+    # continues without waiting for it to complete.
+    auto_index: bool = True
+
     # Nested settings
     permissions: PermissionSettings = Field(default_factory=PermissionSettings)
     audit: AuditSettings = Field(default_factory=AuditSettings)

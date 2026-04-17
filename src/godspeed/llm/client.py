@@ -4,9 +4,27 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import random
+import re
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass, field
 from typing import Any
+
+# Rate-limit retry policy
+RATE_LIMIT_MAX_RETRIES = 4
+RATE_LIMIT_BASE_DELAY = 1.0  # seconds — doubles each retry
+RATE_LIMIT_MAX_DELAY = 60.0  # hard ceiling — past this, give up and fall over
+RATE_LIMIT_JITTER = 0.25  # ±25% random jitter on each delay
+
+_RATE_LIMIT_MARKERS = (
+    "429",
+    "rate_limit",
+    "rate limit",
+    "ratelimiterror",
+    "too many requests",
+    "quota",
+)
+_RETRY_AFTER_RE = re.compile(r"retry-?after[:\s]+(\d+)", re.IGNORECASE)
 
 logger = logging.getLogger(__name__)
 
@@ -153,6 +171,57 @@ class LLMClient:
             for marker in ("connection refused", "cannot connect", "connect call failed")
         )
 
+    @staticmethod
+    def _is_rate_limit_error(exc: Exception) -> bool:
+        """Check if the error is a 429 / rate limit / quota error.
+
+        These are transient and should be retried with exponential backoff,
+        not failed over immediately (falling over from rate-limited primary
+        to a fallback often just rate-limits the fallback too).
+        """
+        exc_str = str(exc).lower()
+        # "429" appears in many unrelated contexts (ports, request IDs) — only
+        # count it when paired with a rate-limit word nearby.
+        if "429" in exc_str and any(w in exc_str for w in ("too many", "rate", "quota", "throttl")):
+            return True
+        return any(marker in exc_str for marker in _RATE_LIMIT_MARKERS if marker != "429")
+
+    @staticmethod
+    def _parse_retry_after(error_message: str) -> float | None:
+        """Extract a Retry-After hint (seconds) from the error message.
+
+        Returns None when no hint is present. Clamps to RATE_LIMIT_MAX_DELAY
+        so a misbehaving provider can't block the session for hours.
+        """
+        match = _RETRY_AFTER_RE.search(error_message)
+        if match is None:
+            return None
+        try:
+            hint = float(match.group(1))
+        except ValueError:
+            return None
+        return min(hint, RATE_LIMIT_MAX_DELAY)
+
+    @classmethod
+    def _backoff_delay(cls, retry_index: int, retry_after: float | None) -> float:
+        """Compute the sleep duration for the N-th retry (0-indexed).
+
+        If the provider supplied Retry-After, treat it as a floor and add
+        upward-only jitter (waiting *less* than the provider asked is
+        counterproductive — we'd just trigger another 429).
+
+        Otherwise use exponential backoff (base * 2^n) with ±25% jitter
+        to break up thundering-herd retries across concurrent agents.
+        Capped at RATE_LIMIT_MAX_DELAY.
+        """
+        if retry_after is not None:
+            # Retry jitter for backoff — not a security context, so random.uniform is fine.
+            jitter = 1.0 + random.uniform(0.0, RATE_LIMIT_JITTER)  # noqa: S311
+            return min(retry_after * jitter, RATE_LIMIT_MAX_DELAY)
+        base = min(RATE_LIMIT_BASE_DELAY * (2**retry_index), RATE_LIMIT_MAX_DELAY)
+        jitter = 1.0 + random.uniform(-RATE_LIMIT_JITTER, RATE_LIMIT_JITTER)  # noqa: S311
+        return min(max(base * jitter, 0.0), RATE_LIMIT_MAX_DELAY)
+
     async def chat(
         self,
         messages: list[dict[str, Any]],
@@ -188,7 +257,17 @@ class LLMClient:
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]] | None = None,
     ) -> ChatResponse:
-        """Internal: send messages with fallback chain."""
+        """Internal: send messages with fallback chain.
+
+        Classification of failures:
+        - Connection errors: server is down; skip retry, try next fallback.
+        - Rate-limit / 429 / quota: retry the SAME model with exponential
+          backoff + jitter up to RATE_LIMIT_MAX_RETRIES, honoring
+          Retry-After when provided. Falling over to a fallback on
+          rate-limit often just rate-limits the fallback too.
+        - Other errors: one short retry on the primary model, then fall
+          over to the next model in the chain.
+        """
         models_to_try = [self._effective_model(), *self.fallback_models]
 
         last_error: Exception | None = None
@@ -198,9 +277,20 @@ class LLMClient:
             except Exception as exc:
                 logger.warning("LLM call failed model=%s error=%s", model, exc)
                 last_error = exc
-                # Skip retry for connection errors — server is down, retrying is pointless
+
                 if self._is_connection_error(exc):
+                    # Server down — retrying is pointless, try next fallback.
                     continue
+
+                if self._is_rate_limit_error(exc):
+                    # Retry same model with exponential backoff + jitter.
+                    recovered = await self._retry_on_rate_limit(model, messages, tools, exc)
+                    if recovered is not None:
+                        return recovered
+                    # Exhausted rate-limit retries; move on to the next model.
+                    last_error = exc
+                    continue
+
                 # Retry primary model once after short delay before trying fallbacks
                 if idx == 0:
                     await asyncio.sleep(1)
@@ -215,6 +305,47 @@ class LLMClient:
                         last_error = retry_exc
 
         raise self._build_failure_error(last_error)
+
+    async def _retry_on_rate_limit(
+        self,
+        model: str,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None,
+        first_exc: Exception,
+    ) -> ChatResponse | None:
+        """Retry a rate-limited call with exponential backoff + jitter.
+
+        Returns the successful ChatResponse, or None if retries are exhausted.
+        Caller decides what to do with a None result (typically fall over to
+        the next model in the chain).
+        """
+        current_exc: Exception = first_exc
+        for attempt in range(RATE_LIMIT_MAX_RETRIES):
+            retry_after = self._parse_retry_after(str(current_exc))
+            delay = self._backoff_delay(attempt, retry_after)
+            logger.warning(
+                "Rate limit model=%s attempt=%d/%d delay=%.2fs retry_after=%s",
+                model,
+                attempt + 1,
+                RATE_LIMIT_MAX_RETRIES,
+                delay,
+                retry_after,
+            )
+            await asyncio.sleep(delay)
+            try:
+                return await self._call(model, messages, tools)
+            except Exception as exc:
+                if not self._is_rate_limit_error(exc):
+                    # Morphed into a different kind of failure — let the
+                    # outer loop handle it (fall over, build failure, etc.).
+                    raise
+                current_exc = exc
+        logger.warning(
+            "Rate limit retries exhausted model=%s after %d attempts",
+            model,
+            RATE_LIMIT_MAX_RETRIES,
+        )
+        return None
 
     def _build_failure_error(self, last_error: Exception | None) -> RuntimeError:
         """Build an actionable error message based on the failure type."""

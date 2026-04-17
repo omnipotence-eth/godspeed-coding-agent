@@ -484,6 +484,18 @@ class LLMClient:
                     }
                 )
 
+        # Qwen3-Coder-family models emit <function=...>...</function> XML that
+        # Ollama's built-in parser (as of 0.20.x) doesn't extract — the call
+        # ends up in the content field instead of tool_calls. When we see the
+        # fingerprint and no structured tool_calls, parse and synthesize.
+        if not tool_calls and content_text:
+            from godspeed.llm.qwen3_coder_parser import extract_qwen3_coder_tool_calls
+
+            parsed = extract_qwen3_coder_tool_calls(content_text)
+            if parsed:
+                tool_calls = parsed
+                content_text = ""
+
         # Track usage and cost
         input_tokens = 0
         output_tokens = 0

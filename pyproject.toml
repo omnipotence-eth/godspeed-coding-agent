@@ -1,6 +1,6 @@
 [project]
 name = "godspeed"
-version = "2.9.0"
+version = "2.9.1"
 description = "Security-first open-source coding agent with parallel tool execution, multimodal input, 4-tier permissions, audit trails, and 200+ LLM provider support"
 readme = "README.md"
 license = "MIT"
@@ -113,6 +113,7 @@ ignore = ["S603", "S607"]  # subprocess calls are intentional for a coding agent
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["S101", "S105", "S106"]  # assert and hardcoded passwords OK in tests
 "src/godspeed/security/secrets.py" = ["S106"]  # secret_type= is a label, not a password
+"scripts/**/*.py" = ["T201"]  # print() is fine in CLI scripts
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

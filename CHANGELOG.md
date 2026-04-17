@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.5.1] — 2026-04-17
+
+Patch release — code-quality enforcement and training-record alignment. No new
+user-facing CLI flags or JSON schema changes.
+
+### Added
+
+- **`ConversationLogger.log_session_end()`** emits a terminal record per
+  headless session with `exit_reason`, `exit_code`, `iterations_used`,
+  `tool_call_count`, `tool_error_count`, `duration_seconds`, `cost_usd`.
+  Fields mirror the audit-trail `session_end` detail so the two streams stay
+  comparable. Enables RL pipelines (GRPO) to shape rewards on `exit_code`
+  without parsing the audit log.
+- **Quality defaults** in the system prompt: a new `QUALITY_PROMPT` block
+  (type hints, test-first, read-before-edit, comments-only-when-non-obvious,
+  secrets policy, anti-premature-abstraction) appended after `WORKFLOW_PROMPT`.
+
+### Changed
+
+- **MUST-FIX gate on auto-verify failures**. When `_auto_verify_file` leaves
+  unresolved lint errors (fingerprint: "some remaining"), the agent loop
+  injects a user-role message naming the file and errors, instructing the
+  model to fix them before any other edits. Capped at 3 injections per
+  session — after the cap, the gate logs a warning and fails open so the
+  agent isn't deadlocked on a fundamentally unfixable error (e.g., broken
+  project ruff config). Wired into both parallel and sequential dispatch
+  paths. Structural enforcement closes a silent-error channel where the
+  model could read a `verify` success marker despite persistent lint issues.
+
+### Fixed
+
+- `src/godspeed/__init__.py:5` — stale `__version__` (was `"2.2.0"`; now
+  tracks `pyproject.toml`).
+
 ## [2.5.0] — 2026-04-16
 
 MLOps-readiness release. Closes the headless/pipeline gaps found in the

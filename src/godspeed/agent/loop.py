@@ -26,6 +26,7 @@ MAX_ITERATIONS = 50
 MAX_RETRIES = 3
 STUCK_LOOP_THRESHOLD = 3
 AUTO_STASH_THRESHOLD = 3
+MUST_FIX_CAP = 3
 VERIFIABLE_EXTENSIONS = (
     ".py",
     ".pyi",
@@ -118,6 +119,7 @@ async def agent_loop(
     consecutive_successful_edits = 0
     recent_change_descriptions: list[str] = []
     auto_stashed = False
+    must_fix_injections = 0
     speculative_cache: dict[str, asyncio.Task[ToolResult]] = {}
 
     for iteration in range(iteration_limit):
@@ -388,6 +390,12 @@ async def agent_loop(
                             file_path,
                             "passed" in verify_result.output.lower(),
                         )
+                        must_fix_injections = _maybe_inject_must_fix(
+                            conversation,
+                            file_path,
+                            verify_result.output or "",
+                            must_fix_injections,
+                        )
 
             # Auto-stash: count writes in batch
             batch_writes = sum(
@@ -551,6 +559,12 @@ async def agent_loop(
                             file_path,
                             "passed" in verify_result.output.lower(),
                         )
+                        must_fix_injections = _maybe_inject_must_fix(
+                            conversation,
+                            file_path,
+                            verify_result.output or "",
+                            must_fix_injections,
+                        )
 
                 # Auto-stash: track consecutive write operations
                 if not result.is_error and tool_call.tool_name in (
@@ -674,6 +688,47 @@ async def _auto_verify_file(
         call_id=f"{parent_call_id}_verify",
     )
     return await tool_registry.dispatch(verify_call, tool_context)
+
+
+def _maybe_inject_must_fix(
+    conversation: Conversation,
+    file_path: str,
+    verify_output: str,
+    injections: int,
+) -> int:
+    """Force the model to address unresolved lint errors after auto-verify.
+
+    verify_with_retry returns a success ToolResult even when lint errors
+    persist (fingerprint: "some remaining"). Without this gate the model
+    sees a success marker and can proceed to unrelated edits while quality
+    silently degrades. On detection, inject a user-role message naming the
+    file and errors so the constraint is in-conversation.
+
+    Caps at MUST_FIX_CAP injections per session. After the cap we log a
+    warning and fail open — better to let the agent try a different tack
+    than to deadlock on a fundamentally unfixable error (broken ruff
+    config, upstream dep bug, etc.).
+    """
+    if "some remaining" not in (verify_output or ""):
+        return injections
+    if injections >= MUST_FIX_CAP:
+        logger.warning(
+            "MUST-FIX cap reached for file=%s; allowing agent to proceed",
+            file_path,
+        )
+        return injections
+    conversation.add_user_message(
+        f"VERIFY FAILED on {file_path}. Unresolved lint errors remain "
+        f"after auto-fix attempts:\n\n{verify_output}\n\n"
+        "You MUST fix these errors before any other edits or writes."
+    )
+    logger.info(
+        "MUST-FIX injected file=%s count=%d/%d",
+        file_path,
+        injections + 1,
+        MUST_FIX_CAP,
+    )
+    return injections + 1
 
 
 async def _try_auto_commit(

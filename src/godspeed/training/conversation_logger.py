@@ -98,6 +98,36 @@ class ConversationLogger:
             }
         )
 
+    def log_session_end(
+        self,
+        exit_reason: str,
+        exit_code: int,
+        iterations_used: int,
+        tool_call_count: int,
+        tool_error_count: int,
+        duration_seconds: float,
+        cost_usd: float,
+    ) -> None:
+        """Terminal record per session.
+
+        Fields mirror the audit-trail session_end detail so the two streams
+        stay comparable. Downstream RL (GRPO) reads exit_code to shape
+        rewards: +1.0 on SUCCESS, -0.5 on TOOL_ERROR, -1.0 on
+        MAX_ITERATIONS, etc. See ml-lab phase4_grpo.yaml for the mapping.
+        """
+        self._write(
+            {
+                "role": "session_end",
+                "exit_reason": exit_reason,
+                "exit_code": exit_code,
+                "iterations_used": iterations_used,
+                "tool_call_count": tool_call_count,
+                "tool_error_count": tool_error_count,
+                "duration_seconds": round(duration_seconds, 3),
+                "cost_usd": round(cost_usd, 6),
+            }
+        )
+
     def close(self) -> None:
         """Flush and close the underlying file."""
         if self._file is not None:

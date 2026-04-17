@@ -860,10 +860,6 @@ async def _headless_run(
         final_text = f"Error: Session exceeded wall-clock timeout of {timeout}s."
         metrics.finalize(ExitReason.TIMEOUT)
 
-    # Close conversation logger
-    if conversation_logger is not None:
-        conversation_logger.close()
-
     # Resolve final exit code. TOOL_ERROR overrides STOPPED when the model's
     # final message starts with "Error:" (common pattern for tool failures
     # that the model surfaces rather than silently ignoring).
@@ -889,6 +885,20 @@ async def _headless_run(
         },
         outcome="success" if exit_code == 0 else "error",
     )
+
+    # Mirror the audit session_end into the training log so RL pipelines
+    # can read exit_reason/exit_code without parsing the audit trail.
+    if conversation_logger is not None:
+        conversation_logger.log_session_end(
+            exit_reason=metrics.exit_reason.value,
+            exit_code=exit_code,
+            iterations_used=metrics.iterations_used,
+            tool_call_count=metrics.tool_call_count,
+            tool_error_count=metrics.tool_error_count,
+            duration_seconds=metrics.duration_seconds,
+            cost_usd=llm_client.total_cost_usd,
+        )
+        conversation_logger.close()
 
     # Output result to stdout
     if json_output:

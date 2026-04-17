@@ -135,6 +135,7 @@ def _build_tool_registry() -> tuple:
     from godspeed.tools.complexity import ComplexityTool
     from godspeed.tools.coverage import CoverageTool
     from godspeed.tools.dep_audit import DepAuditTool
+    from godspeed.tools.generate_tests import GenerateTestsTool
     from godspeed.tools.git import GitTool
     from godspeed.tools.glob_search import GlobSearchTool
     from godspeed.tools.grep_search import GrepSearchTool
@@ -162,6 +163,7 @@ def _build_tool_registry() -> tuple:
         SecurityScanTool(),
         ComplexityTool(),
         DepAuditTool(),
+        GenerateTestsTool(),
         WebSearchTool(),
         WebFetchTool(),
         NotebookEditTool(),
@@ -280,14 +282,6 @@ async def _run_app(
         )
         logger.info("Conversation logging enabled output_dir=%s", training_dir)
 
-    # Tool context
-    tool_context = ToolContext(
-        cwd=effective_project_dir,
-        session_id=session_id,
-        permissions=permission_engine,
-        audit=audit_trail,
-    )
-
     # System prompt
     project_instructions = load_project_instructions(
         effective_project_dir,
@@ -315,6 +309,16 @@ async def _run_app(
         router=router,
         thinking_budget=settings.thinking_budget,
         max_cost_usd=settings.max_cost_usd,
+    )
+
+    # Tool context — constructed after the LLM client so tools that need an
+    # LLM (e.g. generate_tests) can invoke it via the context.
+    tool_context = ToolContext(
+        cwd=effective_project_dir,
+        session_id=session_id,
+        permissions=permission_engine,
+        audit=audit_trail,
+        llm_client=llm_client,  # type: ignore[arg-type]
     )
 
     # Conversation
@@ -786,13 +790,6 @@ async def _headless_run(
     if effective_model.lower().startswith("ollama"):
         _ensure_ollama()
 
-    tool_context = ToolContext(
-        cwd=effective_project_dir,
-        session_id=session_id,
-        permissions=_HeadlessPermissionProxy(permission_engine, auto_approve),
-        audit=audit_trail,
-    )
-
     project_instructions = load_project_instructions(
         effective_project_dir,
         settings.context.project_instructions,
@@ -810,6 +807,16 @@ async def _headless_run(
         router=router,
         thinking_budget=settings.thinking_budget,
         max_cost_usd=settings.max_cost_usd,
+    )
+
+    # Tool context — constructed after the LLM client so tools that need an
+    # LLM (e.g. generate_tests) can invoke it via the context.
+    tool_context = ToolContext(
+        cwd=effective_project_dir,
+        session_id=session_id,
+        permissions=_HeadlessPermissionProxy(permission_engine, auto_approve),
+        audit=audit_trail,
+        llm_client=llm_client,  # type: ignore[arg-type]
     )
 
     # Conversation logger (training data collection)

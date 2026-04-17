@@ -313,10 +313,13 @@ def _verify_with_retry(
             )
         total_fixed += 1
 
-    # Exhausted retries — report remaining issues
+    # Exhausted retries — report remaining issues as a failure so the agent
+    # (and downstream callers like the MUST-FIX gate) see a clear is_error=True
+    # signal rather than a success-typed ToolResult. Keep the fingerprint
+    # substring in the error body for compatibility with the existing gate.
     final = _one_shot_verify(resolved, display_path, lang, cwd)
     remaining_output = final.output if not final.is_error else (final.error or "")
-    return ToolResult.success(
+    return ToolResult.failure(
         f"Auto-fixed {total_fixed} round(s) of issues, "
         f"{REMAINING_ERRORS_FINGERPRINT}: {display_path}\n{remaining_output}"
     )

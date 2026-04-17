@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.8.0] — 2026-04-17
+
+Closes the last of the v2.5.1 review follow-ups. New LLM-driven test
+generation tool, architectural affordance for tools that need an LLM,
+and the semantic fix to `verify._verify_with_retry` that was deferred
+from earlier patches.
+
+### Added
+
+- **`generate_tests` tool** (`src/godspeed/tools/generate_tests.py`) —
+  reads a source file, asks the LLM to produce a complete pytest
+  module, writes it to `tests/test_<basename>.py` (or a caller-specified
+  path). The agent can then run `test_runner` to confirm the generated
+  tests pass. Strips markdown code fences if the LLM returns them.
+  Closes the test-first discipline loop with one tool call.
+- **`LLMInvoker` protocol** + **`ToolContext.llm_client`** field
+  (`src/godspeed/tools/base.py`) — architectural affordance for tools
+  that need to make LLM calls. Decouples `tools/` from a concrete
+  `llm.LLMClient` reference. Both headless and TUI paths now populate
+  `llm_client` when constructing the `ToolContext`.
+
+### Changed
+
+- **`verify._verify_with_retry` now returns `ToolResult.failure`** when
+  unresolved lint errors remain after retries (previously it returned a
+  success-typed result with "some remaining" in the output body).
+  The MUST-FIX gate still fires on the same fingerprint — it now checks
+  both `result.error` and `result.output` so it's robust across both
+  the new and legacy shapes. Downstream callers get a clear
+  `is_error=True` signal where before they had to substring-match the
+  output.
+- `_build_tool_registry` (`cli.py`) registers `GenerateTestsTool`
+  alongside the other quality tools.
+- The three tests in `test_verify_fix_retry.py` that previously asserted
+  `not result.is_error` with remaining issues have been updated to
+  assert `result.is_error` and read the fingerprint from `result.error`.
+
+### Deferred to v2.9.0
+
+- Auto-index on session start (separate concern — session-init refactor).
+
 ## [2.7.0] — 2026-04-17
 
 Quality-tooling minor release, continuation of v2.6.0. Closes two more

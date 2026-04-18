@@ -533,9 +533,7 @@ def write_distilled_jsonl(
         for rec in chosen:
             for name, _ in rec.canonical_calls:
                 tool_usage[name] += 1
-            fp.write(
-                json.dumps(render_to_openai(rec, tools_schema), ensure_ascii=False) + "\n"
-            )
+            fp.write(json.dumps(render_to_openai(rec, tools_schema), ensure_ascii=False) + "\n")
 
     return {
         "input_records": len(distilled),
@@ -550,9 +548,7 @@ def _main() -> int:
     parser.add_argument(
         "--input",
         type=Path,
-        default=Path(
-            "../ml-lab/experiments/2026-04-godspeed-coder/data/phase2_swesmith.jsonl"
-        ),
+        default=Path("../ml-lab/experiments/2026-04-godspeed-coder/data/phase2_swesmith.jsonl"),
         help="Source phase2_swesmith.jsonl (Hermes XML transport).",
     )
     parser.add_argument(

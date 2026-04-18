@@ -25,12 +25,27 @@ SAMPLE_TOOLS = [
         "function": {"name": name, "description": "x", "parameters": {"type": "object"}},
     }
     for name in (
-        "file_read", "file_write", "file_edit", "diff_apply",
-        "glob_search", "grep_search", "code_search", "repo_map",
-        "shell", "test_runner", "verify", "background_check",
-        "git", "github",
-        "web_search", "web_fetch", "image_read", "pdf_read", "notebook_edit",
-        "tasks", "spawn_agent",
+        "file_read",
+        "file_write",
+        "file_edit",
+        "diff_apply",
+        "glob_search",
+        "grep_search",
+        "code_search",
+        "repo_map",
+        "shell",
+        "test_runner",
+        "verify",
+        "background_check",
+        "git",
+        "github",
+        "web_search",
+        "web_fetch",
+        "image_read",
+        "pdf_read",
+        "notebook_edit",
+        "tasks",
+        "spawn_agent",
     )
 ]
 

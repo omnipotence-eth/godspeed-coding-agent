@@ -304,9 +304,7 @@ def test_end_to_end_on_tiny_corpus(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    summary = write_distilled_jsonl(
-        src, out, target=10, k=3, shell_cap=10, seed=7
-    )
+    summary = write_distilled_jsonl(src, out, target=10, k=3, shell_cap=10, seed=7)
     assert summary["written"] == 10
 
     for line in out.read_text(encoding="utf-8").splitlines():

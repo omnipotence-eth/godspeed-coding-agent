@@ -115,9 +115,7 @@ def test_validate_skips_arg_check_for_unknown_tool() -> None:
 _VALID_BLUEPRINT = json.dumps(
     {
         "user_intent": "list open issues on the repo",
-        "planned_calls": [
-            {"tool_name": "github", "arguments": {"action": "list_issues"}}
-        ],
+        "planned_calls": [{"tool_name": "github", "arguments": {"action": "list_issues"}}],
         "expected_outcome": "issues listed",
     }
 )
@@ -134,9 +132,7 @@ _BAD_BLUEPRINT_NONE_ACTION = json.dumps(
 @pytest.mark.asyncio
 async def test_generate_blueprint_retries_after_bad_action_then_succeeds() -> None:
     router = _FakeRouter([_BAD_BLUEPRINT_NONE_ACTION, _VALID_BLUEPRINT])
-    bp, _resp = await generate_blueprint(
-        _spec("single_tool", "github"), router, max_retries=2
-    )
+    bp, _resp = await generate_blueprint(_spec("single_tool", "github"), router, max_retries=2)
     assert bp.planned_calls[0].tool_name == "github"
     assert bp.planned_calls[0].arguments == {"action": "list_issues"}
     # Two provider calls — the first was retried because args failed validation.
@@ -146,9 +142,7 @@ async def test_generate_blueprint_retries_after_bad_action_then_succeeds() -> No
 @pytest.mark.asyncio
 async def test_generate_blueprint_bumps_temperature_on_retry() -> None:
     router = _FakeRouter([_BAD_BLUEPRINT_NONE_ACTION, _VALID_BLUEPRINT])
-    await generate_blueprint(
-        _spec("single_tool", "github"), router, temperature=0.8, max_retries=2
-    )
+    await generate_blueprint(_spec("single_tool", "github"), router, temperature=0.8, max_retries=2)
     assert router.calls[0]["temperature"] == 0.8
     assert router.calls[1]["temperature"] == pytest.approx(0.9)
 
@@ -157,18 +151,14 @@ async def test_generate_blueprint_bumps_temperature_on_retry() -> None:
 async def test_generate_blueprint_raises_after_exhausting_retries() -> None:
     router = _FakeRouter([_BAD_BLUEPRINT_NONE_ACTION] * 3)
     with pytest.raises(ValueError, match="after 3 attempts"):
-        await generate_blueprint(
-            _spec("single_tool", "github"), router, max_retries=2
-        )
+        await generate_blueprint(_spec("single_tool", "github"), router, max_retries=2)
     assert len(router.calls) == 3
 
 
 @pytest.mark.asyncio
 async def test_generate_blueprint_retries_on_invalid_json() -> None:
     router = _FakeRouter(["this is not json", _VALID_BLUEPRINT])
-    bp, _resp = await generate_blueprint(
-        _spec("single_tool", "github"), router, max_retries=2
-    )
+    bp, _resp = await generate_blueprint(_spec("single_tool", "github"), router, max_retries=2)
     assert bp.planned_calls[0].arguments == {"action": "list_issues"}
     assert len(router.calls) == 2
 
@@ -176,9 +166,7 @@ async def test_generate_blueprint_retries_on_invalid_json() -> None:
 @pytest.mark.asyncio
 async def test_generate_blueprint_succeeds_on_first_try_no_retry() -> None:
     router = _FakeRouter([_VALID_BLUEPRINT])
-    bp, _resp = await generate_blueprint(
-        _spec("single_tool", "github"), router, max_retries=2
-    )
+    bp, _resp = await generate_blueprint(_spec("single_tool", "github"), router, max_retries=2)
     assert bp.planned_calls[0].arguments == {"action": "list_issues"}
     assert len(router.calls) == 1
 

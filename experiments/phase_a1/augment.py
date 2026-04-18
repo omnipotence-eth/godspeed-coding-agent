@@ -77,11 +77,7 @@ class ToolTemplate:
 
 def _slot_keys(template: str) -> set[str]:
     """All ``{name}`` placeholders in a template string."""
-    return {
-        field_name
-        for _, field_name, _, _ in Formatter().parse(template)
-        if field_name
-    }
+    return {field_name for _, field_name, _, _ in Formatter().parse(template) if field_name}
 
 
 def _render(template: str, slots: dict[str, str]) -> str:
@@ -417,8 +413,7 @@ def _t_spawn_agent() -> ToolTemplate:
             "recommendation": (
                 "Pydantic Settings, for consistency with our existing models",
                 "Redis with explicit TTLs, since we already operate it in prod",
-                "Unleash, because it gives us percentage rollouts and audit "
-                "logs out of the box",
+                "Unleash, because it gives us percentage rollouts and audit logs out of the box",
                 "Dramatiq, for the simpler operational model on small teams",
                 "openapi-typescript, since it's stateless and has no runtime",
             ),
@@ -505,12 +500,8 @@ def _t_notebook_edit() -> ToolTemplate:
             "Edit applied. The notebook will need a re-run from the modified "
             "cell to pick up the new value.",
         ),
-        arg_specs=(
-            {"notebook_path": "{nb}", "cell_id": "{cell}", "new_source": "{source}"},
-        ),
-        output_templates=(
-            "edited cell {cell} (code) in {nb}",
-        ),
+        arg_specs=({"notebook_path": "{nb}", "cell_id": "{cell}", "new_source": "{source}"},),
+        output_templates=("edited cell {cell} (code) in {nb}",),
         slots={
             "nb": (
                 "notebooks/exploration.ipynb",
@@ -550,18 +541,14 @@ def _t_tasks() -> ToolTemplate:
             "Recording the task.",
         ),
         post_call=(
-            "Done - added as task #{tid} ({priority} priority). Anything else "
-            "you want queued?",
+            "Done - added as task #{tid} ({priority} priority). Anything else you want queued?",
             "Got it. Task #{tid} is on the list. The {priority}-priority bucket "
             "is reasonable - bump it if it becomes blocking.",
-            "Added as #{tid} with {priority} priority. Want me to set a "
-            "follow-up reminder?",
+            "Added as #{tid} with {priority} priority. Want me to set a follow-up reminder?",
         ),
         arg_specs=({"action": "add", "title": "{title}", "priority": "{priority}"},),
         output_templates=(
-            "added task #{tid}\n"
-            "  title: {title}\n"
-            "  status: pending  priority: {priority}\n",
+            "added task #{tid}\n  title: {title}\n  status: pending  priority: {priority}\n",
         ),
         slots={
             "title": (
@@ -636,15 +623,12 @@ def _t_diff_apply() -> ToolTemplate:
         post_call=(
             "Patch applied cleanly. Worth running the test suite before "
             "committing - hunk swaps like this are easy to mis-anchor.",
-            "Hunk applied. The file now reflects the upstream version of the "
-            "{path} change.",
+            "Hunk applied. The file now reflects the upstream version of the {path} change.",
             "Diff landed. If the surrounding code was already modified locally, "
             "double-check the surrounding context still compiles.",
         ),
         arg_specs=({"diff": "{diff}"},),
-        output_templates=(
-            "applied 1 hunk to {path} (1+, 1-)",
-        ),
+        output_templates=("applied 1 hunk to {path} (1+, 1-)",),
         slots={
             "path": (
                 "app/api/pagination.py",

@@ -160,7 +160,7 @@ def s04() -> list[dict[str, Any]]:
             "+++ b/app/api/pagination.py\n"
             "@@ -14,7 +14,7 @@ def page_bounds(page: int, per_page: int) -> tuple[int, int]:\n"
             "     if page < 1:\n"
-            "         raise ValueError(\"page must be >= 1\")\n"
+            '         raise ValueError("page must be >= 1")\n'
             "     start = (page - 1) * per_page\n"
             "-    end = start + per_page - 1\n"
             "+    end = start + per_page\n"
@@ -363,7 +363,7 @@ def s11() -> list[dict[str, Any]]:
         ),
         _t(
             "c0",
-            "app/services/billing.py:54: error: Argument 1 to \"charge\" of \"PaymentClient\" "
+            'app/services/billing.py:54: error: Argument 1 to "charge" of "PaymentClient" '
             'has incompatible type "str"; expected "Decimal"  [arg-type]\n'
             "app/services/billing.py:88: error: Returning Any from function declared to "
             'return "Invoice"  [no-any-return]\n'
@@ -476,7 +476,7 @@ def s15() -> list[dict[str, Any]]:
             "   'Use automatic_payment_methods to let Stripe choose the optimal mix of "
             "payment methods for the customer's region.'\n"
             "3. PaymentIntent | Stripe API Reference — stripe.com/docs/api/payment_intents/create\n"
-            "   'automatic_payment_methods.allow_redirects (string, default: \"always\") "
+            '   \'automatic_payment_methods.allow_redirects (string, default: "always") '
             "controls redirect-based methods like iDEAL or Klarna.'\n",
         ),
         _a(
@@ -929,9 +929,7 @@ def s30() -> list[dict[str, Any]]:
 def s31() -> list[dict[str, Any]]:
     return [
         _sys(),
-        _u(
-            "Find every place we call `send_email` and read the one in app/workers/digest.py."
-        ),
+        _u("Find every place we call `send_email` and read the one in app/workers/digest.py."),
         _a(
             "First locating the call sites with grep.",
             _tc("c0", "grep_search", pattern=r"send_email\(", path="app/"),
@@ -996,7 +994,7 @@ def s32() -> list[dict[str, Any]]:
             "c1",
             '"""add status to orders\n\n'
             "Revision ID: a1b2c3d4e5f6\n"
-            'Revises: 9988aabbccdd\n'
+            "Revises: 9988aabbccdd\n"
             'Create Date: 2026-03-30 10:14:00\n"""\n'
             "from alembic import op\n"
             "import sqlalchemy as sa\n\n"
@@ -1309,10 +1307,7 @@ def s37() -> list[dict[str, Any]]:
 def s38() -> list[dict[str, Any]]:
     return [
         _sys(),
-        _u(
-            "Read papers/lora_2021.pdf and write a one-paragraph summary to "
-            "notes/papers/lora.md."
-        ),
+        _u("Read papers/lora_2021.pdf and write a one-paragraph summary to notes/papers/lora.md."),
         _a(
             "Reading the LoRA paper.",
             _tc("c0", "pdf_read", file_path="papers/lora_2021.pdf", pages="1-2"),
@@ -1691,7 +1686,7 @@ def s47() -> list[dict[str, Any]]:
         _a(
             "Python's stdlib `json` is available — for one-off pipelines you can use "
             "`python -m json.tool` (pretty-print) or pipe through `python -c 'import json,sys; "
-            "print(json.load(sys.stdin)[\"key\"])'`. If you need real query power, install "
+            'print(json.load(sys.stdin)["key"])\'`. If you need real query power, install '
             "jq with the apt/brew command above."
         ),
     ]
@@ -1707,7 +1702,7 @@ def s48() -> list[dict[str, Any]]:
         ),
         _t(
             "c0",
-            "app/services/email.py:42: error: Argument 1 to \"send\" of \"SmtpClient\" "
+            'app/services/email.py:42: error: Argument 1 to "send" of "SmtpClient" '
             'has incompatible type "list[str]"; expected "str"  [arg-type]\n'
             "Found 1 error in 1 file (checked 1 source file)\n",
         ),
@@ -1790,8 +1785,7 @@ def s49() -> list[dict[str, Any]]:
                     "sum(i.quantity for i in self.items)"
                 ),
                 new_string=(
-                    "        return sum("
-                    "(i.price * i.quantity for i in self.items), Decimal('0'))"
+                    "        return sum((i.price * i.quantity for i in self.items), Decimal('0'))"
                 ),
             ),
         ),
@@ -1881,11 +1875,56 @@ def s50() -> list[dict[str, Any]]:
 
 
 _BUILDERS = (
-    s01, s02, s03, s04, s05, s06, s07, s08, s09, s10,
-    s11, s12, s13, s14, s15, s16, s17, s18, s19, s20,
-    s21, s22, s23, s24, s25, s26, s27, s28, s29, s30,
-    s31, s32, s33, s34, s35, s36, s37, s38, s39, s40,
-    s41, s42, s43, s44, s45, s46, s47, s48, s49, s50,
+    s01,
+    s02,
+    s03,
+    s04,
+    s05,
+    s06,
+    s07,
+    s08,
+    s09,
+    s10,
+    s11,
+    s12,
+    s13,
+    s14,
+    s15,
+    s16,
+    s17,
+    s18,
+    s19,
+    s20,
+    s21,
+    s22,
+    s23,
+    s24,
+    s25,
+    s26,
+    s27,
+    s28,
+    s29,
+    s30,
+    s31,
+    s32,
+    s33,
+    s34,
+    s35,
+    s36,
+    s37,
+    s38,
+    s39,
+    s40,
+    s41,
+    s42,
+    s43,
+    s44,
+    s45,
+    s46,
+    s47,
+    s48,
+    s49,
+    s50,
 )
 
 
@@ -1946,9 +1985,7 @@ def _main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 
     summary = write_anchor_jsonl(args.output)
-    logger.info(
-        "wrote %d anchor samples to %s", summary["samples"], args.output
-    )
+    logger.info("wrote %d anchor samples to %s", summary["samples"], args.output)
     logger.info("category mix: %s", summary["categories"])
     logger.info(
         "tool coverage (sorted): %s",

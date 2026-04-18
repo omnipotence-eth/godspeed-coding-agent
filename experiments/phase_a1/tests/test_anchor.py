@@ -37,12 +37,8 @@ def test_exactly_50_samples(samples: list[dict]) -> None:
 def test_every_sample_has_messages_and_tools(samples: list[dict]) -> None:
     for i, rec in enumerate(samples):
         assert set(rec.keys()) == {"messages", "tools"}, f"sample {i} extra/missing keys"
-        assert isinstance(rec["messages"], list) and rec["messages"], (
-            f"sample {i} messages empty"
-        )
-        assert isinstance(rec["tools"], list) and rec["tools"], (
-            f"sample {i} tools empty"
-        )
+        assert isinstance(rec["messages"], list) and rec["messages"], f"sample {i} messages empty"
+        assert isinstance(rec["tools"], list) and rec["tools"], f"sample {i} tools empty"
 
 
 def test_tools_field_is_canonical_21(samples: list[dict]) -> None:

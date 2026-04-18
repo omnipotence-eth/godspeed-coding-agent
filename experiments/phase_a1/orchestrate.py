@@ -342,9 +342,7 @@ async def run(args: argparse.Namespace) -> int:
             mf.flush()
             if m.status == "ok":
                 ok += 1
-                judge_tag = (
-                    f" judge={m.judge_min_score}/5" if m.judge_min_score else ""
-                )
+                judge_tag = f" judge={m.judge_min_score}/5" if m.judge_min_score else ""
                 logger.info(
                     "ok  #%04d tool=%-18s cat=%-14s  bp=%s narr=%s%s  %.2fs",
                     m.spec_index,

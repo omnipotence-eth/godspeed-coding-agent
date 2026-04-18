@@ -207,10 +207,7 @@ def _render_few_shot_block(few_shots: list[dict[str, Any]] | None) -> str:
     """
     if not few_shots:
         return ""
-    header = (
-        "Reference gold blueprints (study the user_intent phrasing and "
-        "tool argument quality):"
-    )
+    header = "Reference gold blueprints (study the user_intent phrasing and tool argument quality):"
     parts = ["", header]
     for shot in few_shots:
         projected = _format_anchor_for_few_shot(shot)

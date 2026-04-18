@@ -80,10 +80,7 @@ def get_allowed_tool_names(tool_set: str) -> frozenset[str] | None:
     full — a typo shouldn't accidentally expose a superset.
     """
     if tool_set not in VALID_TOOL_SETS:
-        msg = (
-            f"Unknown tool set {tool_set!r}. "
-            f"Valid options: {sorted(VALID_TOOL_SETS)}"
-        )
+        msg = f"Unknown tool set {tool_set!r}. Valid options: {sorted(VALID_TOOL_SETS)}"
         raise ValueError(msg)
     if tool_set == TOOL_SET_FULL:
         return None

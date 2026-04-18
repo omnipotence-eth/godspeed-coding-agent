@@ -335,7 +335,7 @@ class _CerebrasBackend(_ProviderBackend):
         if json_mode:
             kwargs["response_format"] = {"type": "json_object"}
 
-        resp = await self._client.chat.completions.create(**kwargs)
+        resp: Any = await self._client.chat.completions.create(**kwargs)
         choice = resp.choices[0]
         text = choice.message.content or ""
         usage = resp.usage
@@ -387,7 +387,7 @@ class _ZAIBackend(_ProviderBackend):
         if json_mode:
             kwargs["response_format"] = {"type": "json_object"}
 
-        resp = await self._client.chat.completions.create(**kwargs)
+        resp: Any = await self._client.chat.completions.create(**kwargs)
         choice = resp.choices[0]
         # Fallback: if content still empty (e.g. thinking param ignored by a
         # future model variant), surface reasoning_content instead.
@@ -434,7 +434,7 @@ class _GroqBackend(_ProviderBackend):
         if json_mode:
             kwargs["response_format"] = {"type": "json_object"}
 
-        resp = await self._client.chat.completions.create(**kwargs)
+        resp: Any = await self._client.chat.completions.create(**kwargs)
         choice = resp.choices[0]
         text = choice.message.content or ""
         usage = resp.usage
@@ -478,7 +478,7 @@ class _OllamaBackend(_ProviderBackend):
         if json_mode:
             kwargs["response_format"] = {"type": "json_object"}
 
-        resp = await self._client.chat.completions.create(**kwargs)
+        resp: Any = await self._client.chat.completions.create(**kwargs)
         choice = resp.choices[0]
         text = choice.message.content or ""
         usage = resp.usage
@@ -520,8 +520,13 @@ class _AnthropicBackend(_ProviderBackend):
             system=system,
             messages=[{"role": "user", "content": user}],
         )
+        # Anthropic content is a union of TextBlock + several tool/thinking
+        # block types; only TextBlock carries ``.text``. Filter by type before
+        # accessing the attribute.
         text = "".join(
-            block.text for block in resp.content if getattr(block, "type", None) == "text"
+            getattr(block, "text", "")
+            for block in resp.content
+            if getattr(block, "type", None) == "text"
         )
         if json_mode:
             # Strip common fencing defensively; Anthropic has no native JSON mode.

@@ -473,8 +473,8 @@ def validate_file(
 
             errs, usage, category = validate_record(record)
             if errs:
-                for e in errs:
-                    report.errors.append(RecordError(idx, e))
+                for err in errs:
+                    report.errors.append(RecordError(idx, err))
                 if fail_fast:
                     return report
             else:

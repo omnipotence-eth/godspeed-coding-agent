@@ -139,17 +139,29 @@ REQUIRED ARGUMENTS (arguments MUST include these keys with non-empty values):
                      reset, tag)
   github           - action (one of: list_prs, get_pr, create_pr, list_issues,
                      get_issue, create_issue, comment_issue, comment_pr)
+  tasks            - action (one of: create, update, list, complete).
+                     NOT "add" — use "create". Required fields per action:
+                       create   -> title (str)
+                       update   -> task_id (int), status (one of: pending,
+                                   in_progress, completed)
+                       complete -> task_id (int)
+                       list     -> no extra args
+  notebook_edit    - notebook_path (str), action (one of: edit_cell, add_cell,
+                     delete_cell, move_cell)
+  background_check - action (one of: status, output, kill), id (str for the
+                     background process)
   web_search       - query (str)
   web_fetch        - url (str; must start with http:// or https://)
   image_read       - file_path (str)
   pdf_read         - file_path (str)
-  notebook_edit    - notebook_path (str)
   spawn_agent      - task (str; non-empty description of the subtask)
-  repo_map, test_runner, verify, background_check, tasks - no required args
-  (may include optional args; invent realistic ones)
+  repo_map, test_runner, verify - no required args (may include optional
+                     args like a file_path; invent realistic ones)
 
-For tools with an "action" field (git, github): NEVER leave it null or empty;
-pick an action from the enumerated list above that matches the user_intent.
+For tools with an "action" field (git, github, tasks, notebook_edit,
+background_check): NEVER leave it null or empty; pick an action from the
+enumerated list above that matches the user_intent. Do not invent actions
+that don't appear in the list (e.g. "add" for tasks — it's "create").
 
 CATEGORY-SPECIFIC RULES:
 __CATEGORY_RULE__

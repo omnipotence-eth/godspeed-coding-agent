@@ -107,6 +107,35 @@ def test_validate_skips_arg_check_for_unknown_tool() -> None:
     assert len(tool_errs) == 1
 
 
+def test_validate_rejects_tasks_add_action() -> None:
+    """Regression: prod run judge flagged `tasks action='add'` (should be 'create')."""
+    bp = _bp([{"tool_name": "tasks", "arguments": {"action": "add", "title": "x"}}])
+    errs = _validate_blueprint(bp, _spec("single_tool", "tasks"))
+    assert any("tasks.action invalid: 'add'" in e for e in errs)
+    # Sanity: the valid action passes.
+    ok_bp = _bp([{"tool_name": "tasks", "arguments": {"action": "create", "title": "x"}}])
+    assert _validate_blueprint(ok_bp, _spec("single_tool", "tasks")) == []
+
+
+def test_validate_rejects_notebook_edit_invalid_action() -> None:
+    bp = _bp(
+        [
+            {
+                "tool_name": "notebook_edit",
+                "arguments": {"notebook_path": "n.ipynb", "action": "replace_cell"},
+            }
+        ]
+    )
+    errs = _validate_blueprint(bp, _spec("single_tool", "notebook_edit"))
+    assert any("notebook_edit.action invalid" in e for e in errs)
+
+
+def test_validate_rejects_background_check_invalid_action() -> None:
+    bp = _bp([{"tool_name": "background_check", "arguments": {"action": "restart"}}])
+    errs = _validate_blueprint(bp, _spec("single_tool", "background_check"))
+    assert any("background_check.action invalid" in e for e in errs)
+
+
 # ---------------------------------------------------------------------------
 # Retry loop in generate_blueprint
 # ---------------------------------------------------------------------------
@@ -186,3 +215,12 @@ def test_system_prompt_lists_required_args_for_error_prone_tools() -> None:
     assert "status, diff, add, commit" in _SYSTEM_TEMPLATE
     # github actions should be enumerated
     assert "list_prs" in _SYSTEM_TEMPLATE
+    # tasks actions (regression: judge flagged action='add' in prod run)
+    assert "create, update, list, complete" in _SYSTEM_TEMPLATE
+    assert 'NOT "add"' in _SYSTEM_TEMPLATE
+    # notebook_edit + background_check actions enumerated. The formatter
+    # wraps long lines, so check each token is present rather than the
+    # comma-separated sequence.
+    for token in ("edit_cell", "add_cell", "delete_cell", "move_cell"):
+        assert token in _SYSTEM_TEMPLATE
+    assert "status, output, kill" in _SYSTEM_TEMPLATE

@@ -163,7 +163,16 @@ def _v_verify(_args: dict[str, Any]) -> list[str]:
     return []
 
 
-def _v_background_check(_args: dict[str, Any]) -> list[str]:
+_BACKGROUND_CHECK_ACTIONS = {"status", "output", "kill"}
+
+
+def _v_background_check(args: dict[str, Any]) -> list[str]:
+    action = args.get("action")
+    if action is not None and action not in _BACKGROUND_CHECK_ACTIONS:
+        return [
+            f"background_check.action invalid: {action!r} "
+            f"(expected one of {sorted(_BACKGROUND_CHECK_ACTIONS)})"
+        ]
     return []
 
 
@@ -239,16 +248,31 @@ def _v_pdf_read(args: dict[str, Any]) -> list[str]:
     return []
 
 
+_NOTEBOOK_EDIT_ACTIONS = {"edit_cell", "add_cell", "delete_cell", "move_cell"}
+
+
 def _v_notebook_edit(args: dict[str, Any]) -> list[str]:
     errs: list[str] = []
     if not isinstance(args.get("notebook_path"), str):
         errs.append("notebook_edit.notebook_path must be a string")
+    action = args.get("action")
+    if action is not None and action not in _NOTEBOOK_EDIT_ACTIONS:
+        errs.append(
+            f"notebook_edit.action invalid: {action!r} "
+            f"(expected one of {sorted(_NOTEBOOK_EDIT_ACTIONS)})"
+        )
     if "new_source" in args and not isinstance(args["new_source"], str):
         errs.append("notebook_edit.new_source must be a string if present")
     return errs
 
 
-def _v_tasks(_args: dict[str, Any]) -> list[str]:
+_TASKS_ACTIONS = {"create", "update", "list", "complete"}
+
+
+def _v_tasks(args: dict[str, Any]) -> list[str]:
+    action = args.get("action")
+    if action is not None and action not in _TASKS_ACTIONS:
+        return [f"tasks.action invalid: {action!r} (expected one of {sorted(_TASKS_ACTIONS)})"]
     return []
 
 

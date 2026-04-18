@@ -618,7 +618,7 @@ def s20() -> list[dict[str, Any]]:
             _tc(
                 "c0",
                 "tasks",
-                action="add",
+                action="create",
                 title="Write integration tests for payment retry queue",
             ),
         ),
@@ -1466,7 +1466,7 @@ def s41() -> list[dict[str, Any]]:
             _tc(
                 "c0",
                 "tasks",
-                action="add",
+                action="create",
                 title="Migrate legacy webhook handler from requests to httpx",
                 priority="normal",
             ),

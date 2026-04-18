@@ -546,7 +546,7 @@ def _t_tasks() -> ToolTemplate:
             "is reasonable - bump it if it becomes blocking.",
             "Added as #{tid} with {priority} priority. Want me to set a follow-up reminder?",
         ),
-        arg_specs=({"action": "add", "title": "{title}", "priority": "{priority}"},),
+        arg_specs=({"action": "create", "title": "{title}", "priority": "{priority}"},),
         output_templates=(
             "added task #{tid}\n  title: {title}\n  status: pending  priority: {priority}\n",
         ),

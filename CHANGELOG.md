@@ -7,6 +7,85 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.10.0] — 2026-04-18
+
+Minor release bundling two independent features: the Phase A1 synthetic
+tool-calling training-data pipeline, and weak-model robustness at the
+agent layer (tool-name aliasing + tool-set filtering).
+
+### Added — Phase A1 pipeline (`experiments/phase_a1/`)
+
+- End-to-end synthetic data pipeline producing ~6,200 `{messages, tools}`
+  OpenAI-format training samples on a $0 free-tier-only budget. Stages:
+  `specs` (stratified 21-tool × 4-category gen plan) → `blueprints`
+  (LLM-planned JSON with per-tool arg validation + retry) → `executor`
+  (real tool dispatch against a seeded sandbox, with fixtures for
+  network-touching tools) → `narrator` (LLM assistant-reasoning with
+  anti-hallucination guards + retry) → `emit` (canonical OpenAI record)
+  → `judge` (4-dim rubric scoring) → `validate` (schema + coverage gate)
+  → `assemble` (merge anchor + augment + synthetic + distill, dedup by
+  user-prompt hash, deterministic shuffle).
+- **Per-tool argument validation inside blueprint generation**. The same
+  invariants `validate.py` enforces post-execution now run pre-execution
+  via the new public `validate_tool_call_args(tool_name, args)` helper.
+  Malformed blueprints (e.g. `github.action=None`, `grep_search.pattern=""`)
+  are rejected before executor + narrator spend is incurred, then retried
+  with a temperature bump. Closes the three failure modes that burned a
+  prior 5-sample smoke run (0/5 yield).
+- **Anti-hallucination narrator guards**. System prompt now forbids the
+  narrator from inventing facts (PR state, tool output values, counts)
+  not present in the executed transcript. A `narrate_session` retry
+  loop catches structural failures like `pre_call length != N` and
+  re-samples with bumped temperature before giving up.
+- **Observability**. `executor.py`, `judge.py`, and four sites in
+  `orchestrate.py` now call `logger.warning(..., exc_info=True)` on
+  caught exceptions so failed samples are debuggable from the log stream
+  rather than only via the truncated `error` field in `run_metrics.jsonl`.
+- Multi-provider async router with SQLite-backed per-provider daily
+  quota tracking (`providers.py`): Cerebras + Z.ai + Groq + Ollama
+  cascade, UTC-midnight quota reset, rate-limit backoff.
+- Makefile `a1-*` targets for each stage (`a1-smoke`, `a1-run`,
+  `a1-run-prod`, `a1-validate`, `a1-judge`, `a1-anchor`, `a1-distill`,
+  `a1-augment`, `a1-assemble`).
+- Per-file ruff ignore for `experiments/**/*.py` — allow `S311` (jitter
+  via `random`), `N818` (error naming), `SIM103` style nits in research
+  code.
+- `.gitignore` rules excluding derived data artifacts:
+  `experiments/phase_a1/data/*.jsonl`, `*.db`, `sessions/`, `_*/`, plus
+  `.env.local`.
+
+### Added — Agent tool-name aliasing + tool-set filtering
+
+- **`src/godspeed/tools/aliases.py`**: common hallucinated tool names
+  (`read_file`, `grep`, `glob`, etc.) get canonicalized to their
+  registered equivalents inside `_parse_tool_call`. Small open-source
+  models express a correct intent with the wrong label — this closes
+  the dead-end without a fine-tune.
+- **`src/godspeed/tools/tool_sets.py`**: named capability surfaces
+  (`local` / `web` / `full`). New `--tool-set` CLI flag constrains the
+  registry so local-codebase runs hide `web_search` / `web_fetch` /
+  `github` entirely. Weak models stop picking `web_search` over
+  `file_read` by construction, not by prompting.
+- QUALITY_PROMPT extension with explicit Tool Selection Defaults so the
+  model's written guidance matches the runtime constraint.
+
+### Tests (+18 new)
+
+- `experiments/phase_a1/tests/test_blueprints.py` (11 tests): validates
+  the per-tool-arg rejection of `github.action=None` and
+  `grep_search.pattern=""`, verifies retry-on-bad-args,
+  retry-on-invalid-JSON, temperature bump on each retry, failure after
+  exhausted retries, and prompt content for error-prone tools.
+- `experiments/phase_a1/tests/test_narrator.py` (7 tests): verifies
+  retry on `pre_call` length mismatch, retry on invalid JSON,
+  temperature bump, failure after exhausted retries,
+  content-injection into the session JSONL, and anti-hallucination
+  prompt content.
+- Phase A1 test suite total: 125 passing (excludes
+  `test_swesmith_distill.py` which has a pre-existing `sklearn` import
+  gap unrelated to this release).
+- Project-wide suite: 1706 passing / 20 skipped.
+
 ## [2.9.1] — 2026-04-17
 
 Patch release — compatibility shim and local-model documentation. Shipped

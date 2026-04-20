@@ -32,6 +32,7 @@ import dataclasses
 import hashlib
 import json
 import logging
+import re
 import subprocess
 import tempfile
 import uuid
@@ -134,13 +135,89 @@ class SessionArtifact:
 
 _FIXTURE_CACHE: dict[str, list[str]] = {}
 
+# Very common English tokens that shouldn't count as relevance signal when
+# scoring a fixture against a user's intent + args.
+_FIXTURE_STOPWORDS: frozenset[str] = frozenset(
+    {
+        "the",
+        "and",
+        "for",
+        "with",
+        "from",
+        "this",
+        "that",
+        "into",
+        "are",
+        "was",
+        "were",
+        "been",
+        "have",
+        "has",
+        "had",
+        "will",
+        "can",
+        "should",
+        "would",
+        "could",
+        "our",
+        "their",
+        "his",
+        "her",
+        "its",
+        "about",
+        "some",
+        "any",
+        "all",
+        "use",
+        "using",
+        "used",
+        "get",
+        "set",
+        "new",
+        "old",
+        "also",
+        "what",
+        "when",
+        "where",
+        "how",
+        "why",
+        "which",
+        "who",
+        "than",
+        "then",
+        "them",
+        "there",
+        "http",
+        "https",
+        "www",
+        "com",
+        "org",
+        "net",
+        "main",
+        "file",
+        "files",
+        "please",
+        "need",
+        "want",
+        "tell",
+        "show",
+    }
+)
+
+_FIXTURE_TOKEN_RE = re.compile(r"[a-z][a-z0-9_]{2,}")
+
+
+_FIXTURE_TAGS_CACHE: dict[str, list[list[str]]] = {}
+
 
 def _load_fixtures(tool_name: str, fixtures_dir: Path) -> list[str]:
     """Return the fixture pool for ``tool_name`` as a list of output strings.
 
-    Expects ``fixtures_dir/{tool_name}.json`` to be a JSON array of
-    ``{"args_match": {...optional...}, "output": "..."}`` objects OR a plain
-    JSON array of strings. Missing files yield a generic stub.
+    Supports plain JSON string arrays OR arrays of
+    ``{"match": {"tags": [...]}, "output": "..."}`` objects. When the object
+    form is used, tag lists are cached in ``_FIXTURE_TAGS_CACHE`` keyed by
+    tool_name so ``_pick_fixture`` can boost matches against caller-provided
+    context tokens. Missing files yield a generic stub pool.
     """
     cached = _FIXTURE_CACHE.get(tool_name)
     if cached is not None:
@@ -154,27 +231,95 @@ def _load_fixtures(tool_name: str, fixtures_dir: Path) -> list[str]:
             for i in range(3)
         ]
         _FIXTURE_CACHE[tool_name] = stub
+        _FIXTURE_TAGS_CACHE[tool_name] = [[] for _ in stub]
         return stub
 
     raw = json.loads(path.read_text(encoding="utf-8"))
     pool: list[str] = []
+    tag_pool: list[list[str]] = []
     if isinstance(raw, list):
         for item in raw:
             if isinstance(item, str):
                 pool.append(item)
+                tag_pool.append([])
             elif isinstance(item, dict) and "output" in item:
                 pool.append(str(item["output"]))
+                match = item.get("match") or {}
+                tags = match.get("tags") if isinstance(match, dict) else None
+                tag_pool.append([str(t).lower() for t in tags] if isinstance(tags, list) else [])
     if not pool:
         pool = [f"[empty fixture for {tool_name}]"]
+        tag_pool = [[]]
     _FIXTURE_CACHE[tool_name] = pool
+    _FIXTURE_TAGS_CACHE[tool_name] = tag_pool
     return pool
 
 
-def _pick_fixture(tool_name: str, arguments: dict[str, Any], fixtures_dir: Path) -> str:
+def _tokenize_for_fixture(text: str) -> set[str]:
+    return {tok for tok in _FIXTURE_TOKEN_RE.findall(text.lower()) if tok not in _FIXTURE_STOPWORDS}
+
+
+def _pick_fixture(
+    tool_name: str,
+    arguments: dict[str, Any],
+    fixtures_dir: Path,
+    context_text: str = "",
+) -> str:
+    """Return the most topically relevant fixture for ``(tool_name, arguments)``.
+
+    Fixtures for web/image/pdf/github/code_search/spawn_agent used to be
+    picked via pure hash of (tool, args), which regularly returned output
+    with zero relation to the user's intent (e.g. asking for CONTRIBUTING.md
+    and getting release-notes fixture). That mismatch tanked the judge's
+    coherence score on ~33% of synthetic samples.
+
+    New policy: tokenize (args + optional user_intent) into a content-word
+    set; score each fixture by how many of those tokens appear in its first
+    ~800 characters; pick the top-scoring fixture, breaking ties with the
+    existing hash-based index so runs remain deterministic. If no fixture
+    scores above zero we fall back to the legacy hash pick so behavior
+    degrades gracefully on exotic inputs instead of always returning the
+    same generic stub.
+    """
     pool = _load_fixtures(tool_name, fixtures_dir)
+    if not pool:
+        return f"[empty fixture for {tool_name}]"
+
+    arg_text = json.dumps(arguments, sort_keys=True, default=str, ensure_ascii=False)
+    context_tokens = _tokenize_for_fixture(f"{context_text} {arg_text}")
+
     key = json.dumps({"tool": tool_name, "args": arguments}, sort_keys=True, default=str)
     digest = int(hashlib.sha256(key.encode("utf-8")).hexdigest(), 16)
-    return pool[digest % len(pool)]
+    hash_index = digest % len(pool)
+
+    if not context_tokens:
+        return pool[hash_index]
+
+    # Each fixture may carry an explicit list of topic tags (in addition to
+    # its rendered output text). Tag matches count double because they are
+    # hand-authored signals of what the fixture is "about", while content
+    # tokens can include incidental vocabulary.
+    tag_pool = _FIXTURE_TAGS_CACHE.get(tool_name) or [[] for _ in pool]
+    best_score = 0
+    best_indices: list[int] = []
+    for i, output in enumerate(pool):
+        fixture_tokens = _tokenize_for_fixture(output[:800])
+        tag_tokens = {t for t in tag_pool[i] if t}
+        content_score = len(context_tokens & fixture_tokens)
+        tag_score = len(context_tokens & tag_tokens) * 2
+        score = content_score + tag_score
+        if score > best_score:
+            best_score = score
+            best_indices = [i]
+        elif score == best_score and score > 0:
+            best_indices.append(i)
+
+    if best_score == 0:
+        return pool[hash_index]
+
+    # Deterministic tie-break among the best-scoring fixtures using the same
+    # hash digest, so identical (args, intent) always map to the same fixture.
+    return pool[best_indices[digest % len(best_indices)]]
 
 
 # ---------------------------------------------------------------------------
@@ -358,7 +503,12 @@ async def execute_blueprint(
             )
 
             if planned.tool_name in FIXTURE_BACKED_TOOLS:
-                output = _pick_fixture(planned.tool_name, planned.arguments, fixtures_dir)
+                output = _pick_fixture(
+                    planned.tool_name,
+                    planned.arguments,
+                    fixtures_dir,
+                    context_text=blueprint.user_intent,
+                )
                 step = ExecutedStep(
                     tool_name=planned.tool_name,
                     arguments=planned.arguments,

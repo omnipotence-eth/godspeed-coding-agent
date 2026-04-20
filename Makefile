@@ -68,6 +68,7 @@ a1-run-prod:
 	$(PY) -m experiments.phase_a1.orchestrate \
 		--total 6200 --limit 6200 --concurrency 2 \
 		--judge --blueprint-few-shots 1 \
+		--resume \
 		--anchor $(A1_ANCHOR) \
 		--output $(A1_PROD)
 
@@ -92,3 +93,12 @@ a1-augment:
 # dedup, shuffle. Run AFTER a1-run / a1-run-prod completes.
 a1-assemble:
 	$(PY) -m experiments.phase_a1.assemble --output $(A1_FINAL) --seed 42
+
+# Capped assembly: distill source limited to 80 records per primary tool.
+# Defends against single-source domination of tool coverage (RESEARCH_LOG F1).
+# Smaller corpus, much healthier per-tool / per-category distribution.
+A1_DISTILL_CAP ?= 80
+a1-assemble-prod:
+	$(PY) -m experiments.phase_a1.assemble \
+		--output $(A1_FINAL) --seed 42 \
+		--distill-per-tool-cap $(A1_DISTILL_CAP)

@@ -80,6 +80,109 @@ def test_fixture_accepts_object_array_with_output_field(tmp_path: Path) -> None:
     assert pool == ["PR #1", "PR #2"]
 
 
+def test_pick_fixture_prefers_token_overlap_with_context(tmp_path: Path) -> None:
+    # Pool has three wildly different topics; scorer should pick the one
+    # whose content shares the most tokens with (args + user_intent).
+    (tmp_path / "web_fetch.json").write_text(
+        json.dumps(
+            [
+                "React Server Components release notes for v19 streaming APIs.",
+                "Contribution guidelines: fork, branch, commit, PR, sign the CLA.",
+                "PyTorch nightly build announcement with Blackwell fp8 kernels.",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    import experiments.phase_a1.executor as ex
+
+    ex._FIXTURE_CACHE.clear()
+
+    picked = _pick_fixture(
+        "web_fetch",
+        {"url": "https://github.com/org/proj/blob/main/CONTRIBUTING.md"},
+        tmp_path,
+        context_text="Fetch the latest contribution guidelines so we can update our docs.",
+    )
+    assert "contribution" in picked.lower()
+
+
+def test_pick_fixture_falls_back_to_hash_when_no_overlap(tmp_path: Path) -> None:
+    # None of the fixtures share content with the context; picker must still
+    # return a deterministic, valid fixture instead of raising.
+    (tmp_path / "web_fetch.json").write_text(
+        json.dumps(["alpha", "beta", "gamma"]),
+        encoding="utf-8",
+    )
+    import experiments.phase_a1.executor as ex
+
+    ex._FIXTURE_CACHE.clear()
+
+    args = {"url": "https://example.com/xyz"}
+    a = _pick_fixture("web_fetch", args, tmp_path, context_text="totally unrelated intent")
+    b = _pick_fixture("web_fetch", args, tmp_path, context_text="totally unrelated intent")
+    assert a == b
+    assert a in {"alpha", "beta", "gamma"}
+
+
+def test_pick_fixture_uses_match_tags_when_content_is_opaque(tmp_path: Path) -> None:
+    # image_read-style fixtures have mostly-base64 content that the tokenizer
+    # can't read meaningfully. Explicit match.tags lets the picker align with
+    # the user's intent even when the output text is opaque.
+    (tmp_path / "image_read.json").write_text(
+        json.dumps(
+            [
+                {
+                    "match": {"tags": ["architecture", "diagram"]},
+                    "output": "[Image: arch.png] zzzzzzzzz base64-only aaaaaaa",
+                },
+                {
+                    "match": {"tags": ["loss", "curve", "training"]},
+                    "output": "[Image: loss.png] zzzzzzzzz base64-only bbbbbbb",
+                },
+                {
+                    "match": {"tags": ["confusion", "matrix"]},
+                    "output": "[Image: conf.png] zzzzzzzzz base64-only ccccccc",
+                },
+            ]
+        ),
+        encoding="utf-8",
+    )
+    import experiments.phase_a1.executor as ex
+
+    ex._FIXTURE_CACHE.clear()
+    ex._FIXTURE_TAGS_CACHE.clear()
+
+    picked = _pick_fixture(
+        "image_read",
+        {"file_path": "diagrams/architecture.png"},
+        tmp_path,
+        context_text="Show me the latest architecture diagram so I can review the layout.",
+    )
+    assert "arch.png" in picked
+
+
+def test_pick_fixture_is_deterministic_across_ties(tmp_path: Path) -> None:
+    # Two fixtures share the same top score; tie-break must be stable.
+    (tmp_path / "web_fetch.json").write_text(
+        json.dumps(
+            [
+                "auth token rotation staleness check fix.",
+                "auth token rotation staleness handler refactor.",
+                "entirely unrelated image captioning module.",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    import experiments.phase_a1.executor as ex
+
+    ex._FIXTURE_CACHE.clear()
+
+    args = {"url": "https://example.com/auth/rotation"}
+    ctx = "Explain the auth token rotation staleness check."
+    picks = {_pick_fixture("web_fetch", args, tmp_path, context_text=ctx) for _ in range(5)}
+    assert len(picks) == 1  # stable tie-break
+
+
 def test_all_fixture_backed_tools_have_fixture_files() -> None:
     """The 7 fixture-backed tools must each have a real fixture JSON file."""
     fixtures_dir = Path(__file__).resolve().parents[1] / "fixtures"

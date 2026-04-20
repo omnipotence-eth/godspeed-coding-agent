@@ -119,8 +119,17 @@ def _v_file_edit(args: dict[str, Any]) -> list[str]:
 
 def _v_diff_apply(args: dict[str, Any]) -> list[str]:
     diff = args.get("diff")
-    if not isinstance(diff, str) or ("@@" not in diff and "---" not in diff):
-        return ["diff_apply.diff must be a unified-diff string"]
+    if not isinstance(diff, str) or not diff.strip():
+        return ["diff_apply.diff must be a non-empty unified-diff string"]
+    # Real unified diffs need both file headers AND at least one hunk header.
+    # The earlier check ("@@" in diff OR "---" in diff) accepted malformed
+    # fragments that the real diff_apply tool then rejected at runtime, which
+    # cascaded into judge coherence drops.
+    if "---" not in diff or "+++" not in diff or "@@" not in diff:
+        return [
+            "diff_apply.diff must be a unified diff with '---'/'+++' file "
+            "headers and at least one '@@' hunk header"
+        ]
     return []
 
 
@@ -159,7 +168,15 @@ def _v_test_runner(_args: dict[str, Any]) -> list[str]:
     return []
 
 
-def _v_verify(_args: dict[str, Any]) -> list[str]:
+def _v_verify(args: dict[str, Any]) -> list[str]:
+    # file_path is optional on verify (the tool can scan the whole repo) but
+    # if it's provided it MUST be a non-empty string. A live prod sample was
+    # dropped because the generator emitted verify({"file_path": ""}) which
+    # the real tool rejects.
+    if "file_path" in args:
+        fp = args["file_path"]
+        if not isinstance(fp, str) or not fp.strip():
+            return ["verify.file_path must be a non-empty string when provided"]
     return []
 
 
@@ -167,26 +184,39 @@ _BACKGROUND_CHECK_ACTIONS = {"status", "output", "kill"}
 
 
 def _v_background_check(args: dict[str, Any]) -> list[str]:
+    errs: list[str] = []
     action = args.get("action")
+    # Missing action is tolerated at validation time (the real tool will
+    # reject it at dispatch; anchor samples use variant shapes that we
+    # don't want to retroactively invalidate). When action IS given it
+    # must be one of the enum values.
     if action is not None and action not in _BACKGROUND_CHECK_ACTIONS:
-        return [
+        errs.append(
             f"background_check.action invalid: {action!r} "
             f"(expected one of {sorted(_BACKGROUND_CHECK_ACTIONS)})"
-        ]
-    return []
+        )
+    if action in ("output", "kill"):
+        pid = args.get("id")
+        if not isinstance(pid, int) or isinstance(pid, bool):
+            errs.append(
+                "background_check.id must be an integer process id "
+                "when action is 'output' or 'kill'"
+            )
+    return errs
 
 
-_GIT_ACTIONS = {
-    "status",
-    "diff",
+# The real Godspeed GitTool only accepts the 7 TRUE_ACTIONS. The wider
+# _GIT_ACTIONS set includes historical aliases (add/branch/push/...) that
+# Opus-authored anchor samples used; accepting them here keeps legacy gold
+# anchors valid. Fresh synthetic generations are steered by the blueprint
+# prompt toward the 7 real actions only.
+_GIT_TRUE_ACTIONS = {"status", "diff", "commit", "log", "undo", "stash", "stash_pop"}
+_GIT_LEGACY_ALIASES = {
     "add",
-    "commit",
     "branch",
     "checkout",
-    "log",
     "show",
     "restore",
-    "stash",
     "push",
     "pull",
     "fetch",
@@ -195,13 +225,54 @@ _GIT_ACTIONS = {
     "reset",
     "tag",
 }
+_GIT_ACTIONS = _GIT_TRUE_ACTIONS | _GIT_LEGACY_ALIASES
 
 
 def _v_git(args: dict[str, Any]) -> list[str]:
     action = args.get("action")
     if action not in _GIT_ACTIONS:
         return [f"git.action invalid: {action!r} (expected one of {sorted(_GIT_ACTIONS)})"]
+    if action == "commit":
+        msg = args.get("message")
+        if not isinstance(msg, str) or not msg.strip():
+            return ["git.message must be a non-empty string when action is 'commit'"]
     return []
+
+
+def _v_git_strict(args: dict[str, Any]) -> list[str]:
+    """Blueprint-gen variant: rejects legacy-alias actions that the real
+    Godspeed GitTool doesn't implement. Used to force the LLM to retry when
+    it emits 'add'/'branch'/etc. Full record validator stays lenient so that
+    historic anchor samples using those aliases remain accepted."""
+    action = args.get("action")
+    if action not in _GIT_TRUE_ACTIONS:
+        return [
+            f"git.action invalid for real Godspeed tool: {action!r} "
+            f"(expected one of {sorted(_GIT_TRUE_ACTIONS)})"
+        ]
+    if action == "commit":
+        msg = args.get("message")
+        if not isinstance(msg, str) or not msg.strip():
+            return ["git.message must be a non-empty string when action is 'commit'"]
+    return []
+
+
+def _v_notebook_edit_strict(args: dict[str, Any]) -> list[str]:
+    """Blueprint-gen variant: requires the real param name ``file_path`` and
+    the enumerated action set."""
+    errs: list[str] = []
+    if not isinstance(args.get("file_path"), str) or not args.get("file_path"):
+        errs.append(
+            "notebook_edit.file_path must be a non-empty string "
+            "(use 'file_path', NOT 'notebook_path')"
+        )
+    action = args.get("action")
+    if action not in _NOTEBOOK_EDIT_ACTIONS:
+        errs.append(
+            f"notebook_edit.action invalid: {action!r} "
+            f"(expected one of {sorted(_NOTEBOOK_EDIT_ACTIONS)})"
+        )
+    return errs
 
 
 _GH_ACTIONS = {
@@ -253,14 +324,21 @@ _NOTEBOOK_EDIT_ACTIONS = {"edit_cell", "add_cell", "delete_cell", "move_cell"}
 
 def _v_notebook_edit(args: dict[str, Any]) -> list[str]:
     errs: list[str] = []
-    if not isinstance(args.get("notebook_path"), str):
-        errs.append("notebook_edit.notebook_path must be a string")
+    # The real NotebookEditTool requires ``file_path`` (the legacy anchor set
+    # mistakenly used ``notebook_path`` — still accepted here to avoid
+    # invalidating existing anchors, but the blueprint prompt now tells
+    # fresh synthetic samples to use ``file_path``).
+    path = args.get("file_path") or args.get("notebook_path")
+    if not isinstance(path, str) or not path.strip():
+        errs.append("notebook_edit.file_path must be a non-empty string")
     action = args.get("action")
     if action is not None and action not in _NOTEBOOK_EDIT_ACTIONS:
         errs.append(
             f"notebook_edit.action invalid: {action!r} "
             f"(expected one of {sorted(_NOTEBOOK_EDIT_ACTIONS)})"
         )
+    if "content" in args and not isinstance(args["content"], str):
+        errs.append("notebook_edit.content must be a string if present")
     if "new_source" in args and not isinstance(args["new_source"], str):
         errs.append("notebook_edit.new_source must be a string if present")
     return errs
@@ -307,12 +385,27 @@ _VALIDATORS = {
 }
 
 
-def validate_tool_call_args(tool_name: str, args: dict[str, Any]) -> list[str]:
+_STRICT_VALIDATORS: dict[str, Any] = {
+    "git": _v_git_strict,
+    "notebook_edit": _v_notebook_edit_strict,
+}
+
+
+def validate_tool_call_args(
+    tool_name: str, args: dict[str, Any], *, strict: bool = False
+) -> list[str]:
     """Public entry point for per-tool argument validation.
 
     Returns a list of human-readable error strings; empty list means the
     args satisfy that tool's schema. Used by ``blueprints.py`` to reject
     malformed LLM output BEFORE executor + narrator spend is incurred.
+
+    ``strict=True`` activates the blueprint-generation variants that reject
+    param aliases / actions tolerated on legacy anchor samples but that the
+    real Godspeed tools don't implement (``notebook_path``, ``git.action``
+    in {add,branch,push,...}). The record-level validator used by
+    ``assemble.py`` keeps ``strict=False`` so existing gold anchors stay
+    valid through assembly.
 
     Unknown tool names return a single error; callers are expected to have
     verified ``tool_name in ALL_TOOLS`` first, but we fail closed just in case.
@@ -322,6 +415,10 @@ def validate_tool_call_args(tool_name: str, args: dict[str, Any]) -> list[str]:
         return [f"unknown tool {tool_name!r}"]
     if not isinstance(args, dict):
         return [f"{tool_name}.arguments must be an object, got {type(args).__name__}"]
+    if strict:
+        strict_fn = _STRICT_VALIDATORS.get(tool_name)
+        if strict_fn is not None:
+            return strict_fn(args)
     return validator(args)
 
 

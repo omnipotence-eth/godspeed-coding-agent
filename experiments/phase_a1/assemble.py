@@ -68,6 +68,7 @@ class SourceStats:
     loaded: int = 0
     invalid: int = 0
     duplicates: int = 0
+    over_cap: int = 0
     kept: int = 0
 
 
@@ -119,23 +120,49 @@ def _infer_category(record: dict[str, Any]) -> str:
     return "multi_turn"
 
 
+def _infer_primary_tool(record: dict[str, Any]) -> str:
+    """First tool_call name in the record, or "no_tool" if there are none.
+
+    Used to enforce per-tool caps on a source — without an inferred tool
+    we cannot decide whether the record fills a coverage slot.
+    """
+    for msg in record.get("messages") or []:
+        for tc in msg.get("tool_calls") or []:
+            name = (tc.get("function") or {}).get("name")
+            if name:
+                return str(name)
+    return "no_tool"
+
+
 def assemble(
     data_dir: Path,
     output_path: Path,
     *,
     sources: tuple[tuple[str, str], ...] = DEFAULT_SOURCES,
     seed: int = DEFAULT_SEED,
+    per_tool_caps: dict[str, int] | None = None,
 ) -> dict[str, Any]:
-    """Merge, validate, dedup, shuffle, write."""
+    """Merge, validate, dedup, shuffle, write.
+
+    ``per_tool_caps`` (default ``None``) maps a source name (e.g. ``"distill"``)
+    to the maximum number of records *from that source* that may exercise
+    any single primary tool. Records past the cap are skipped and counted
+    in ``SourceStats.over_cap``. The cap defends against a single source
+    homogenizing the corpus (see RESEARCH_LOG F1: distill at 81% drove
+    file_read to 97% of records).
+    """
     seen_hashes: set[str] = set()
     kept: list[tuple[str, dict[str, Any]]] = []  # (source_name, record)
     source_stats: list[SourceStats] = []
+    caps = per_tool_caps or {}
 
     for name, filename in sources:
         path = data_dir / filename
         stats = SourceStats(name=name, file=path)
         records = _load_source(path)
         stats.loaded = len(records)
+        cap = caps.get(name)
+        per_tool_count: Counter[str] = Counter()
 
         for rec in records:
             errs, _, _ = validate_record(rec)
@@ -146,18 +173,25 @@ def assemble(
             if h in seen_hashes:
                 stats.duplicates += 1
                 continue
+            if cap is not None:
+                tool = _infer_primary_tool(rec)
+                if per_tool_count[tool] >= cap:
+                    stats.over_cap += 1
+                    continue
+                per_tool_count[tool] += 1
             seen_hashes.add(h)
             kept.append((name, rec))
             stats.kept += 1
 
         source_stats.append(stats)
         logger.info(
-            "source=%s file=%s  loaded=%d invalid=%d dup=%d kept=%d",
+            "source=%s file=%s  loaded=%d invalid=%d dup=%d over_cap=%d kept=%d",
             stats.name,
             stats.file.name,
             stats.loaded,
             stats.invalid,
             stats.duplicates,
+            stats.over_cap,
             stats.kept,
         )
 
@@ -189,10 +223,12 @@ def assemble(
                 "loaded": s.loaded,
                 "invalid": s.invalid,
                 "duplicates": s.duplicates,
+                "over_cap": s.over_cap,
                 "kept": s.kept,
             }
             for s in source_stats
         },
+        "per_tool_caps": dict(caps),
         "final_source_counts": dict(source_counts),
         "final_category_mix": dict(category_counts),
         "final_tool_usage": dict(sorted(tool_usage.items(), key=lambda kv: -kv[1])),
@@ -218,11 +254,28 @@ def _main() -> int:
         default=Path("experiments/phase_a1/data/phase_a1_final.jsonl"),
     )
     parser.add_argument("--seed", type=int, default=DEFAULT_SEED)
+    parser.add_argument(
+        "--distill-per-tool-cap",
+        type=int,
+        default=None,
+        help="Max records-per-primary-tool drawn from the distill source. "
+        "Defends against single-source domination of tool coverage. "
+        "Default: no cap (preserves prior behavior).",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 
-    summary = assemble(args.data_dir, args.output, seed=args.seed)
+    caps: dict[str, int] = {}
+    if args.distill_per_tool_cap is not None:
+        caps["distill"] = args.distill_per_tool_cap
+
+    summary = assemble(
+        args.data_dir,
+        args.output,
+        seed=args.seed,
+        per_tool_caps=caps or None,
+    )
     logger.info(
         "assemble complete  total_kept=%d  categories=%s  top_tools=%s",
         summary["total_kept"],

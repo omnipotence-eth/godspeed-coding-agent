@@ -42,6 +42,18 @@ DEFAULT_CATEGORY_MIX: dict[str, float] = {
     "error_recovery": 0.05,
 }
 
+# Tools whose blueprints consistently need prior context in the session to
+# produce a valid call — old_string for file_edit must match real file
+# content, diff_apply needs a hunk that applies to a known file, notebook_edit
+# needs to see the cells first. When these are paired with single_tool the
+# blueprint planner can't ground the arguments, so the real tool errors out
+# and the judge fails the sample on arg_correctness or coherence. The spec
+# builder reroutes every such (tool, single_tool) cell to (tool, multi_turn)
+# so the first call can be a file_read that grounds the subsequent edit.
+EDIT_TOOLS_REQUIRING_CONTEXT: frozenset[str] = frozenset(
+    {"file_edit", "diff_apply", "notebook_edit"}
+)
+
 
 @dataclass(frozen=True)
 class GenerationSpec:
@@ -145,6 +157,17 @@ def _compute_budget(
         cat_split = _balanced_category_for_tool(t, per_tool[t], mix)
         for cat, n in cat_split.items():
             grid[(t, cat)] = n
+
+    # Reroute (edit_tool, single_tool) → (edit_tool, multi_turn). file_edit /
+    # diff_apply / notebook_edit can't be grounded in a single-call sample,
+    # so they burn judge drops otherwise. Moving the quota to multi_turn
+    # lets the blueprint planner insert a grounding file_read before the edit.
+    for tool in EDIT_TOOLS_REQUIRING_CONTEXT:
+        single_key = (tool, "single_tool")
+        stolen = grid.get(single_key, 0)
+        if stolen:
+            grid[single_key] = 0
+            grid[(tool, "multi_turn")] = grid.get((tool, "multi_turn"), 0) + stolen
 
     per_category: Counter[str] = Counter()
     for (_t, cat), n in grid.items():

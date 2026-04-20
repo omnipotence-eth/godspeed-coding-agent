@@ -1,6 +1,6 @@
 [project]
 name = "godspeed"
-version = "2.10.0"
+version = "2.11.0"
 description = "Security-first open-source coding agent with parallel tool execution, multimodal input, 4-tier permissions, audit trails, and 200+ LLM provider support"
 readme = "README.md"
 license = "MIT"
@@ -93,6 +93,9 @@ build-backend = "uv_build"
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+extend-exclude = [
+    "benchmarks/fixtures/easy-fix-syntax-01/app.py",  # intentional syntax error
+]
 
 [tool.ruff.lint]
 select = [
@@ -116,10 +119,22 @@ ignore = ["S603", "S607"]  # subprocess calls are intentional for a coding agent
 "scripts/**/*.py" = ["T201"]  # print() is fine in CLI scripts
 "experiments/**/*.py" = ["S311", "N818", "SIM103"]  # jitter/naming/style nits in research code
 "experiments/**/tests/**/*.py" = ["S101", "S105", "S106", "SLF001", "S311", "N818", "SIM103"]
+"benchmarks/fixtures/**/*.py" = [
+    "T201",  # print() is intentional in diagnostic scripts
+    "S603", "S607", "S102",  # subprocess is intentional in setup/verify hooks
+    "S101", "S105", "S108",  # fixture files simulate vulnerable code the agent must fix
+    "S113", "S608",
+    "E501",
+]
+"experiments/swebench_lite/**/*.py" = ["T201", "E501"]  # CLI scripts with long log lines
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+markers = [
+    "real_llm: requires a running Ollama server on localhost:11434 (skipped by default)",
+]
+addopts = "-m 'not real_llm'"
 
 [tool.coverage.run]
 source = ["src/godspeed"]

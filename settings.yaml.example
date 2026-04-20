@@ -50,6 +50,14 @@ fallback_models: []
 #   model: claude-sonnet-4-20250514    # ANTHROPIC_API_KEY
 #   model: claude-opus-4-20250514      # ANTHROPIC_API_KEY
 #   model: gpt-4o                      # OPENAI_API_KEY
+#
+# Moonshot (Kimi) direct API — for models not yet on NVIDIA NIM free tier.
+# Requires MOONSHOT_API_KEY from https://platform.moonshot.ai/. As of
+# 2026-04-20, K2.6 is only on Moonshot's paid API; K2.5 is also on NIM free.
+#   model: moonshot/kimi-k2.6          # flagship, 256K ctx; $0.95/$4.00 per MTok
+#   model: moonshot/kimi-k2.5          # mature, generally available
+#   fallback_models:
+#     - nvidia_nim/moonshotai/kimi-k2.5   # free fallback on rate limits
 #   model: gpt-4o-mini                 # OPENAI_API_KEY
 #   model: gemini/gemini-2.0-flash     # GEMINI_API_KEY
 #   model: deepseek/deepseek-chat      # DEEPSEEK_API_KEY

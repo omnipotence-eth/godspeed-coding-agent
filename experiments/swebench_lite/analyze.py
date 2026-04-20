@@ -58,7 +58,9 @@ def main() -> int:
     by_status = Counter(m.get("status", "?") for m in metrics)
     empty_patch = sum(1 for m in metrics if not m.get("patch_nonempty", False))
     wall_times = [float(m["wall_s"]) for m in metrics if m.get("wall_s") is not None]
-    tool_calls = [int(m["tool_call_count"]) for m in metrics if m.get("tool_call_count") is not None]
+    tool_calls = [
+        int(m["tool_call_count"]) for m in metrics if m.get("tool_call_count") is not None
+    ]
 
     by_repo: dict[str, dict[str, int]] = defaultdict(lambda: {"total": 0, "empty": 0})
     for m in metrics:
@@ -73,7 +75,9 @@ def main() -> int:
     for status, n in by_status.most_common():
         print(f"  {n:>3}  {status}")
     print()
-    print(f"Empty-patch rate: {empty_patch}/{len(metrics)} ({100*empty_patch/len(metrics):.1f}%)")
+    print(
+        f"Empty-patch rate: {empty_patch}/{len(metrics)} ({100 * empty_patch / len(metrics):.1f}%)"
+    )
     print()
     if wall_times:
         print(
@@ -94,7 +98,9 @@ def main() -> int:
     preds_in_file = len(preds)
     if preds_in_file != len(metrics):
         print()
-        print(f"WARNING: predictions.jsonl has {preds_in_file} rows but metrics.jsonl has {len(metrics)}")
+        print(
+            f"WARNING: predictions.jsonl has {preds_in_file} rows but metrics.jsonl has {len(metrics)}"
+        )
 
     return 0
 

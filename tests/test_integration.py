@@ -455,11 +455,7 @@ class TestParallelToolsEndToEnd:
 
         assert result == "Read all three."
         # Three tool results should have landed in the conversation, one per file.
-        tool_msgs = [
-            msg["content"]
-            for msg in conversation.messages
-            if msg.get("role") == "tool"
-        ]
+        tool_msgs = [msg["content"] for msg in conversation.messages if msg.get("role") == "tool"]
         assert len(tool_msgs) == 3
         for i in range(3):
             assert any(f"content {i}" in msg for msg in tool_msgs), f"content {i} not surfaced"

@@ -6,7 +6,9 @@ import sys
 from pathlib import Path
 
 tests = list(Path(".").rglob("test_*.py")) + list(Path(".").rglob("*_test.py"))
-tests = [t for t in tests if "auth" in t.name.lower() or "auth" in t.read_text(encoding="utf-8").lower()]
+tests = [
+    t for t in tests if "auth" in t.name.lower() or "auth" in t.read_text(encoding="utf-8").lower()
+]
 if not tests:
     print("no auth-related test file created")
     sys.exit(1)

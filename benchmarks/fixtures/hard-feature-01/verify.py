@@ -6,7 +6,10 @@ import sys
 from pathlib import Path
 
 evidence = any(
-    any(token in p.read_text(encoding="utf-8").lower() for token in ("ratelimit", "rate_limit", "rate-limit"))
+    any(
+        token in p.read_text(encoding="utf-8").lower()
+        for token in ("ratelimit", "rate_limit", "rate-limit")
+    )
     for p in Path(".").rglob("*.py")
     if p.name != "verify.py"
 )

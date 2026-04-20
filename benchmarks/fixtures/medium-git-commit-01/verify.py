@@ -5,9 +5,7 @@ from __future__ import annotations
 import subprocess
 import sys
 
-log = subprocess.run(
-    ["git", "log", "--oneline"], capture_output=True, text=True, check=False
-)
+log = subprocess.run(["git", "log", "--oneline"], capture_output=True, text=True, check=False)
 if log.returncode != 0:
     print(f"git log failed: {log.stderr}")
     sys.exit(1)

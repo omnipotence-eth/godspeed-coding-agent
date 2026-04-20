@@ -49,25 +49,30 @@ def _load(path: Path) -> dict[str, str]:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--preds", nargs="+", type=Path, required=True,
+        "--preds",
+        nargs="+",
+        type=Path,
+        required=True,
         help="Two or more predictions.jsonl files",
     )
     parser.add_argument(
-        "--labels", nargs="+", default=None,
+        "--labels",
+        nargs="+",
+        default=None,
         help="Short labels for each predictions file (same order as --preds)",
     )
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--source-log", type=Path, default=None)
     parser.add_argument(
-        "--model-name", default=None,
-        help="model_name_or_path for the combined predictions file "
-             "(defaults to best_of_<N>)",
+        "--model-name",
+        default=None,
+        help="model_name_or_path for the combined predictions file (defaults to best_of_<N>)",
     )
     args = parser.parse_args()
 
     if len(args.preds) < 2:
         raise SystemExit("Need at least 2 --preds files")
-    labels = args.labels or [f"run{i+1}" for i in range(len(args.preds))]
+    labels = args.labels or [f"run{i + 1}" for i in range(len(args.preds))]
     if len(labels) != len(args.preds):
         raise SystemExit("--labels must match --preds count")
 
@@ -91,21 +96,22 @@ def main() -> int:
             best_patch, best_label = "", "none"
             source_strategy = "all_empty"
 
-        picks.append({
-            "instance_id": iid,
-            "model_name_or_path": model_name,
-            "model_patch": best_patch,
-        })
-        sources.append({
-            "instance_id": iid,
-            "strategy": source_strategy,
-            "chosen_from": best_label,
-            "chosen_lines": len(best_patch.splitlines()) if best_patch else 0,
-            "variants": {
-                lbl: len(p.splitlines()) if p.strip() else 0
-                for p, lbl in variants
-            },
-        })
+        picks.append(
+            {
+                "instance_id": iid,
+                "model_name_or_path": model_name,
+                "model_patch": best_patch,
+            }
+        )
+        sources.append(
+            {
+                "instance_id": iid,
+                "strategy": source_strategy,
+                "chosen_from": best_label,
+                "chosen_lines": len(best_patch.splitlines()) if best_patch else 0,
+                "variants": {lbl: len(p.splitlines()) if p.strip() else 0 for p, lbl in variants},
+            }
+        )
 
     with args.out.open("w", encoding="utf-8") as f:
         for row in picks:
@@ -120,9 +126,7 @@ def main() -> int:
     print(f"{'instance_id':<45} {'chosen':<8} lines per run")
     print("-" * 90)
     for s in sources:
-        per = "  ".join(
-            f"{lbl}={n:>3}" for lbl, n in s["variants"].items()
-        )
+        per = "  ".join(f"{lbl}={n:>3}" for lbl, n in s["variants"].items())
         print(f"{s['instance_id']:<45} {s['chosen_from']:<8} {per}")
 
     n_nonempty = sum(1 for p in picks if p["model_patch"].strip())

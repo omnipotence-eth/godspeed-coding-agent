@@ -85,9 +85,7 @@ def main() -> int:
     lines.append(header)
     lines.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
     for r in rows:
-        mech = (
-            f"{r['mech_pass']}/{r['mech_eval']}" if r["mech_eval"] else "—"
-        )
+        mech = f"{r['mech_pass']}/{r['mech_eval']}" if r["mech_eval"] else "—"
         lines.append(
             f"| `{r['model']}` | {_fmt_float(r['overall'])} | "
             f"{r['pass']}/{r['total']} | {r['easy']} | {r['medium']} | {r['hard']} | "

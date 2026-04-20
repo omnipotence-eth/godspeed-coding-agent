@@ -141,9 +141,7 @@ def _match_sessions_to_predictions(
     # For each session, find the instance whose fingerprint appears in the first user msg
     by_iid: dict[str, list[dict]] = defaultdict(list)
     for path, recs in sessions:
-        first_user = next(
-            (str(r.get("content", "")) for r in recs if r.get("role") == "user"), ""
-        )
+        first_user = next((str(r.get("content", "")) for r in recs if r.get("role") == "user"), "")
         first_user_compact = "".join(first_user.split())[:600]
         for iid, fp in instance_fp.items():
             if fp and fp in first_user_compact:
@@ -220,9 +218,7 @@ def main() -> int:
             f"{row['edit_tool_calls']:>6} {row['successful_edits']:>5}  {flag}"
         )
 
-    lost_edits = sum(
-        1 for r in summary if r["patch_empty"] and r["successful_edits"] > 0
-    )
+    lost_edits = sum(1 for r in summary if r["patch_empty"] and r["successful_edits"] > 0)
     print()
     print(f"Empty patches despite successful edits: {lost_edits} / {len(summary)}")
     return 0

@@ -129,7 +129,8 @@ def verify_patch(
     if not report_path.is_file():
         logger.warning(
             "verify: report not found at %s — harness likely failed. stderr tail:\n%s",
-            report_path, result.stderr[-500:],
+            report_path,
+            result.stderr[-500:],
         )
         return False, f"(harness failed)\n{result.stderr[-1000:]}"
 
@@ -145,7 +146,9 @@ def verify_patch(
     else:
         # Fallback: look in the whole logs tree (swebench's exact layout
         # has varied across versions).
-        matches = list((workdir / "logs").rglob("test_output.txt")) if (workdir / "logs").is_dir() else []
+        matches = (
+            list((workdir / "logs").rglob("test_output.txt")) if (workdir / "logs").is_dir() else []
+        )
         test_output = (
             matches[-1].read_text(encoding="utf-8", errors="replace")
             if matches
@@ -161,11 +164,15 @@ def _main() -> int:
     parser.add_argument("--instance", required=True)
     parser.add_argument("--model", required=True)
     parser.add_argument(
-        "--patch-from", type=Path, required=True,
+        "--patch-from",
+        type=Path,
+        required=True,
         help="A predictions.jsonl file — we pick the row whose instance_id matches --instance",
     )
     parser.add_argument(
-        "--workdir", type=Path, default=Path("experiments/swebench_lite"),
+        "--workdir",
+        type=Path,
+        default=Path("experiments/swebench_lite"),
     )
     parser.add_argument("--timeout", type=int, default=900)
     args = parser.parse_args()

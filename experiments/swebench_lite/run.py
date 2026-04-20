@@ -161,9 +161,7 @@ def _prepare_repo(repo: str, base_commit: str, dest: Path) -> None:
     for step in steps:
         result = _run(step, cwd=dest, timeout=180)
         if result.returncode != 0:
-            raise RuntimeError(
-                f"git step failed: {' '.join(step)}\nstderr: {result.stderr[-400:]}"
-            )
+            raise RuntimeError(f"git step failed: {' '.join(step)}\nstderr: {result.stderr[-400:]}")
 
 
 def _run_godspeed(model: str, prompt: str, project_dir: Path, timeout: int) -> dict:
@@ -223,9 +221,7 @@ def _capture_patch(base_commit: str, project_dir: Path) -> str:
         # Modifications exist per status but diff is empty — usually a CRLF
         # vs LF mismatch. Retry with --text to force text diff regardless
         # of git's autocrlf view.
-        logger.warning(
-            "git diff empty despite dirty working tree — retrying with --text"
-        )
+        logger.warning("git diff empty despite dirty working tree — retrying with --text")
         result = _run(
             ["git", "-c", "core.autocrlf=false", "diff", "--text", base_commit],
             cwd=project_dir,
@@ -285,34 +281,41 @@ def main() -> int:
         default=Path("experiments/swebench_lite/run_metrics.jsonl"),
     )
     parser.add_argument(
-        "--per-task-timeout", type=int, default=PER_TASK_TIMEOUT_S,
+        "--per-task-timeout",
+        type=int,
+        default=PER_TASK_TIMEOUT_S,
         help="Wall-clock timeout for each godspeed invocation (seconds)",
     )
     parser.add_argument(
-        "--resume", action="store_true",
+        "--resume",
+        action="store_true",
         help="Skip instances already present in --out",
     )
     parser.add_argument(
-        "--include-hints", action="store_true",
+        "--include-hints",
+        action="store_true",
         help="Include SWE-Bench `hints_text` (GitHub thread comments) in the prompt. "
-             "Standard practice for Aider / mini-swe-agent benchmark runs.",
+        "Standard practice for Aider / mini-swe-agent benchmark runs.",
     )
     parser.add_argument(
-        "--architect", action="store_true",
+        "--architect",
+        action="store_true",
         help="Invoke godspeed with /architect enabled (two-phase plan->execute).",
     )
     parser.add_argument(
-        "--reflect", action="store_true",
+        "--reflect",
+        action="store_true",
         help="After initial patch, run a reflection pass that shows the patch back "
-             "to the agent with 'critique and revise if wrong.' Captures the final "
-             "patch post-revision.",
+        "to the agent with 'critique and revise if wrong.' Captures the final "
+        "patch post-revision.",
     )
     parser.add_argument(
-        "--verify-retry", action="store_true",
+        "--verify-retry",
+        action="store_true",
         help="After initial patch, run the local SWE-Bench harness (via WSL+Docker) "
-             "to check whether the patch resolves the instance. If not, re-invoke "
-             "Godspeed with the failing test output as context and capture the "
-             "revised patch. Requires swebench installed in WSL Ubuntu.",
+        "to check whether the patch resolves the instance. If not, re-invoke "
+        "Godspeed with the failing test output as context and capture the "
+        "revised patch. Requires swebench installed in WSL Ubuntu.",
     )
     args = parser.parse_args()
 
@@ -324,7 +327,11 @@ def main() -> int:
     to_run = [i for i in instances if i["instance_id"] not in already]
     logger.info(
         "split=%s total=%d filtered=%d already=%d to_run=%d",
-        args.split, len(instances), len(instances), len(already), len(to_run),
+        args.split,
+        len(instances),
+        len(instances),
+        len(already),
+        len(to_run),
     )
 
     for idx, inst in enumerate(to_run, 1):
@@ -353,9 +360,7 @@ def main() -> int:
             else:
                 hints_block = ""
                 if args.include_hints and inst.get("hints_text"):
-                    hints_block = HINTS_BLOCK_TEMPLATE.format(
-                        hints_text=inst["hints_text"].strip()
-                    )
+                    hints_block = HINTS_BLOCK_TEMPLATE.format(hints_text=inst["hints_text"].strip())
                 architect_block = ARCHITECT_BLOCK if args.architect else ""
                 prompt = DEFAULT_PROMPT_TEMPLATE.format(
                     problem_statement=inst["problem_statement"],
@@ -367,9 +372,7 @@ def main() -> int:
                         args.model, prompt, workspace, args.per_task_timeout
                     )
                     if godspeed_payload.get("_shell_exit_code") != 0:
-                        metrics["status"] = (
-                            f"agent_exit_{godspeed_payload.get('_shell_exit_code')}"
-                        )
+                        metrics["status"] = f"agent_exit_{godspeed_payload.get('_shell_exit_code')}"
                     patch = _capture_patch(base, workspace)
                     metrics["verify_retried"] = False
                     if args.verify_retry and patch.strip():
@@ -377,6 +380,7 @@ def main() -> int:
                         # invoked as a script so the parent package isn't
                         # on sys.path — import by path.
                         import sys as _sys
+
                         _sys.path.insert(0, str(Path(__file__).parent))
                         from verify_patch import verify_patch
 
@@ -421,7 +425,8 @@ def main() -> int:
                                     patch = retry_patch
                                     logger.info(
                                         "retry produced %d-line patch for %s",
-                                        len(patch.splitlines()), iid,
+                                        len(patch.splitlines()),
+                                        iid,
                                     )
                                 else:
                                     logger.info(
@@ -431,13 +436,16 @@ def main() -> int:
                             except subprocess.TimeoutExpired:
                                 logger.warning("verify-retry godspeed timeout for %s", iid)
                         elif resolved_1 is True:
-                            logger.info("verify: %s RESOLVED on initial patch — skipping retry", iid)
+                            logger.info(
+                                "verify: %s RESOLVED on initial patch — skipping retry", iid
+                            )
 
                     metrics["reflected"] = False
                     if args.reflect and patch.strip():
                         logger.info(
                             "running reflection pass for %s (patch=%d lines)",
-                            iid, len(patch.splitlines()),
+                            iid,
+                            len(patch.splitlines()),
                         )
                         reflect_prompt = REFLECTION_PROMPT_TEMPLATE.format(
                             problem_statement=inst["problem_statement"],
@@ -493,7 +501,9 @@ def main() -> int:
 
             logger.info(
                 "  -> patch_lines=%d status=%s wall=%ss",
-                metrics["patch_lines"], metrics["status"], metrics["wall_s"],
+                metrics["patch_lines"],
+                metrics["status"],
+                metrics["wall_s"],
             )
         finally:
             shutil.rmtree(workspace, ignore_errors=True)

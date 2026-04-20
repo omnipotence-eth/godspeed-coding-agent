@@ -58,9 +58,9 @@ def main() -> int:
     print(f"instances in {args.a_label}: {len(a_m)}  |  in {args.b_label}: {len(b_m)}")
     print(
         f"empty-patch rate: {args.a_label}={len(a_empty)}/{len(a_m)} "
-        f"({100*len(a_empty)/max(1,len(a_m)):.1f}%)  "
+        f"({100 * len(a_empty) / max(1, len(a_m)):.1f}%)  "
         f"{args.b_label}={len(b_empty)}/{len(b_m)} "
-        f"({100*len(b_empty)/max(1,len(b_m)):.1f}%)"
+        f"({100 * len(b_empty) / max(1, len(b_m)):.1f}%)"
     )
     print()
 
@@ -93,18 +93,22 @@ def main() -> int:
     # Wall time + tool-call aggregates
     a_wall = [float(a_m[i]["wall_s"]) for i in a_m if a_m[i].get("wall_s") is not None]
     b_wall = [float(b_m[i]["wall_s"]) for i in b_m if b_m[i].get("wall_s") is not None]
-    a_tc = [int(a_m[i]["tool_call_count"]) for i in a_m if a_m[i].get("tool_call_count") is not None]
-    b_tc = [int(b_m[i]["tool_call_count"]) for i in b_m if b_m[i].get("tool_call_count") is not None]
+    a_tc = [
+        int(a_m[i]["tool_call_count"]) for i in a_m if a_m[i].get("tool_call_count") is not None
+    ]
+    b_tc = [
+        int(b_m[i]["tool_call_count"]) for i in b_m if b_m[i].get("tool_call_count") is not None
+    ]
     print()
     if a_wall and b_wall:
         print(
-            f"wall time (s): {args.a_label} mean={sum(a_wall)/len(a_wall):.1f}  "
-            f"{args.b_label} mean={sum(b_wall)/len(b_wall):.1f}"
+            f"wall time (s): {args.a_label} mean={sum(a_wall) / len(a_wall):.1f}  "
+            f"{args.b_label} mean={sum(b_wall) / len(b_wall):.1f}"
         )
     if a_tc and b_tc:
         print(
-            f"tool calls:    {args.a_label} mean={sum(a_tc)/len(a_tc):.1f}  "
-            f"{args.b_label} mean={sum(b_tc)/len(b_tc):.1f}"
+            f"tool calls:    {args.a_label} mean={sum(a_tc) / len(a_tc):.1f}  "
+            f"{args.b_label} mean={sum(b_tc) / len(b_tc):.1f}"
         )
     return 0
 

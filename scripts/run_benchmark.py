@@ -91,9 +91,7 @@ def _run_verify(verify_script: Path, workspace: Path) -> bool | None:
     return proc.returncode == 0
 
 
-def run_one_task(
-    model: str, prompt: str, project_dir: Path
-) -> tuple[dict, float, bool | None]:
+def run_one_task(model: str, prompt: str, project_dir: Path) -> tuple[dict, float, bool | None]:
     """Shell out to `godspeed run`; also run verify.py if provided.
 
     Returns (payload, elapsed, mechanical_success) where mechanical_success

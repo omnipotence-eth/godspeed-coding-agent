@@ -253,9 +253,7 @@ def test_assemble_caps_distill_per_tool(tmp_path: Path) -> None:
 
 def test_assemble_cap_is_per_tool_not_per_source(tmp_path: Path) -> None:
     """Cap=2 admits 2 file_read AND 2 grep_search from the same source."""
-    distill_records = [
-        _make_record(f"file prompt {i}", tool="file_read") for i in range(5)
-    ] + [
+    distill_records = [_make_record(f"file prompt {i}", tool="file_read") for i in range(5)] + [
         _make_record(f"grep prompt {i}", tool="grep_search", args={"pattern": "x"})
         for i in range(5)
     ]

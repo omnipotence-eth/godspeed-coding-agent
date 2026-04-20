@@ -17,6 +17,10 @@ for py in Path(".").rglob("*.py"):
         print(f"{py} still imports requests via from")
         sys.exit(1)
 
-if not any("httpx" in p.read_text(encoding="utf-8") for p in Path(".").rglob("*.py") if p.name != "verify.py"):
+if not any(
+    "httpx" in p.read_text(encoding="utf-8")
+    for p in Path(".").rglob("*.py")
+    if p.name != "verify.py"
+):
     print("no file references httpx")
     sys.exit(1)

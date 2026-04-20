@@ -1,12 +1,23 @@
-"""Run a single SWE-Bench patch through the local Docker harness (via WSL).
+"""Run a single SWE-Bench patch through the local Docker harness.
 
 Returns (resolved: bool, test_output: str). Used as the oracle signal
-for the verify-then-retry loop in run.py.
+for the verify-then-retry loop in run.py and the agent-in-loop
+`swebench_verify_patch` tool.
 
-Relies on:
-  - WSL Ubuntu with swebench installed (`pip3 install --break-system-packages --user swebench`)
-  - Docker Desktop running with WSL2 integration enabled
-  - The swebench pre-built image for this instance available (pulled on first use)
+Two execution paths:
+
+1. **WSL path** (Windows) - wraps `python3 -m swebench.harness.run_evaluation`
+   inside `wsl -d Ubuntu -- bash -lc '...'`. Windows paths are translated
+   to `/mnt/<drive>/...` for the WSL command. Swebench is installed inside
+   the Ubuntu distro via `pip3 install --break-system-packages --user swebench`.
+
+2. **Native path** (Linux, CI) - calls `python3 -m swebench.harness.run_evaluation`
+   directly via `subprocess.run`. Swebench must be installed in the calling
+   env (`pip install swebench`). No path translation.
+
+Autodetection: native if `sys.platform != "win32"`. Override with
+`GODSPEED_SWEBENCH_WSL=0` (force native) or `=1` (force WSL, e.g. for
+debugging the WSL path from a Linux container).
 
 Typical use from run.py (imported directly):
 
@@ -32,6 +43,7 @@ import argparse
 import hashlib
 import json
 import logging
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -42,10 +54,35 @@ logger = logging.getLogger(__name__)
 WSL_CMD = ["wsl", "-d", "Ubuntu", "--", "bash", "-lc"]
 
 
+def _use_wsl() -> bool:
+    """Decide whether to run the harness via WSL or natively.
+
+    Env override: ``GODSPEED_SWEBENCH_WSL`` in ``{"0","false","no"}`` forces
+    native; anything truthy forces WSL. Unset/empty autodetects on platform.
+    """
+    override = os.environ.get("GODSPEED_SWEBENCH_WSL", "").strip().lower()
+    if override in ("0", "false", "no"):
+        return False
+    if override in ("1", "true", "yes"):
+        return True
+    return sys.platform == "win32"
+
+
 def _wsl_run(bash_cmd: str, timeout: int = 900) -> subprocess.CompletedProcess[str]:
     """Run a bash command inside WSL Ubuntu with sensible defaults."""
     return subprocess.run(
         [*WSL_CMD, bash_cmd],
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        check=False,
+    )
+
+
+def _native_run(bash_cmd: str, timeout: int = 900) -> subprocess.CompletedProcess[str]:
+    """Run a bash command natively (Linux/CI path)."""
+    return subprocess.run(
+        ["bash", "-lc", bash_cmd],
         capture_output=True,
         text=True,
         timeout=timeout,
@@ -62,6 +99,25 @@ def _windows_to_wsl(p: Path) -> str:
     return "/mnt/" + drive + "/" + "/".join(parts[1:]).replace("\\", "/")
 
 
+def _harness_cmd(workdir_str: str, preds_str: str, instance_id: str, run_id: str) -> str:
+    """Compose the bash command to run the swebench harness.
+
+    ``workdir_str`` and ``preds_str`` are already in the format the shell
+    will consume (POSIX for WSL/native, Windows-translated for WSL).
+    """
+    return (
+        f"cd '{workdir_str}' && "
+        f"python3 -m swebench.harness.run_evaluation "
+        f"--predictions_path '{preds_str}' "
+        f"--dataset_name princeton-nlp/SWE-bench_Lite "
+        f"--split dev "
+        f"--instance_ids {instance_id} "
+        f"--max_workers 1 "
+        f"--run_id {run_id} "
+        f"--cache_level instance"
+    )
+
+
 def verify_patch(
     instance_id: str,
     model_name: str,
@@ -69,7 +125,7 @@ def verify_patch(
     workdir: Path,
     timeout_s: int = 900,
 ) -> tuple[bool, str]:
-    """Run the swebench harness on a single patch via WSL Docker.
+    """Run the swebench harness on a single patch via local Docker.
 
     Returns ``(resolved, test_output)``. ``resolved`` is ``True`` iff the
     harness reports the instance as resolved. ``test_output`` is the raw
@@ -77,7 +133,7 @@ def verify_patch(
     summary if the harness itself failed.
     """
     if not model_patch.strip():
-        return False, "(empty patch — nothing to verify)"
+        return False, "(empty patch - nothing to verify)"
 
     workdir = workdir.resolve()
     workdir.mkdir(parents=True, exist_ok=True)
@@ -103,24 +159,16 @@ def verify_patch(
         encoding="utf-8",
     )
 
-    wsl_workdir = _windows_to_wsl(workdir)
-    wsl_preds = _windows_to_wsl(preds_path)
-
-    # Run harness. `PATH` must include ~/.local/bin so `pip --user` scripts
-    # are findable, though we invoke the module directly.
-    bash_cmd = (
-        f"cd '{wsl_workdir}' && "
-        f"python3 -m swebench.harness.run_evaluation "
-        f"--predictions_path '{wsl_preds}' "
-        f"--dataset_name princeton-nlp/SWE-bench_Lite "
-        f"--split dev "
-        f"--instance_ids {instance_id} "
-        f"--max_workers 1 "
-        f"--run_id {run_id} "
-        f"--cache_level instance"
-    )
-    logger.info("verify harness: %s (timeout %ds)", instance_id, timeout_s)
-    result = _wsl_run(bash_cmd, timeout=timeout_s)
+    if _use_wsl():
+        workdir_str = _windows_to_wsl(workdir)
+        preds_str = _windows_to_wsl(preds_path)
+        bash_cmd = _harness_cmd(workdir_str, preds_str, instance_id, run_id)
+        logger.info("verify harness (wsl): %s (timeout %ds)", instance_id, timeout_s)
+        result = _wsl_run(bash_cmd, timeout=timeout_s)
+    else:
+        bash_cmd = _harness_cmd(str(workdir), str(preds_path), instance_id, run_id)
+        logger.info("verify harness (native): %s (timeout %ds)", instance_id, timeout_s)
+        result = _native_run(bash_cmd, timeout=timeout_s)
 
     # Expected report path (written to cwd by the harness).
     # Normalize the model name the same way the harness does: "/" -> "__"
@@ -128,7 +176,7 @@ def verify_patch(
     report_path = workdir / f"{model_norm}.{run_id}.json"
     if not report_path.is_file():
         logger.warning(
-            "verify: report not found at %s — harness likely failed. stderr tail:\n%s",
+            "verify: report not found at %s - harness likely failed. stderr tail:\n%s",
             report_path,
             result.stderr[-500:],
         )
@@ -167,7 +215,7 @@ def _main() -> int:
         "--patch-from",
         type=Path,
         required=True,
-        help="A predictions.jsonl file — we pick the row whose instance_id matches --instance",
+        help="A predictions.jsonl file - we pick the row whose instance_id matches --instance",
     )
     parser.add_argument(
         "--workdir",

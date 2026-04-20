@@ -4,6 +4,7 @@ Providers:
   - ``cerebras``  → Cerebras free tier (GLM-4.6 / Qwen3-235B)     1M tok/day, 30 RPM
   - ``zai``       → Z.ai free tier (GLM-4.5-Flash / GLM-4.7-Flash) ~1M tok/day
   - ``groq``      → Groq free tier (Llama-3.3-70B / Qwen QwQ)     1K req/day, 30 RPM
+  - ``gemini``    → Google Gemini free tier (2.5 Flash / Flash-Lite) 250/1000 RPD
   - ``ollama``    → Local Ollama (Qwen2.5-Coder-32B-Q4)           unlimited
   - ``anthropic`` → Claude Sonnet 4.6 (anchor only)               paid
 
@@ -114,6 +115,21 @@ GROQ_OVERFLOW = ProviderConfig(
     daily_request_cap=1_000,
     rpm_cap=30,
 )
+# Gemini free tier is request-capped, not token-capped. Flash is the
+# generator-quality variant (~250 RPD on free tier); Flash-Lite is the
+# cheap/high-volume variant (~1000 RPD) — ideal as judge / overflow.
+GEMINI_FLASH = ProviderConfig(
+    name="gemini",
+    model="gemini-2.5-flash",
+    daily_request_cap=250,
+    rpm_cap=10,
+)
+GEMINI_FLASH_LITE = ProviderConfig(
+    name="gemini",
+    model="gemini-2.5-flash-lite",
+    daily_request_cap=1_000,
+    rpm_cap=15,
+)
 OLLAMA_LOCAL = ProviderConfig(
     # Smallest-viable default for 16GB VRAM. ~2GB download, ~3GB active.
     # Upgrade to ``qwen2.5-coder:7b`` (~4.4GB) if judge reject-rate is high on
@@ -133,10 +149,14 @@ ANTHROPIC_ANCHOR = ProviderConfig(
 # model families for data diversity. Judge is a different model than the
 # generators on every sample to limit self-collusion.
 TIER_CASCADES: dict[str, list[ProviderConfig]] = {
-    "primary": [CEREBRAS_QWEN, ZAI_GLM_PRIMARY, GROQ_OVERFLOW, OLLAMA_LOCAL],
-    "secondary": [ZAI_GLM_PRIMARY, CEREBRAS_QWEN, GROQ_OVERFLOW, OLLAMA_LOCAL],
-    "judge": [ZAI_GLM_JUDGE, CEREBRAS_LLAMA_SMALL, GROQ_OVERFLOW],
-    "overflow": [GROQ_OVERFLOW, OLLAMA_LOCAL, CEREBRAS_QWEN, ZAI_GLM_PRIMARY],
+    # Generator tiers — only providers with ≥30% judge-pass rate on the
+    # 2026-04-18/19 smoke runs (Cerebras Qwen 33%, Gemini Flash expected
+    # similar). GLM-4.7-flash (12%) and Llama-3.3-70B (11%) demoted to
+    # overflow/judge roles — they burned judge calls on near-certain drops.
+    "primary": [CEREBRAS_QWEN, GEMINI_FLASH, OLLAMA_LOCAL],
+    "secondary": [GEMINI_FLASH, CEREBRAS_QWEN, OLLAMA_LOCAL],
+    "judge": [ZAI_GLM_JUDGE, GEMINI_FLASH_LITE, CEREBRAS_LLAMA_SMALL, GROQ_OVERFLOW],
+    "overflow": [GEMINI_FLASH_LITE, GROQ_OVERFLOW, ZAI_GLM_PRIMARY, OLLAMA_LOCAL, CEREBRAS_QWEN],
     "ollama_only": [OLLAMA_LOCAL],
     "anchor": [ANTHROPIC_ANCHOR],
 }
@@ -446,6 +466,61 @@ class _GroqBackend(_ProviderBackend):
         )
 
 
+class _GeminiBackend(_ProviderBackend):
+    """Google Gemini via its OpenAI-compatible endpoint.
+
+    Free-tier caps are per-model requests-per-day (no token-per-day cap);
+    QuotaTracker tracks both models' requests in one ``gemini`` bucket and the
+    per-config ``daily_request_cap`` blocks each model once the combined total
+    reaches its cap. This is conservative (Flash's 250-cap trips at 250 total
+    requests regardless of how many went to Flash-Lite) but matches the
+    existing provider-level bucketing.
+    """
+
+    _BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
+
+    def __init__(self, cfg: ProviderConfig) -> None:
+        super().__init__(cfg)
+        from openai import AsyncOpenAI
+
+        api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+        if not api_key:
+            raise ProviderAuthError("GEMINI_API_KEY not set")
+        self._client = AsyncOpenAI(api_key=api_key, base_url=self._BASE_URL)
+
+    async def _call(
+        self,
+        *,
+        system: str,
+        user: str,
+        max_tokens: int,
+        temperature: float,
+        json_mode: bool,
+    ) -> tuple[str, int, int, dict[str, Any]]:
+        kwargs: dict[str, Any] = {
+            "model": self.cfg.model,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+        }
+        if json_mode:
+            kwargs["response_format"] = {"type": "json_object"}
+
+        resp: Any = await self._client.chat.completions.create(**kwargs)
+        choice = resp.choices[0]
+        text = choice.message.content or ""
+        usage = resp.usage
+        return (
+            text,
+            int(getattr(usage, "prompt_tokens", 0) or 0) if usage else 0,
+            int(getattr(usage, "completion_tokens", 0) or 0) if usage else 0,
+            {"finish_reason": getattr(choice, "finish_reason", None)},
+        )
+
+
 class _OllamaBackend(_ProviderBackend):
     """Local Ollama via OpenAI-compatible /v1 endpoint."""
 
@@ -549,6 +624,7 @@ _BACKEND_CLASSES: dict[str, type[_ProviderBackend]] = {
     "cerebras": _CerebrasBackend,
     "zai": _ZAIBackend,
     "groq": _GroqBackend,
+    "gemini": _GeminiBackend,
     "ollama": _OllamaBackend,
     "anthropic": _AnthropicBackend,
 }

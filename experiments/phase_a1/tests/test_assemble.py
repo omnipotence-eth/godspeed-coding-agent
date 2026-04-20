@@ -15,6 +15,7 @@ from experiments.phase_a1.assemble import (
     DEFAULT_SEED,
     _extract_user_prompt,
     _infer_category,
+    _infer_primary_tool,
     _prompt_hash,
     assemble,
 )
@@ -218,3 +219,81 @@ def test_assemble_records_are_valid_after_round_trip(tmp_path: Path) -> None:
 def test_assemble_preserves_default_seed_value() -> None:
     """Document that DEFAULT_SEED is 42 — match the rest of Phase A1."""
     assert DEFAULT_SEED == 42
+
+
+# ---------------------------------------------------------------------------
+# Per-tool cap (R1 → R2 fix for distill dominance — see RESEARCH_LOG F1)
+# ---------------------------------------------------------------------------
+
+
+def test_infer_primary_tool_returns_first_tool_call_name() -> None:
+    rec = _make_record("x", tool="grep_search", args={"pattern": "foo"})
+    assert _infer_primary_tool(rec) == "grep_search"
+
+
+def test_infer_primary_tool_returns_no_tool_when_none() -> None:
+    rec = {"messages": [{"role": "user", "content": "hi"}, {"role": "assistant", "content": "ok"}]}
+    assert _infer_primary_tool(rec) == "no_tool"
+
+
+def test_assemble_caps_distill_per_tool(tmp_path: Path) -> None:
+    """Cap=3 on distill → only 3 file_read distill records survive."""
+    distill_records = [_make_record(f"distill prompt {i}", tool="file_read") for i in range(10)]
+    _write_jsonl(tmp_path / "phase_a1_swesmith_distilled.jsonl", distill_records)
+
+    out = tmp_path / "final.jsonl"
+    summary = assemble(tmp_path, out, per_tool_caps={"distill": 3})
+
+    assert summary["per_source"]["distill"]["loaded"] == 10
+    assert summary["per_source"]["distill"]["kept"] == 3
+    assert summary["per_source"]["distill"]["over_cap"] == 7
+    assert summary["total_kept"] == 3
+    assert summary["per_tool_caps"] == {"distill": 3}
+
+
+def test_assemble_cap_is_per_tool_not_per_source(tmp_path: Path) -> None:
+    """Cap=2 admits 2 file_read AND 2 grep_search from the same source."""
+    distill_records = [
+        _make_record(f"file prompt {i}", tool="file_read") for i in range(5)
+    ] + [
+        _make_record(f"grep prompt {i}", tool="grep_search", args={"pattern": "x"})
+        for i in range(5)
+    ]
+    _write_jsonl(tmp_path / "phase_a1_swesmith_distilled.jsonl", distill_records)
+
+    out = tmp_path / "final.jsonl"
+    summary = assemble(tmp_path, out, per_tool_caps={"distill": 2})
+
+    assert summary["per_source"]["distill"]["kept"] == 4  # 2 file_read + 2 grep_search
+    assert summary["per_source"]["distill"]["over_cap"] == 6  # 3 + 3 dropped
+    assert summary["final_tool_usage"]["file_read"] == 2
+    assert summary["final_tool_usage"]["grep_search"] == 2
+
+
+def test_assemble_cap_does_not_apply_to_other_sources(tmp_path: Path) -> None:
+    """Cap on distill leaves anchor uncapped."""
+    anchor_records = [_make_record(f"anchor {i}", tool="file_read") for i in range(8)]
+    distill_records = [_make_record(f"distill {i}", tool="file_read") for i in range(8)]
+    _write_jsonl(tmp_path / "anchor_opus_50.jsonl", anchor_records)
+    _write_jsonl(tmp_path / "phase_a1_swesmith_distilled.jsonl", distill_records)
+
+    out = tmp_path / "final.jsonl"
+    summary = assemble(tmp_path, out, per_tool_caps={"distill": 2})
+
+    assert summary["per_source"]["anchor"]["kept"] == 8
+    assert summary["per_source"]["anchor"]["over_cap"] == 0
+    assert summary["per_source"]["distill"]["kept"] == 2
+    assert summary["per_source"]["distill"]["over_cap"] == 6
+
+
+def test_assemble_no_cap_preserves_existing_behavior(tmp_path: Path) -> None:
+    """Default per_tool_caps=None means no cap is applied anywhere."""
+    distill_records = [_make_record(f"distill {i}", tool="file_read") for i in range(20)]
+    _write_jsonl(tmp_path / "phase_a1_swesmith_distilled.jsonl", distill_records)
+
+    out = tmp_path / "final.jsonl"
+    summary = assemble(tmp_path, out)
+
+    assert summary["per_source"]["distill"]["kept"] == 20
+    assert summary["per_source"]["distill"]["over_cap"] == 0
+    assert summary["per_tool_caps"] == {}

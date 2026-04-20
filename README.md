@@ -72,6 +72,41 @@ If you want a coding agent you can actually point at a production codebase, this
 - **Benchmark suite** -- 20 hand-crafted tasks (easy/medium/hard) with Jaccard tool selection scoring and LCS sequence quality scoring for evaluating fine-tuned models against base models.
 - **Enhanced tool descriptions** -- all tools include inline usage examples and JSON Schema `examples` fields, improving both live agent performance and training data quality.
 
+## Benchmarks
+
+### SWE-Bench Lite — Godspeed v2.11.0 + Qwen3.5-397B (NIM free tier)
+
+| Metric | Value |
+|---|---|
+| **Resolved** | **6 / 23 (26.1%)** |
+| Errors | 0 / 23 |
+| Empty-patch rate | 9 / 23 (39.1%) |
+| Subset / split | `swe-bench_lite` dev |
+| Evaluation cost | $0 (NIM R&D tier + sb-cli free cloud eval) |
+
+First honest SWE-Bench result for Godspeed, 2026-04-19. Puts it in the
+competitive OSS band (Aider+GPT-4 published ~40%; median OSS agent
+10–25%). Full breakdown + per-repo table + reproduction recipe:
+[`experiments/swebench_lite/baseline_2026_04_19.md`](experiments/swebench_lite/baseline_2026_04_19.md).
+
+### Internal 20-task suite — 2026-04-19 model shootout
+
+Real numbers from the 20-task suite in `benchmarks/tasks.jsonl`, run against deterministic fixtures in `benchmarks/fixtures/`. Each fixture is isolated in a temp workspace per run; 13 of the 20 tasks have a `verify.py` hook that mechanically checks whether the agent actually completed the work.
+
+**Shootout** (all NIM runs on the free R&D tier; local via Ollama):
+
+| Model | Overall | Pass (J>=0.6) | Easy | Medium | Hard | Mech |
+|---|---:|---:|---:|---:|---:|---:|
+| `nvidia_nim/qwen/qwen3.5-397b-a17b` | **0.608** | 11/20 | 0.840 | 0.831 | 0.189 | 7/13 |
+| `nvidia_nim/moonshotai/kimi-k2.5` | 0.548 | 9/20 | 0.840 | 0.727 | 0.135 | 6/13 |
+| `nvidia_nim/mistralai/devstral-2-123b-instruct-2512` | 0.446 | 5/20 | 0.450 | 0.473 | **0.413** | 2/13 |
+| `nvidia_nim/qwen/qwen3-coder-480b-a35b-instruct` | 0.333 | 5/20 | 0.870 | 0.138 | 0.174 | 2/13 |
+| `ollama/qwen3-coder:latest` (local) | 0.107 | 1/20 | 0.150 | 0.125 | 0.057 | 1/13 |
+
+**Recommended production driver:** `nvidia_nim/qwen/qwen3.5-397b-a17b` with `ollama/qwen3-coder:latest` as local fallback. Devstral-2 is the only contender that doesn't collapse on hard tasks (0.413 vs Qwen3.5's 0.189) — worth considering if your workload skews hard.
+
+Full run outputs in `experiments/bench_*/` and the aggregated table in `experiments/benchmark_shootout_2026_04.md`. Reproduce with `scripts/run_benchmark.py --model <id>`.
+
 ## Architecture
 
 ```mermaid

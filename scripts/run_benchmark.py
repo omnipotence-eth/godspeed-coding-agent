@@ -21,8 +21,10 @@ from __future__ import annotations
 import argparse
 import dataclasses
 import json
+import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -35,10 +37,68 @@ from godspeed.training.benchmark import (
 
 RUN_TIMEOUT_S = 180
 MAX_ITERATIONS = 20
+FIXTURES_DIR = Path(__file__).parent.parent / "benchmarks" / "fixtures"
 
 
-def run_one_task(model: str, prompt: str, project_dir: Path) -> tuple[dict, float]:
-    """Shell out to `godspeed run` and return the parsed JSON + wall time."""
+def _resolve_workspace(task_id: str, fallback: Path) -> tuple[Path, Path | None, Path | None]:
+    """Return (workspace_dir, tempdir_to_cleanup, verify_script).
+
+    If ``benchmarks/fixtures/<task_id>/`` exists, copy it to a temp dir and
+    run the agent there so every run starts from identical state. If a
+    ``_setup.py`` is present in the fixture, run it first (with cwd set to
+    the workspace) so tasks that need git state or other runtime setup can
+    stage it deterministically. Any ``verify.py`` is preserved and returned
+    separately so it can run post-agent to determine mechanical success.
+    """
+    fixture = FIXTURES_DIR / task_id
+    if not fixture.is_dir():
+        return fallback, None, None
+
+    tmp_root = Path(tempfile.mkdtemp(prefix=f"godspeed-bench-{task_id}-"))
+    workspace = tmp_root / "workspace"
+    shutil.copytree(fixture, workspace)
+
+    setup = workspace / "_setup.py"
+    if setup.is_file():
+        try:
+            subprocess.run(
+                [sys.executable, str(setup)],
+                cwd=workspace,
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=False,
+            )
+        except subprocess.TimeoutExpired:
+            print(f"[warn] {task_id}: _setup.py timed out", file=sys.stderr)
+
+    verify = workspace / "verify.py"
+    return workspace, tmp_root, (verify if verify.is_file() else None)
+
+
+def _run_verify(verify_script: Path, workspace: Path) -> bool | None:
+    """Run the task's verify.py and return True/False. None if it errors."""
+    try:
+        proc = subprocess.run(
+            [sys.executable, str(verify_script)],
+            cwd=workspace,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except subprocess.TimeoutExpired:
+        return None
+    return proc.returncode == 0
+
+
+def run_one_task(
+    model: str, prompt: str, project_dir: Path
+) -> tuple[dict, float, bool | None]:
+    """Shell out to `godspeed run`; also run verify.py if provided.
+
+    Returns (payload, elapsed, mechanical_success) where mechanical_success
+    is True/False when the task has a verify.py, None otherwise.
+    """
     cmd = [
         "godspeed",
         "run",
@@ -69,7 +129,10 @@ def run_one_task(model: str, prompt: str, project_dir: Path) -> tuple[dict, floa
     except json.JSONDecodeError:
         payload = {"_parse_error": True, "_stdout": proc.stdout, "_stderr": proc.stderr[-500:]}
     payload["_shell_exit_code"] = proc.returncode
-    return payload, elapsed
+    # Mechanical verification happens on the workspace the agent just touched.
+    verify_script = project_dir / "verify.py"
+    mechanical = _run_verify(verify_script, project_dir) if verify_script.is_file() else None
+    return payload, elapsed, mechanical
 
 
 def main() -> int:
@@ -98,15 +161,23 @@ def main() -> int:
     per_task_rows: list[dict] = []
     total_tokens = 0
     total_duration = 0.0
+    mechanical_pass = 0
+    mechanical_evaluated = 0
 
     with open(results_path, "w", encoding="utf-8") as f:
         for i, task in enumerate(tasks, 1):
             print(f"[{i}/{len(tasks)}] {task.task_id}", file=sys.stderr, flush=True)
+            workspace, tmp_root, _ = _resolve_workspace(task.task_id, args.project_dir)
             try:
-                payload, elapsed = run_one_task(args.model, task.prompt, args.project_dir)
-            except subprocess.TimeoutExpired:
-                payload = {"_timeout": True}
-                elapsed = float(RUN_TIMEOUT_S + 30)
+                try:
+                    payload, elapsed, mechanical = run_one_task(args.model, task.prompt, workspace)
+                except subprocess.TimeoutExpired:
+                    payload = {"_timeout": True}
+                    elapsed = float(RUN_TIMEOUT_S + 30)
+                    mechanical = None
+            finally:
+                if tmp_root is not None:
+                    shutil.rmtree(tmp_root, ignore_errors=True)
 
             tool_calls = payload.get("tool_calls") or []
             tools_used = [
@@ -129,6 +200,10 @@ def main() -> int:
             tok_per_sec = out_tokens / elapsed if elapsed > 0 else 0.0
             total_tokens += out_tokens
             total_duration += elapsed
+            if mechanical is not None:
+                mechanical_evaluated += 1
+                if mechanical:
+                    mechanical_pass += 1
 
             row = {
                 "task_id": task.task_id,
@@ -142,6 +217,7 @@ def main() -> int:
                 "output_tokens": out_tokens,
                 "tok_per_sec": round(tok_per_sec, 1),
                 "cost_usd": payload.get("cost_usd", 0.0),
+                "mechanical_success": mechanical,
                 "score": dataclasses.asdict(score),
             }
             per_task_rows.append(row)
@@ -159,6 +235,9 @@ def main() -> int:
         "mean_tool_selection": suite.mean_tool_selection,
         "mean_sequence_quality": suite.mean_sequence_quality,
         "mean_overall": suite.mean_overall,
+        "mean_waste_penalty": suite.mean_waste_penalty,
+        "mechanical_pass": mechanical_pass,
+        "mechanical_evaluated": mechanical_evaluated,
         "by_difficulty": suite.by_difficulty,
         "mean_tok_per_sec": round(mean_tok_per_sec, 1),
         "total_duration_s": round(total_duration, 1),

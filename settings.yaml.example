@@ -13,6 +13,13 @@
 # ─── LLM ────────────────────────────────────────────────────────────────
 # Default: free local model via Ollama (no API key needed)
 # Install: ollama pull qwen3:4b
+#
+# Recommended production driver: NVIDIA NIM free-tier Qwen3.5-397B —
+# winner of the 2026-04 benchmark shootout (0.608 overall, 11/20 pass).
+# Requires NVIDIA_NIM_API_KEY. See experiments/benchmark_shootout_2026_04.md.
+#   model: nvidia_nim/qwen/qwen3.5-397b-a17b
+#   fallback_models:
+#     - ollama/qwen3-coder:latest
 model: ollama/qwen3:4b
 
 # Fallback chain — tried in order if the primary model fails.
@@ -33,6 +40,12 @@ fallback_models: []
 #   model: ollama/mistral:7b             # Mistral 7B
 #   model: ollama/deepseek-r1:8b         # DeepSeek R1, strong reasoning
 #
+# NVIDIA NIM (free frontier-quality via build.nvidia.com, set NVIDIA_NIM_API_KEY):
+#   model: nvidia_nim/deepseek-ai/deepseek-v3                    # strong tool calling
+#   model: nvidia_nim/nvidia/llama-3.3-nemotron-super-49b-v1     # NVIDIA-tuned Llama
+#   model: nvidia_nim/meta/llama-3.3-70b-instruct                # broad compatibility
+#   model: nvidia_nim/qwen/qwen3-coder-480b-a35b-instruct        # if available in catalog
+#
 # Paid cloud models (set API key as env var):
 #   model: claude-sonnet-4-20250514    # ANTHROPIC_API_KEY
 #   model: claude-opus-4-20250514      # ANTHROPIC_API_KEY
@@ -44,8 +57,8 @@ fallback_models: []
 # Mixed strategy — fast local + smart cloud fallback:
 #   model: ollama/qwen3:4b
 #   fallback_models:
+#     - nvidia_nim/deepseek-ai/deepseek-v3
 #     - claude-sonnet-4-20250514
-#     - gpt-4o
 
 # ─── Context ────────────────────────────────────────────────────────────
 max_context_tokens: 100000

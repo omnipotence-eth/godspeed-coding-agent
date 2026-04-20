@@ -268,6 +268,28 @@ def test_missing_file_is_flagged(tmp_path: Path) -> None:
         ("web_fetch", {"url": "ftp://example.com"}, "http(s)://"),
         ("glob_search", {"pattern": ""}, "non-empty"),
         ("git", {"action": "mainframe_destruct"}, "git.action invalid"),
+        # Record-level lenient validator still catches the hard regressions:
+        ("git", {"action": "commit"}, "git.message must be a non-empty string"),
+        (
+            "background_check",
+            {"action": "kill", "id": "proc-42"},
+            "background_check.id must be an integer",
+        ),
+        (
+            "background_check",
+            {"action": "output"},
+            "background_check.id must be an integer",
+        ),
+        (
+            "diff_apply",
+            {"diff": "something with @@ but no headers"},
+            "'---'/'+++' file headers",
+        ),
+        (
+            "diff_apply",
+            {"diff": ""},
+            "non-empty unified-diff string",
+        ),
     ],
 )
 def test_per_tool_validator_rejects_bad_args(
@@ -276,3 +298,93 @@ def test_per_tool_validator_rejects_bad_args(
     record = _valid_record(tool_name, bad_args)
     errs, _, _ = validate_record(record)
     assert any(expected_substr in e for e in errs), f"no error matched {expected_substr!r}: {errs}"
+
+
+def test_verify_with_empty_file_path_is_flagged() -> None:
+    """Regression: smoke #11 had verify({'file_path': ''}) which the real
+    verify tool rejects. Empty string must be caught at validation time."""
+    record = _valid_record("verify", {"file_path": ""})
+    errs, _, _ = validate_record(record)
+    assert any("verify.file_path must be a non-empty string" in e for e in errs)
+
+
+def test_verify_with_no_args_passes() -> None:
+    """verify with no args scans the whole repo — that's a valid invocation."""
+    record = _valid_record("verify", {})
+    errs, _, _ = validate_record(record)
+    assert not any("verify" in e for e in errs), f"unexpected errors: {errs}"
+
+
+@pytest.mark.parametrize(
+    "tool_name,bad_args,expected_substr",
+    [
+        # git legacy aliases pass lenient but must fail strict (blueprint-gen)
+        ("git", {"action": "add"}, "git.action invalid for real Godspeed tool"),
+        ("git", {"action": "branch"}, "git.action invalid for real Godspeed tool"),
+        ("git", {"action": "push"}, "git.action invalid for real Godspeed tool"),
+        # notebook_edit legacy param name passes lenient but must fail strict
+        (
+            "notebook_edit",
+            {"notebook_path": "nb.ipynb", "action": "edit_cell"},
+            "use 'file_path', NOT 'notebook_path'",
+        ),
+        # notebook_edit without action fails strict (action is required on the
+        # real tool; leniency only exists to keep the one broken anchor valid)
+        (
+            "notebook_edit",
+            {"file_path": "nb.ipynb"},
+            "notebook_edit.action invalid",
+        ),
+    ],
+)
+def test_strict_validator_rejects_legacy_aliases(
+    tool_name: str, bad_args: dict, expected_substr: str
+) -> None:
+    from experiments.phase_a1.validate import validate_tool_call_args
+
+    errs = validate_tool_call_args(tool_name, bad_args, strict=True)
+    assert any(expected_substr in e for e in errs), (
+        f"strict mode did not flag {tool_name} {bad_args}: {errs}"
+    )
+    lenient_errs = validate_tool_call_args(tool_name, bad_args, strict=False)
+    assert not any(expected_substr in e for e in lenient_errs), (
+        f"lenient mode was supposed to tolerate the alias but flagged it: {lenient_errs}"
+    )
+
+
+def test_git_commit_with_message_passes() -> None:
+    record = _valid_record(
+        "git",
+        {"action": "commit", "message": "refactor: rename slugify helper"},
+    )
+    errs, _, _ = validate_record(record)
+    assert not any("git" in e for e in errs), f"unexpected git errors: {errs}"
+
+
+def test_notebook_edit_with_file_path_and_action_passes() -> None:
+    record = _valid_record(
+        "notebook_edit",
+        {"file_path": "notebooks/analysis.ipynb", "action": "add_cell", "content": "print(1)"},
+    )
+    errs, _, _ = validate_record(record)
+    assert not any("notebook_edit" in e for e in errs), f"unexpected errors: {errs}"
+
+
+def test_background_check_status_without_id_passes() -> None:
+    record = _valid_record("background_check", {"action": "status"})
+    errs, _, _ = validate_record(record)
+    assert not any("background_check" in e for e in errs), f"unexpected errors: {errs}"
+
+
+def test_diff_apply_with_real_unified_diff_passes() -> None:
+    diff = (
+        "--- a/src/main.py\n"
+        "+++ b/src/main.py\n"
+        "@@ -1,3 +1,3 @@\n"
+        "-def greet(name):\n"
+        "+def greet(name: str) -> str:\n"
+        '     return f"hello {name}"\n'
+    )
+    record = _valid_record("diff_apply", {"diff": diff})
+    errs, _, _ = validate_record(record)
+    assert not any("diff_apply" in e for e in errs), f"unexpected errors: {errs}"

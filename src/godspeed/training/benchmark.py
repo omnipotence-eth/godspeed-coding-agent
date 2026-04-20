@@ -34,7 +34,8 @@ class BenchmarkScore:
     task_id: str
     tool_selection: float  # 0.0 to 1.0 — Jaccard similarity
     sequence_quality: float  # 0.0 to 1.0 — LCS / expected length
-    overall: float  # weighted average
+    overall: float  # weighted average minus waste penalty
+    waste_penalty: float = 0.0  # 0.0 efficient, up to 0.3 for heavy overrun
 
 
 @dataclass(slots=True)
@@ -58,6 +59,7 @@ class BenchmarkSuiteResult:
     mean_tool_selection: float = 0.0
     mean_sequence_quality: float = 0.0
     mean_overall: float = 0.0
+    mean_waste_penalty: float = 0.0
     by_difficulty: dict[str, float] = field(default_factory=dict)
 
 
@@ -97,17 +99,28 @@ def score_result(task: BenchmarkTask, result: BenchmarkResult) -> BenchmarkScore
     Metrics:
     - tool_selection: Jaccard similarity between expected and actual tool sets
     - sequence_quality: LCS length / expected sequence length
-    - overall: 0.6 * tool_selection + 0.4 * sequence_quality
+    - waste_penalty: 0 if actual calls <= 1.5x expected; scales up to 0.3 as
+      the agent over-uses tools (retries, unnecessary reads). A tie-breaker,
+      not a primary signal.
+    - overall: max(0, 0.6 * tool_selection + 0.4 * sequence_quality - waste_penalty)
     """
     tool_selection = _jaccard_similarity(set(task.expected_tools), set(result.tools_used))
     sequence_quality = _lcs_ratio(task.expected_tool_sequence, result.tool_sequence)
-    overall = round(0.6 * tool_selection + 0.4 * sequence_quality, 3)
+
+    expected_len = len(task.expected_tool_sequence) or 1
+    actual_len = len(result.tool_sequence)
+    overrun_ratio = max(0.0, (actual_len / expected_len) - 1.5)
+    waste_penalty = min(0.3, 0.1 * overrun_ratio)
+
+    raw = 0.6 * tool_selection + 0.4 * sequence_quality
+    overall = round(max(0.0, raw - waste_penalty), 3)
 
     return BenchmarkScore(
         task_id=task.task_id,
         tool_selection=round(tool_selection, 3),
         sequence_quality=round(sequence_quality, 3),
         overall=overall,
+        waste_penalty=round(waste_penalty, 3),
     )
 
 
@@ -125,6 +138,7 @@ def aggregate_scores(scores: list[BenchmarkScore]) -> BenchmarkSuiteResult:
     result.mean_tool_selection = round(sum(s.tool_selection for s in scores) / len(scores), 3)
     result.mean_sequence_quality = round(sum(s.sequence_quality for s in scores) / len(scores), 3)
     result.mean_overall = round(sum(s.overall for s in scores) / len(scores), 3)
+    result.mean_waste_penalty = round(sum(s.waste_penalty for s in scores) / len(scores), 3)
 
     # Group by difficulty (inferred from task_id prefix convention)
     difficulty_scores: dict[str, list[float]] = {}

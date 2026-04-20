@@ -1,22 +1,204 @@
 [
-  "[Image: architecture.png] (image/png, 184.3KB)\ndata:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAgAAAAIACAYAAAD0eNT6AAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAACAKADAAQAAAABAAACAAAAAAD/4QSQaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wLwA8P3hwYWNrZXQgYmVnaW49Iu+7vyIgaWQ9Ilc1TTBNcENlaGlIenJlU3pOVGN6a2M5ZCI/Pg... (base64 truncated \u2014 real output would contain the full encoded payload)",
-  "[Image: error_screenshot.jpg] (image/jpeg, 42.7KB)\ndata:image/jpeg;base64,/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAAUDBAQEAwUEBAQFBQUGBwwIBwcHBw8LCwkMEQ8SEhEPERETFhwXExQaFREROCEYGh0dHx8fExciJCIeJBweHx7/2wBDAQUFBQcGBw4ICA4eFBEUHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh7/wgARCAECAYADASIAAhEBAxEB... (base64 truncated)",
-  "[Image: dashboard.png] (image/png, 256.0KB) [WARNING: large image 0.3MB]\ndata:image/png;base64,iVBORw0KGgoAAAANSUhEUgAABAAAAAMACAIAAAALlmbxAAAACXBIWXMAAA7EAAAOxAGVKw4bAACAAElEQVR4nOy9d3xUVdr//5mSyWQy6b33Tgqhh1AEBKQIVpquu4qrrruu6+7X9bu6uqvuul1XXbtYVkVFEZEqvUMoARJ67ySkzmQymZlMOb8/7uROQsomk5lMZnLe9/3ysu69557n3MncT57zPM/R6HQ6hEKhUChfQRtoAyqVSqXyHXQAqFQqlQ+hA0ClUqk+hA4AlUql+hA6AFQqleqT0AGgUqlUn4IOAJVKpfoQdACoVCrVh6ADQKVSqT4EHQAqlUr1IegAUKlUqg9BB4BKpVJ9CDoAVCqV6kPQAaBSqVQfgg4AlUql+hB0AKhUKtWHoANApVKpPgQdACqVSvUh6ABQqVSqD0EHgEqlUn0IOgBUKpXqQ9ABoFKpVB+CDgCVSqX6EHQAqFQq1Yf4/wUgM2h+LC0sAAAAAElFTkSuQmCC",
-  "[Image: logo.svg.png] (image/png, 8.4KB)\ndata:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGQAAABkCAYAAABw4pVUAAAABmJLR0QA/wD/AP+gvaeTAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAB3RJTUUH6AQREAY8rIOHwQAABARJREFUeNrtnE1IVFEUx3933kwzOjM5Ok7WaGmKWpnQgoIoCAIXLWvRpk2bFtGiRYsWLVpE0CKiVRRBm6JFUQQtgqBP+jKHysxUp/IrHWfGmXnvxncXZoCjM3E0d8b7/sD/vXvPO+/87jv3nGsZhgE3HDggj0AUHECuY8gMDc4AkDxAJjMF7rT8BHsrN5GTnUJKchT6h4aMJ4c7wmgW6yJLhvDFl1/R2tFFbm4We/cUI4gib65dp7rNTEJSGvl52YyPTRCvi0Ct83Ld9QucOBFJUCHj0vVqOttaqa8/hfTcLEZsA7R1dLF3zx4KC/PJSk3CxZSUBaNDK9q7evhw0zT0kgs5OzmORq1iNAyDuqZGdu8qoqxoC8mJUWgijIRFWsFuozIjk+TkJIQgxEjQEGWzHAYNxAVcGvoa9fUXicxJpAAUVKvVaDTz34cQBN9UAkUBuzaKvXv3kJaahKjTEdYpsVhtXLt1lyvnz9DW1sjIyCB6vQ53iGIREEVAFBEEEAQBnU6HXqMkShQxGHJRayAiLRGz2UpFRSmmlBSihL9Ey1ug0+kwmzVs3LSRlk/1dLZ1UbyhjPjYGMwmM91dNrTRUWi1WkDAsrwqjgXhVkYmyqKW6qoKLl++QHpaCgkJ8QS8Iwg6AMFPpsOK4uJCtJLEqTNneHDvLntLi3nvzZMsW1FEQlyMN/zBBODx3/G4qbWqaDQa1q5dw/IViTx99pTN+eWsXJ5LpD4Sp9OBVqtB9qXlO+mFQEcQBRBFHA4HCoVC7QA/RrVaxfr160hNSqCx+SyvHj2ksHg1q1bmo1SBz+Gcde7y1FESAjgBt2jBB7zRagFBg1arI1wfQXJyHKFmJTa7hRa7mdT4eKIjDCwkgQvAvS6E61K5S3//ANVvquho76SiooTVq9eg1URAsEOICjoAoX8WS8ZvgbMbURRRqdRoNGEgiMFJ/IqjFpQPlh1V+AAA8Vj/qUDyHZoAHz1+xoUzl1GrVPj8ZTWBE9LwKpVWQlSYkcTkFKpq6ggPD8PpdLJgs0NYvr9S9wBAP8OH1/vp7+tjVUEeZevXIUlu3LwaIIsD74zmRcvmYBVMbGjYaC1SCXi4eKAZ8ekpjhw/icft5Ob921hGhvGZJEm8fIH0yhX09PZz+OBxwrXhoJB8yAgLAOH29gKsH2IhNSkRoUxk9/Zy+Pgp7LYhfCKVVU2ptKDRREBPHwOmYcanptDpIxkeMWOcnEKlWgRxWuRB6E0QgC/vvnN6alqx2ydQKBRYJqwMWUYYtY1is9lQqbUEQ4ICQFGAYMhwj04yOjbG8Ng4kzY7kwNmBi02xk1WJqyjOCddqJQiiiAJnl4UAN4CRBHUKgWR0VGERkWgj45AfYkbsrvM7vFxHP8Duuh6OMWuglsAAAAASUVORK5CYII=",
-  "[Image: mermaid_diagram.png] (image/png, 72.1KB)\ndata:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA... (truncated; diagram flows spec \u2192 blueprint \u2192 executor \u2192 narrator \u2192 judge \u2192 validate \u2192 jsonl)",
-  "[Image: gpu_temp_graph.png] (image/png, 94.6KB)\ndata:image/png;base64,iVBORw0KGgo... (truncated; shows RTX 5070 Ti temp trace under sustained GRPO training, peak 73\u00b0C, steady-state 68\u00b0C)",
-  "[Image: crash_stack.png] (image/png, 112.9KB)\ndata:image/png;base64,iVBORw0KGgo... (truncated; screenshot of a Python traceback pointing at asyncio.gather in auth_service/refresh.py:142)",
-  "[Image: figma_frame_02.jpg] (image/jpeg, 488.2KB) [WARNING: large image 0.5MB]\ndata:image/jpeg;base64,/9j/4AAQSkZJRgABAQAA... (truncated; Figma export of the login screen variant B)",
-  "[Image: plot_loss.png] (image/png, 58.7KB)\ndata:image/png;base64,iVBORw0KGgo... (truncated; matplotlib loss curve: 4 seeds, mean \u00b1 std band, loss descends from 1.84 \u2192 0.32 over 5925 steps)",
-  "[Image: receipt.jpg] (image/jpeg, 31.2KB)\ndata:image/jpeg;base64,/9j/4AAQSkZJRgABAQAA... (truncated; camera photo of a paper receipt, 640x480)",
-  "[Image: whiteboard.jpg] (image/jpeg, 512.5KB) [WARNING: large image 0.5MB]\ndata:image/jpeg;base64,/9j/4AAQSkZJRgABAQAA... (truncated; phone photo of a design whiteboard with arrows between 6 boxes labeled executor/judge/validate/...)",
-  "[Image: chart_throughput.png] (image/png, 48.3KB)\ndata:image/png;base64,iVBORw0KGgo... (truncated; bar chart comparing vLLM fp8 vs TensorRT-LLM fp8 on Llama-3.3-70B, 2.6x ratio)",
-  "[Image: settings_screenshot.png] (image/png, 210.4KB)\ndata:image/png;base64,iVBORw0KGgo... (truncated; screenshot of VS Code settings.json with highlighted ruff + ty config)",
-  "[Image: terminal_tail.png] (image/png, 124.7KB)\ndata:image/png;base64,iVBORw0KGgo... (truncated; Warp terminal capture showing nvidia-smi output and a running train.py log)",
-  "[Image: model_card_thumb.png] (image/png, 32.8KB)\ndata:image/png;base64,iVBORw0KGgo... (truncated; HuggingFace model card hero image)",
-  "[Image: confusion_matrix.png] (image/png, 41.5KB)\ndata:image/png;base64,iVBORw0KGgo... (truncated; 4x4 confusion matrix for the 3-tier intent router over 2000 labeled samples)",
-  "[Image: benchmark.jpeg] (image/jpeg, 88.2KB)\ndata:image/jpeg;base64,/9j/4AAQSkZJRgABAQAA... (truncated; benchmark result table as an image screenshot, MMLU/ARC/HellaSwag columns)",
-  "[Image: architecture-v2.png] (image/png, 167.0KB)\ndata:image/png;base64,iVBORw0KGgo... (truncated; updated architecture diagram replacing single-tier router with the 3-tier cascade)",
-  "[Image: error_dialog.png] (image/png, 18.5KB)\ndata:image/png;base64,iVBORw0KGgo... (truncated; small macOS error dialog reading 'Permission denied: ./run.sh')",
-  "[Image: grafana_panel.png] (image/png, 139.2KB)\ndata:image/png;base64,iVBORw0KGgo... (truncated; Grafana time-series panel of auth_refresh_rejected_total showing a 73-minute spike on 2026-04-08)"
+  {
+    "match": {
+      "tags": [
+        "architecture",
+        "diagram"
+      ]
+    },
+    "output": "[Image: architecture.png] (image/png, 184.3KB)\nDescription: A system architecture diagram. Shows a three-tier layout: frontend (web + mobile) at the top, an API gateway middle tier with auth + rate-limiting, and a backend tier with PostgreSQL, Redis, and an async worker pool. Arrows indicate request flow. Labels include 'CDN', 'Load Balancer', 'Session Store', 'Worker Queue'.\nDetected content keywords: architecture diagram.\ndata:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAgAAAAIACAYAAAD0eNT6AAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAACAKADAAQAAAABAAACAAAAAAD/4QSQaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wLwA8P3hwYWNrZXQgYmVnaW49Iu+7vyIgaWQ9Ilc1TTBNcENlaGlIenJlU3pOVGN6a2M5ZCI/Pg... (base64 truncated — real output would contain the full encoded payload)"
+  },
+  {
+    "match": {
+      "tags": [
+        "bug",
+        "error",
+        "screenshot"
+      ]
+    },
+    "output": "[Image: error_screenshot.jpg] (image/jpeg, 42.7KB)\nDescription: A UI error screenshot. A red toast notification is overlaid on a settings page. The toast reads: 'Failed to save profile. Error: network timeout after 30s'. A retry button is visible underneath.\nDetected content keywords: bug error screenshot.\ndata:image/jpeg;base64,/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAAUDBAQEAwUEBAQFBQUGBwwIBwcHBw8LCwkMEQ8SEhEPERETFhwXExQaFREROCEYGh0dHx8fExciJCIeJBweHx7/2wBDAQUFBQcGBw4ICA4eFBEUHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh7/wgARCAECAYADASIAAhEBAxEB... (base64 truncated)"
+  },
+  {
+    "match": {
+      "tags": [
+        "dashboard",
+        "metrics"
+      ]
+    },
+    "output": "[Image: dashboard.png] (image/png, 256.0KB) [WARNING: large image 0.3MB]\nDescription: A product analytics dashboard. Four tiles are visible: DAU (up 4.2%), p95 latency (182ms, down 8ms), error rate (0.31%, up slightly), and active users by region (US 42%, EU 31%, APAC 27%). A 7-day trend line at the bottom shows steady growth.\nDetected content keywords: dashboard metrics.\ndata:image/png;base64,iVBORw0KGgoAAAANSUhEUgAABAAAAAMACAIAAAALlmbxAAAACXBIWXMAAA7EAAAOxAGVKw4bAACAAElEQVR4nOy9d3xUVdr//5mSyWQy6b33Tgqhh1AEBKQIVpquu4qrrruu6+7X9bu6uqvuul1XXbtYVkVFEZEqvUMoARJ67ySkzmQymZlMOb8/7uROQsomk5lMZnLe9/3ysu69557n3MncT57zPM/R6HQ6hEKhUChfQRtoAyqVSqXyHXQAqFQqlQ+hA0ClUqk+hA4AlUql+hA6AFQqleqT0AGgUqlUn4IOAJVKpfoQdACoVCrVh6ADQKVSqT4EHQAqlUr1IegAUKlUqg9BB4BKpVJ9CDoAVCqV6kPQAaBSqVQfgg4AlUql+hB0AKhUKtWHoANApVKpPgQdACqVSvUh6ABQqVSqD0EHgEqlUn0IOgBUKpXqQ9ABoFKpVB+CDgCVSqX6EHQAqFQq1Yf4/wUgM2h+LC0sAAAAAElFTkSuQmCC"
+  },
+  {
+    "match": {
+      "tags": [
+        "company",
+        "logo"
+      ]
+    },
+    "output": "[Image: logo.svg.png] (image/png, 8.4KB)\nDescription: A square logo. A stylized wordmark in navy blue and white. No figures or icons beyond the letterform. Transparent background.\nDetected content keywords: company logo.\ndata:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGQAAABkCAYAAABw4pVUAAAABmJLR0QA/wD/AP+gvaeTAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAB3RJTUUH6AQREAY8rIOHwQAABARJREFUeNrtnE1IVFEUx3933kwzOjM5Ok7WaGmKWpnQgoIoCAIXLWvRpk2bFtGiRYsWLVpE0CKiVRRBm6JFUQQtgqBP+jKHysxUp/IrHWfGmXnvxncXZoCjM3E0d8b7/sD/vXvPO+/87jv3nGsZhgE3HDggj0AUHECuY8gMDc4AkDxAJjMF7rT8BHsrN5GTnUJKchT6h4aMJ4c7wmgW6yJLhvDFl1/R2tFFbm4We/cUI4gib65dp7rNTEJSGvl52YyPTRCvi0Ct83Ld9QucOBFJUCHj0vVqOttaqa8/hfTcLEZsA7R1dLF3zx4KC/PJSk3CxZSUBaNDK9q7evhw0zT0kgs5OzmORq1iNAyDuqZGdu8qoqxoC8mJUWgijIRFWsFuozIjk+TkJIQgxEjQEGWzHAYNxAVcGvoa9fUXicxJpAAUVKvVaDTz34cQBN9UAkUBuzaKvXv3kJaahKjTEdYpsVhtXLt1lyvnz9DW1sjIyCB6vQ53iGIREEVAFBEEEAQBnU6HXqMkShQxGHJRayAiLRGz2UpFRSmmlBSihL9Ey1ug0+kwmzVs3LSRlk/1dLZ1UbyhjPjYGMwmM91dNrTRUWi1WkDAsrwqjgXhVkYmyqKW6qoKLl++QHpaCgkJ8QS8Iwg6AMFPpsOK4uJCtJLEqTNneHDvLntLi3nvzZMsW1FEQlyMN/zBBODx3/G4qbWqaDQa1q5dw/IViTx99pTN+eWsXJ5LpD4Sp9OBVqtB9qXlO+mFQEcQBRBFHA4HCoVC7QA/RrVaxfr160hNSqCx+SyvHj2ksHg1q1bmo1SBz+Gcde7y1FESAjgBt2jBB7zRagFBg1arI1wfQXJyHKFmJTa7hRa7mdT4eKIjDCwkgQvAvS6E61K5S3//ANVvquho76SiooTVq9eg1URAsEOICjoAoX8WS8ZvgbMbURRRqdRoNGEgiMFJ/IqjFpQPlh1V+AAA8Vj/qUDyHZoAHz1+xoUzl1GrVPj8ZTWBE9LwKpVWQlSYkcTkFKpq6ggPD8PpdLJgs0NYvr9S9wBAP8OH1/vp7+tjVUEeZevXIUlu3LwaIIsD74zmRcvmYBVMbGjYaC1SCXi4eKAZ8ekpjhw/icft5Ob921hGhvGZJEm8fIH0yhX09PZz+OBxwrXhoJB8yAgLAOH29gKsH2IhNSkRoUxk9/Zy+Pgp7LYhfCKVVU2ptKDRREBPHwOmYcanptDpIxkeMWOcnEKlWgRxWuRB6E0QgC/vvnN6alqx2ydQKBRYJqwMWUYYtY1is9lQqbUEQ4ICQFGAYMhwj04yOjbG8Ng4kzY7kwNmBi02xk1WJqyjOCddqJQiiiAJnl4UAN4CRBHUKgWR0VGERkWgj45AfYkbsrvM7vFxHP8Duuh6OMWuglsAAAAASUVORK5CYII="
+  },
+  {
+    "match": {
+      "tags": [
+        "mermaid",
+        "flowchart",
+        "diagram"
+      ]
+    },
+    "output": "[Image: mermaid_diagram.png] (image/png, 72.1KB)\nDescription: A mermaid.js flowchart. Nodes: 'user request' → 'auth check' → 'route handler' → 'db query' → 'response'. A side branch from 'auth check' labeled 'reject' leads to '401 response'.\nDetected content keywords: mermaid flowchart diagram.\ndata:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA... (truncated; diagram flows spec → blueprint → executor → narrator → judge → validate → jsonl)"
+  },
+  {
+    "match": {
+      "tags": [
+        "gpu",
+        "temperature",
+        "time-series",
+        "graph"
+      ]
+    },
+    "output": "[Image: gpu_temp_graph.png] (image/png, 94.6KB)\nDescription: A line chart showing GPU temperature over an 8-hour training run. Temperature starts at 45°C, rises to 78°C during peak training, and plateaus around 74°C. A horizontal red line at 85°C marks the throttling threshold.\nDetected content keywords: gpu temperature time-series graph.\ndata:image/png;base64,iVBORw0KGgo... (truncated; shows RTX 5070 Ti temp trace under sustained GRPO training, peak 73°C, steady-state 68°C)"
+  },
+  {
+    "match": {
+      "tags": [
+        "crash",
+        "stack",
+        "trace",
+        "screenshot"
+      ]
+    },
+    "output": "[Image: crash_stack.png] (image/png, 112.9KB)\nDescription: A terminal screenshot of a Python stack trace. Top frame: KeyError: 'user_id' at auth/middleware.py line 47. The traceback shows 6 frames descending into the auth middleware. Lines are color-highlighted with errors in red.\nDetected content keywords: crash stack trace screenshot.\ndata:image/png;base64,iVBORw0KGgo... (truncated; screenshot of a Python traceback pointing at asyncio.gather in auth_service/refresh.py:142)"
+  },
+  {
+    "match": {
+      "tags": [
+        "figma",
+        "design",
+        "frame"
+      ]
+    },
+    "output": "[Image: figma_frame_02.jpg] (image/jpeg, 488.2KB) [WARNING: large image 0.5MB]\nDescription: A Figma design frame showing a mobile app checkout screen. Top: product summary with image and price. Middle: shipping address form with three text inputs. Bottom: a primary 'Pay $49.99' button in brand green. Comments from designers are pinned to several components with feedback about spacing and font weights.\nDetected content keywords: figma design frame.\ndata:image/jpeg;base64,/9j/4AAQSkZJRgABAQAA... (truncated; Figma export of the login screen variant B)"
+  },
+  {
+    "match": {
+      "tags": [
+        "training",
+        "loss",
+        "curve",
+        "plot"
+      ]
+    },
+    "output": "[Image: plot_loss.png] (image/png, 58.7KB)\nDescription: A loss curve plot over 5000 training steps. Training loss starts at 2.4 and decreases smoothly to ~0.3. Validation loss tracks close but diverges slightly after step 3800, suggesting mild overfitting. Both axes are labeled; the legend shows 'train' in blue and 'val' in orange.\nDetected content keywords: training loss curve plot.\ndata:image/png;base64,iVBORw0KGgo... (truncated; matplotlib loss curve: 4 seeds, mean ± std band, loss descends from 1.84 → 0.32 over 5925 steps)"
+  },
+  {
+    "match": {
+      "tags": [
+        "receipt",
+        "scan"
+      ]
+    },
+    "output": "[Image: receipt.jpg] (image/jpeg, 31.2KB)\nDescription: A scanned paper receipt. Header reads 'BlueStone Coffee'. Items: large latte $5.25, almond croissant $3.50. Subtotal $8.75, tax $0.72, total $9.47. Dated 2026-04-12. Paid by card ending 4321.\nDetected content keywords: receipt scan.\ndata:image/jpeg;base64,/9j/4AAQSkZJRgABAQAA... (truncated; camera photo of a paper receipt, 640x480)"
+  },
+  {
+    "match": {
+      "tags": [
+        "whiteboard",
+        "sketch",
+        "brainstorm"
+      ]
+    },
+    "output": "[Image: whiteboard.jpg] (image/jpeg, 512.5KB) [WARNING: large image 0.5MB]\nDescription: A photo of a whiteboard with a system design sketch. Three columns labeled 'INGEST', 'PROCESS', 'SERVE'. Arrows between boxes. Handwriting in black and red marker. Post-it notes in yellow list action items like 'spike kafka vs pulsar' and 'check latency SLA'.\nDetected content keywords: whiteboard sketch brainstorm.\ndata:image/jpeg;base64,/9j/4AAQSkZJRgABAQAA... (truncated; phone photo of a design whiteboard with arrows between 6 boxes labeled executor/judge/validate/...)"
+  },
+  {
+    "match": {
+      "tags": [
+        "throughput",
+        "bar",
+        "chart"
+      ]
+    },
+    "output": "[Image: chart_throughput.png] (image/png, 48.3KB)\nDescription: A bar chart comparing throughput across three inference engines. vLLM: 1.0x baseline. SGLang: 1.15x. TensorRT-LLM: 2.4x. Y-axis is tokens/second. Error bars show ±3% variance across five benchmark runs on a 70B-class model.\nDetected content keywords: throughput bar chart.\ndata:image/png;base64,iVBORw0KGgo... (truncated; bar chart comparing vLLM fp8 vs TensorRT-LLM fp8 on Llama-3.3-70B, 2.6x ratio)"
+  },
+  {
+    "match": {
+      "tags": [
+        "application",
+        "settings",
+        "screenshot"
+      ]
+    },
+    "output": "[Image: settings_screenshot.png] (image/png, 210.4KB)\nDescription: A screenshot of an application's Settings → Appearance panel. Theme dropdown is set to 'System', 'Follow system accent color' toggle is ON, font size slider is at 14pt, and 'Show line numbers' checkbox is checked.\nDetected content keywords: application settings screenshot.\ndata:image/png;base64,iVBORw0KGgo... (truncated; screenshot of VS Code settings.json with highlighted ruff + ty config)"
+  },
+  {
+    "match": {
+      "tags": [
+        "terminal",
+        "tail",
+        "log",
+        "output",
+        "screenshot"
+      ]
+    },
+    "output": "[Image: terminal_tail.png] (image/png, 124.7KB)\nDescription: A terminal screenshot showing `tail -f app.log` output. The last 12 lines are visible: successful request logs in green, two ERROR lines in red about a failed Redis connection at 11:42:07, and a WARN about cache eviction at 11:42:10.\nDetected content keywords: terminal tail log output screenshot.\ndata:image/png;base64,iVBORw0KGgo... (truncated; Warp terminal capture showing nvidia-smi output and a running train.py log)"
+  },
+  {
+    "match": {
+      "tags": [
+        "model",
+        "card",
+        "thumbnail"
+      ]
+    },
+    "output": "[Image: model_card_thumb.png] (image/png, 32.8KB)\nDescription: A Hugging Face model card thumbnail. Shows the model name 'llama-3.1-8b-instruct-ft-godspeed' at top, base model and license below, a small chart of benchmark scores on the right, and a 'Deploy' button in purple.\nDetected content keywords: model card thumbnail.\ndata:image/png;base64,iVBORw0KGgo... (truncated; HuggingFace model card hero image)"
+  },
+  {
+    "match": {
+      "tags": [
+        "confusion",
+        "matrix"
+      ]
+    },
+    "output": "[Image: confusion_matrix.png] (image/png, 41.5KB)\nDescription: A 4x4 confusion matrix visualization. Classes are 'bug', 'feature', 'chore', 'doc'. Diagonal cells are dark green (high accuracy). Off-diagonal cells are mostly pale; the darkest misclassification cell is 'chore' predicted as 'feature' with 12 cases.\nDetected content keywords: confusion matrix.\ndata:image/png;base64,iVBORw0KGgo... (truncated; 4x4 confusion matrix for the 3-tier intent router over 2000 labeled samples)"
+  },
+  {
+    "match": {
+      "tags": [
+        "benchmark",
+        "comparison",
+        "chart"
+      ]
+    },
+    "output": "[Image: benchmark.jpeg] (image/jpeg, 88.2KB)\nDescription: A grouped bar chart comparing three LLMs across four benchmark tasks (MMLU, GSM8K, HumanEval, ARC). Each bar shows the score with a small error bar. The legend identifies the three models by color. The fine-tuned model wins on GSM8K and HumanEval.\nDetected content keywords: benchmark comparison chart.\ndata:image/jpeg;base64,/9j/4AAQSkZJRgABAQAA... (truncated; benchmark result table as an image screenshot, MMLU/ARC/HellaSwag columns)"
+  },
+  {
+    "match": {
+      "tags": [
+        "architecture",
+        "diagram",
+        "v2",
+        "revised"
+      ]
+    },
+    "output": "[Image: architecture-v2.png] (image/png, 167.0KB)\nDescription: A revised version of a system architecture diagram. Differences from v1: a new 'event bus' tier has been added between the API gateway and backend; the worker pool is now partitioned by region; the caching layer now shows both Redis and CDN edges. Same three-tier skeleton but more detail on async paths.\nDetected content keywords: architecture diagram v2 revised.\ndata:image/png;base64,iVBORw0KGgo... (truncated; updated architecture diagram replacing single-tier router with the 3-tier cascade)"
+  },
+  {
+    "match": {
+      "tags": [
+        "error",
+        "dialog",
+        "modal",
+        "screenshot"
+      ]
+    },
+    "output": "[Image: error_dialog.png] (image/png, 18.5KB)\nDescription: A modal error dialog. Title: 'Unable to connect'. Body: 'We could not reach the server. Check your internet connection and try again.' A primary 'Retry' button and a secondary 'Cancel' button are at the bottom.\nDetected content keywords: error dialog modal screenshot.\ndata:image/png;base64,iVBORw0KGgo... (truncated; small macOS error dialog reading 'Permission denied: ./run.sh')"
+  },
+  {
+    "match": {
+      "tags": [
+        "grafana",
+        "observability",
+        "panel"
+      ]
+    },
+    "output": "[Image: grafana_panel.png] (image/png, 139.2KB)\nDescription: A Grafana dashboard panel showing request-latency percentiles. Four lines: p50 (20ms), p90 (45ms), p95 (62ms), p99 (180ms). A red threshold line at 200ms is not breached. Time range is the last 6 hours. Annotation markers indicate two deploy events.\nDetected content keywords: grafana observability panel.\ndata:image/png;base64,iVBORw0KGgo... (truncated; Grafana time-series panel of auth_refresh_rejected_total showing a 73-minute spike on 2026-04-08)"
+  }
 ]

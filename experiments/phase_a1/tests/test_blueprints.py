@@ -122,7 +122,7 @@ def test_validate_rejects_notebook_edit_invalid_action() -> None:
         [
             {
                 "tool_name": "notebook_edit",
-                "arguments": {"notebook_path": "n.ipynb", "action": "replace_cell"},
+                "arguments": {"file_path": "n.ipynb", "action": "replace_cell"},
             }
         ]
     )
@@ -130,10 +130,137 @@ def test_validate_rejects_notebook_edit_invalid_action() -> None:
     assert any("notebook_edit.action invalid" in e for e in errs)
 
 
+def test_validate_rejects_notebook_edit_with_legacy_notebook_path() -> None:
+    """Regression: Apr 18 prod run had 9 drops for notebook_edit args using
+    the wrong parameter name. The real tool requires 'file_path', not
+    'notebook_path', so the blueprint prompt + validator were bringing us a
+    schema mismatch that wasted a full generation cycle per drop."""
+    bp = _bp(
+        [
+            {
+                "tool_name": "notebook_edit",
+                "arguments": {"notebook_path": "n.ipynb", "action": "edit_cell"},
+            }
+        ]
+    )
+    errs = _validate_blueprint(bp, _spec("single_tool", "notebook_edit"))
+    assert any("notebook_edit.file_path" in e for e in errs)
+
+
 def test_validate_rejects_background_check_invalid_action() -> None:
     bp = _bp([{"tool_name": "background_check", "arguments": {"action": "restart"}}])
     errs = _validate_blueprint(bp, _spec("single_tool", "background_check"))
     assert any("background_check.action invalid" in e for e in errs)
+
+
+def test_validate_rejects_background_check_kill_with_string_id() -> None:
+    bp = _bp(
+        [
+            {
+                "tool_name": "background_check",
+                "arguments": {"action": "kill", "id": "proc-42"},
+            }
+        ]
+    )
+    errs = _validate_blueprint(bp, _spec("single_tool", "background_check"))
+    assert any("background_check.id must be an integer" in e for e in errs)
+
+
+def test_validate_rejects_git_add_action() -> None:
+    """Regression: Godspeed's git tool only accepts {status, diff, commit, log,
+    undo, stash, stash_pop}. The old blueprint prompt advertised 'add',
+    'branch', etc., which produced runtime failures and coherence drops."""
+    bp = _bp([{"tool_name": "git", "arguments": {"action": "add"}}])
+    errs = _validate_blueprint(bp, _spec("single_tool", "git"))
+    assert any("git.action invalid" in e for e in errs)
+
+
+def test_validate_rejects_git_commit_without_message() -> None:
+    bp = _bp([{"tool_name": "git", "arguments": {"action": "commit"}}])
+    errs = _validate_blueprint(bp, _spec("single_tool", "git"))
+    assert any("git.message must be a non-empty string" in e for e in errs)
+
+
+def test_validate_rejects_diff_apply_without_hunk_headers() -> None:
+    bp = _bp(
+        [
+            {
+                "tool_name": "diff_apply",
+                "arguments": {"diff": "--- a/x.py\nno hunk header here"},
+            }
+        ]
+    )
+    errs = _validate_blueprint(bp, _spec("single_tool", "diff_apply"))
+    assert any("'---'/'+++' file headers" in e for e in errs)
+
+
+def test_system_prompt_documents_diff_apply_format_exactly() -> None:
+    """Contract test: the blueprint system prompt MUST document all three
+    required markers (---, +++, @@) for diff_apply.
+
+    The original R1 prompt said '@@ or ---' which caused the LLM to omit
+    '+++' and the validator to reject every diff_apply blueprint (see
+    RESEARCH_LOG Anomaly F1 addendum). This pins the fix."""
+    assert "'--- a/" in _SYSTEM_TEMPLATE or "--- a/" in _SYSTEM_TEMPLATE
+    assert "'+++ b/" in _SYSTEM_TEMPLATE or "+++ b/" in _SYSTEM_TEMPLATE
+    assert "'@@'" in _SYSTEM_TEMPLATE or "@@" in _SYSTEM_TEMPLATE
+    # Prompt must not claim '@@ or ---' is sufficient — the validator rejects that.
+    assert '"@@" or "---"' not in _SYSTEM_TEMPLATE
+    assert "'@@' or '---'" not in _SYSTEM_TEMPLATE
+
+
+def test_validate_accepts_error_recovery_3_calls_for_edit_tools() -> None:
+    """error_recovery samples that primary on file_edit or diff_apply may
+    insert a file_read between the failing and corrected attempt — that's
+    3 calls, and the validator must accept it."""
+    bp = _bp(
+        [
+            {
+                "tool_name": "file_edit",
+                "arguments": {
+                    "file_path": "src/main.py",
+                    "old_string": "def greet(name):",
+                    "new_string": "def greet(name: str) -> str:",
+                },
+            },
+            {
+                "tool_name": "file_read",
+                "arguments": {"file_path": "src/main.py"},
+            },
+            {
+                "tool_name": "file_edit",
+                "arguments": {
+                    "file_path": "src/main.py",
+                    "old_string": 'return f"hello {name}"',
+                    "new_string": 'return f"hello {name.strip()}"',
+                },
+            },
+        ]
+    )
+    errs = _validate_blueprint(bp, _spec("error_recovery", "file_edit"))
+    assert not any("error_recovery" in e for e in errs), f"unexpected errors: {errs}"
+
+
+def test_validate_rejects_error_recovery_4_calls_for_edit_tools() -> None:
+    call = {
+        "tool_name": "file_edit",
+        "arguments": {"file_path": "a", "old_string": "x", "new_string": "y"},
+    }
+    bp = _bp([call] * 4)
+    errs = _validate_blueprint(bp, _spec("error_recovery", "file_edit"))
+    assert any("error_recovery" in e and ("2 or 3" in e or "2 calls" in e) for e in errs)
+
+
+def test_validate_still_rejects_error_recovery_3_calls_for_non_edit_tools() -> None:
+    bp = _bp(
+        [
+            {"tool_name": "grep_search", "arguments": {"pattern": "a"}},
+            {"tool_name": "grep_search", "arguments": {"pattern": "b"}},
+            {"tool_name": "grep_search", "arguments": {"pattern": "c"}},
+        ]
+    )
+    errs = _validate_blueprint(bp, _spec("error_recovery", "grep_search"))
+    assert any("error_recovery must have exactly 2 calls" in e for e in errs)
 
 
 # ---------------------------------------------------------------------------
@@ -211,8 +338,12 @@ def test_system_prompt_lists_required_args_for_error_prone_tools() -> None:
     assert "github" in _SYSTEM_TEMPLATE
     assert "grep_search" in _SYSTEM_TEMPLATE
     assert "action" in _SYSTEM_TEMPLATE
-    # git actions should be enumerated
-    assert "status, diff, add, commit" in _SYSTEM_TEMPLATE
+    # git actions should be enumerated — the prompt MUST only advertise the
+    # 7 actions the real Godspeed git tool implements. Regressions where
+    # 'add'/'branch' were advertised caused runtime errors and coherence
+    # drops in the Apr 18 prod run.
+    assert "status, diff, commit, log, undo, stash," in _SYSTEM_TEMPLATE
+    assert "NO add" in _SYSTEM_TEMPLATE
     # github actions should be enumerated
     assert "list_prs" in _SYSTEM_TEMPLATE
     # tasks actions (regression: judge flagged action='add' in prod run)

@@ -131,6 +131,53 @@ class TestScoreResult:
         score = score_result(SAMPLE_TASK, result)
         assert isinstance(score, BenchmarkScore)
 
+    def test_waste_penalty_zero_when_efficient(self) -> None:
+        """Running exactly the expected tool count incurs no penalty."""
+        result = BenchmarkResult(
+            task_id="test-01",
+            tools_used=["grep_search", "file_read", "file_edit"],
+            tool_sequence=["grep_search", "file_read", "file_edit"],
+        )
+        score = score_result(SAMPLE_TASK, result)
+        assert score.waste_penalty == 0.0
+        assert score.overall == 1.0
+
+    def test_waste_penalty_zero_within_slack(self) -> None:
+        """Up to 1.5x expected calls is considered fine — no penalty."""
+        result = BenchmarkResult(
+            task_id="test-01",
+            tools_used=["grep_search", "file_read", "file_edit"],
+            tool_sequence=[
+                "grep_search",
+                "file_read",
+                "file_read",
+                "file_edit",
+            ],  # 4/3 ratio, below 1.5x threshold
+        )
+        score = score_result(SAMPLE_TASK, result)
+        assert score.waste_penalty == 0.0
+
+    def test_waste_penalty_kicks_in_when_overrun(self) -> None:
+        """More than 1.5x expected calls incurs a small, capped penalty."""
+        result = BenchmarkResult(
+            task_id="test-01",
+            tools_used=["grep_search", "file_read", "file_edit"],
+            tool_sequence=[
+                "grep_search",
+                "file_read",
+                "file_read",
+                "file_read",
+                "file_read",
+                "file_read",
+                "file_edit",
+            ],  # 7/3 ratio, well over 1.5x
+        )
+        score = score_result(SAMPLE_TASK, result)
+        assert score.waste_penalty > 0.0
+        assert score.waste_penalty <= 0.3  # cap enforced
+        # Overall should still be clamped to [0, 1]
+        assert 0.0 <= score.overall <= 1.0
+
 
 # -- Aggregate scores tests -------------------------------------------------
 

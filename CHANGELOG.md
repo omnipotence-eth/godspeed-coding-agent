@@ -7,6 +7,67 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.11.0] — 2026-04-19
+
+Benchmark and test-infrastructure polish. No runtime behavior changes to
+the agent itself — this release strengthens the evidence that Godspeed
+works end-to-end before any fine-tuning work begins.
+
+### Added
+
+- **Real-LLM smoke tests under `@pytest.mark.real_llm`**
+  (`tests/test_smoke_real_llm.py`, `tests/test_integration_real.py`).
+  Skipped by default; run with `pytest -m real_llm` and a running Ollama
+  server on `localhost:11434`. Includes a multi-turn read-edit-verify
+  scenario that proves the agent loop chains real tool calls with a real
+  model — the foundation claim the prior test suite did not exercise.
+- **Benchmark fixture directories** (`benchmarks/fixtures/<task_id>/`)
+  for 19 of the 20 tasks in `benchmarks/tasks.jsonl`. Each is copied into
+  an isolated temp workspace per run so scores are reproducible across
+  models and invocations. Optional `_setup.py` hook handles tasks that
+  need runtime state (git repos with dirty/staged changes). Optional
+  `verify.py` hook runs post-agent and returns a machine-checkable
+  mechanical-success signal for 13 tasks (syntax fix, SQL-injection
+  remediation, requests→httpx migration, CI workflow creation, etc.).
+- **`waste_penalty` metric** in `BenchmarkScore` and `BenchmarkSuiteResult`.
+  Deducts up to 0.3 when an agent issues > 1.5× the expected tool calls,
+  so honest efficiency shows up in the score instead of being hidden by
+  the Jaccard + LCS primaries. Tie-breaker, not a dominant signal.
+- **`test_parallel_file_reads_real_tools`** — complements the existing
+  `_TrackedTool` synthetic test by running real `FileReadTool` in
+  parallel on real files, locking in the concurrency guarantee for the
+  production tool path.
+
+### Changed
+
+- `scripts/run_benchmark.py` now uses `benchmarks/fixtures/<task_id>/` as
+  the per-task workspace when present (falls back to `--project-dir`
+  otherwise). Records `mechanical_success` per task and `mechanical_pass`
+  / `mechanical_evaluated` / `mean_waste_penalty` in `summary.json`.
+
+### Fixed
+
+- Prior audit erroneously flagged speculative tool dispatch as
+  scaffolded-but-inactive. Verified the cache is populated by
+  `_speculative_dispatch` during streaming (`src/godspeed/agent/loop.py`)
+  and exercised by 7 passing tests in `tests/test_speculative.py`.
+
+### Benchmarks
+
+First honest end-to-end numbers for Godspeed on a real LLM, run against
+the polished fixtures:
+
+| Driver | Overall | Pass | Mech |
+|---|---:|---:|---:|
+| `nvidia_nim/qwen/qwen3.5-397b-a17b` | **0.608** | 11/20 | 7/13 |
+| `nvidia_nim/moonshotai/kimi-k2.5` | 0.548 | 9/20 | 6/13 |
+| `nvidia_nim/mistralai/devstral-2-123b-instruct-2512` | 0.446 | 5/20 | 2/13 |
+| `nvidia_nim/qwen/qwen3-coder-480b-a35b-instruct` | 0.333 | 5/20 | 2/13 |
+| `ollama/qwen3-coder:latest` | 0.107 | 1/20 | 1/13 |
+
+Recommended production driver: `nvidia_nim/qwen/qwen3.5-397b-a17b`.
+Full table: `experiments/benchmark_shootout_2026_04.md`.
+
 ## [2.10.0] — 2026-04-18
 
 Minor release bundling two independent features: the Phase A1 synthetic

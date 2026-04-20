@@ -416,6 +416,50 @@ class TestParallelToolsEndToEnd:
         ]
         assert tool_msgs == ["tool_a_output", "tool_b_output", "tool_c_output"]
 
+    async def test_parallel_file_reads_real_tools(self, tool_context: ToolContext) -> None:
+        """Parallel dispatch with the production FileReadTool on real files.
+
+        Complements the synthetic ``_TrackedTool`` test above — proves the
+        concurrency guarantee survives when the tools are real async I/O,
+        not timed sleeps.
+        """
+        for i in range(3):
+            (tool_context.cwd / f"note_{i}.txt").write_text(f"content {i}\n", encoding="utf-8")
+
+        conversation = Conversation("You are a coding agent.", max_tokens=100_000)
+        registry = ToolRegistry()
+        registry.register(FileReadTool())
+
+        client = LLMClient(model="test")
+        client.chat = AsyncMock(
+            side_effect=[
+                _multi_tool_call(
+                    [
+                        ("file_read", {"file_path": "note_0.txt"}),
+                        ("file_read", {"file_path": "note_1.txt"}),
+                        ("file_read", {"file_path": "note_2.txt"}),
+                    ]
+                ),
+                _text("Read all three."),
+            ]
+        )
+
+        result = await agent_loop(
+            "Read all three notes",
+            conversation,
+            client,
+            registry,
+            tool_context,
+            parallel_tool_calls=True,
+        )
+
+        assert result == "Read all three."
+        # Three tool results should have landed in the conversation, one per file.
+        tool_msgs = [msg["content"] for msg in conversation.messages if msg.get("role") == "tool"]
+        assert len(tool_msgs) == 3
+        for i in range(3):
+            assert any(f"content {i}" in msg for msg in tool_msgs), f"content {i} not surfaced"
+
 
 class TestMultimodalWithFileMention:
     """@file:test.py flows through parse_mentions -> resolve_mentions -> content blocks."""

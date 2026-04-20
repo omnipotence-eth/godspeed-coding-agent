@@ -1,0 +1,10 @@
+name: "Godspeed CodeQL config"
+
+paths-ignore:
+  - benchmarks/fixtures/**
+  - experiments/**
+  - tests/fixtures/**
+  - "**/conftest.py"
+
+queries:
+  - uses: security-and-quality

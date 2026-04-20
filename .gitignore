@@ -66,3 +66,36 @@ experiments/phase_a1/data/*.db-*
 experiments/phase_a1/data/sessions/
 experiments/phase_a1/data/_*/
 experiments/phase_a1/.env.local
+
+# SWE-Bench Lite harness artifacts (too large / ephemeral)
+experiments/swebench_lite/.verify_*.jsonl
+experiments/swebench_lite/test_split/
+experiments/swebench_lite/intent_*.jsonl
+experiments/swebench_lite/logs/
+experiments/swebench_lite/metrics_diag.jsonl
+experiments/swebench_lite/metrics_smoke.jsonl
+experiments/swebench_lite/predictions_diag.jsonl
+experiments/swebench_lite/predictions_smoke.jsonl
+experiments/swebench_lite/predictions_verify_retry_test.jsonl
+experiments/swebench_lite/run_metrics_verify_retry_test.jsonl
+experiments/swebench_lite/best_of_2_sources.jsonl
+experiments/swebench_lite/predictions_best_of_2.jsonl
+experiments/swebench_lite/predictions.jsonl
+experiments/swebench_lite/run_metrics.jsonl
+nvidia_nim__*.smoke_*.json
+nvidia_nim__*.verify_*.json
+logs/run_evaluation/
+
+# SWE-bench-generated agent artifacts that escape to repo root during web-lookup tasks
+/docs/fastapi-cors-configuration.md
+
+# WSL venv for swebench harness (user-local only)
+.venv-swebench/
+
+# Per-driver internal-benchmark experiment outputs (generated, many/large)
+experiments/bench_*/
+experiments/qwen3.6-smoke/
+experiments/phase0_*/
+
+# Session logs (from Windows bash) that sometimes land in the repo tree
+experiments/swebench_lite/*.log

@@ -116,12 +116,21 @@ def _ensure_ollama(console: Any | None = None) -> bool:
     return False
 
 
-def _build_tool_registry() -> tuple:
+def _build_tool_registry(tool_set: str = "full") -> tuple:
     """Create all tool instances and register them.
+
+    Args:
+        tool_set: one of "local", "web", "full" (default). "local" hides
+            web_search/web_fetch/github so weak models don't pick them
+            over file_read/grep_search on local-codebase tasks. "web"
+            adds the web tools back. "full" registers everything.
 
     Returns:
         (ToolRegistry, dict[str, RiskLevel]) tuple.
     """
+    from godspeed.tools.tool_sets import get_allowed_tool_names
+
+    allowed = get_allowed_tool_names(tool_set)
     from godspeed.tools.base import RiskLevel
     from godspeed.tools.file_edit import FileEditTool
     from godspeed.tools.file_read import FileReadTool
@@ -200,6 +209,8 @@ def _build_tool_registry() -> tuple:
         pass
 
     for tool in tools:
+        if allowed is not None and tool.name not in allowed:
+            continue
         registry.register(tool)
         risk_levels[tool.name] = tool.risk_level
 

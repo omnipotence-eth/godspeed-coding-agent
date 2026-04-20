@@ -87,6 +87,21 @@ QUALITY_PROMPT = """\
 - Default to no comments. Add one only when the WHY is non-obvious.
 - Never hardcode secrets; validate at system boundaries; parameterized queries only.
 - Prefer 3 similar lines to a premature abstraction for a hypothetical case.
+
+## Tool Selection Defaults
+- Default to LOCAL tools: file_read / file_edit / file_write / grep_search /
+  glob_search / shell / git / repo_map / test_runner / verify / coverage /
+  complexity / security_scan / dep_audit / generate_tests.
+- Use web_search / web_fetch / github ONLY when the user's prompt explicitly
+  mentions an external URL, asks to "search the web", references an online
+  API, or describes a GitHub PR/issue by number. Never use web_search as
+  "reference lookup" for Python/library questions — the local codebase or
+  built-in knowledge is the right answer.
+- Use exact tool names as listed above. Do NOT call aliases like
+  "read_file", "grep", "glob", or invented names — those will fail.
+- Prefer the smallest number of tool calls that solves the task. If the
+  first tool call returns an error, fix the approach — don't retry the
+  same tool 5+ times in a row.
 """
 
 

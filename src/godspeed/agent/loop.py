@@ -780,7 +780,13 @@ def _parse_tool_call(raw: dict[str, Any]) -> ToolCall | None:
     """Parse a raw tool call from the LLM response.
 
     Returns None if the tool call is malformed (invalid JSON arguments, etc.).
+    Common tool-name hallucinations (``read_file``, ``grep``, ``glob``, etc.)
+    are rewritten to their canonical names via
+    ``godspeed.tools.aliases.canonicalize_tool_name`` so weak models don't
+    dead-end on a correct intent expressed with the wrong label.
     """
+    from godspeed.tools.aliases import canonicalize_tool_name
+
     try:
         func = raw.get("function", {})
         name = func.get("name", "")
@@ -792,7 +798,7 @@ def _parse_tool_call(raw: dict[str, Any]) -> ToolCall | None:
             return None
 
         return ToolCall(
-            tool_name=name,
+            tool_name=canonicalize_tool_name(name),
             arguments=arguments,
             call_id=raw.get("id", ""),
         )

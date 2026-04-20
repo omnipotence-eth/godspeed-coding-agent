@@ -58,3 +58,11 @@ coverage.xml
 PROJECT_GUIDE.md
 EXPERIMENT_GUIDE.md
 RESEARCH_LOG.md
+
+# Phase A1 synthetic data pipeline — derived data never tracked
+experiments/phase_a1/data/*.jsonl
+experiments/phase_a1/data/*.db
+experiments/phase_a1/data/*.db-*
+experiments/phase_a1/data/sessions/
+experiments/phase_a1/data/_*/
+experiments/phase_a1/.env.local

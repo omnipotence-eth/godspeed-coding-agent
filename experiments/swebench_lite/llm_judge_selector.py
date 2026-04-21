@@ -359,13 +359,20 @@ async def run_judge_merge(
 def _write_predictions(
     out_path: Path, chosen_patches: dict[str, tuple[str, str]], judge_model: str
 ) -> None:
+    """Write merged predictions JSONL.
+
+    sb-cli requires every row's model_name_or_path to be identical, so we
+    use the judge model alone here and record per-instance source labels
+    in the source log instead.
+    """
     out_path.parent.mkdir(parents=True, exist_ok=True)
+    model_name = f"judge={judge_model}"
     with out_path.open("w", encoding="utf-8") as fh:
         for instance_id in sorted(chosen_patches):
-            label, patch = chosen_patches[instance_id]
+            _label, patch = chosen_patches[instance_id]
             row = {
                 "instance_id": instance_id,
-                "model_name_or_path": f"judge={judge_model}|src={label}",
+                "model_name_or_path": model_name,
                 "model_patch": patch,
             }
             fh.write(json.dumps(row) + "\n")

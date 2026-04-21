@@ -53,9 +53,10 @@ dependencies = [
     # have 10 CVEs (CVE-2026-34513..34525, CVE-2026-22815). Pin-up ensures CI
     # and consumers get the patched release regardless of litellm's own bound.
     "aiohttp>=3.13.4",
-    # Transitive pin-up: python-dotenv comes in via litellm; version 1.0.1
-    # has CVE-2026-28684 (fixed in 1.2.2). pip-audit in CI flags this.
-    "python-dotenv>=1.2.2",
+    # python-dotenv CVE-2026-28684 is known (fix in 1.2.2) but litellm pins
+    # python-dotenv==1.0.1 strictly, making a pin-up unsatisfiable. CI's
+    # pip-audit call suppresses this one CVE via --ignore-vuln below. We'll
+    # remove the suppression when litellm relaxes its bound.
 ]
 
 [project.optional-dependencies]

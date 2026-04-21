@@ -47,11 +47,11 @@ def test_tool_is_read_only(tool: SystemOptimizerTool) -> None:
     assert tool.risk_level == RiskLevel.READ_ONLY
 
 
-def test_schema_only_supports_inspect(tool: SystemOptimizerTool) -> None:
+def test_schema_supports_inspect_and_recommend(tool: SystemOptimizerTool) -> None:
     schema = tool.get_schema()
     mode_enum = schema["properties"]["mode"]["enum"]
-    assert mode_enum == ["inspect"], (
-        f"mode enum should be exactly ['inspect'] in this release; got {mode_enum}"
+    assert mode_enum == ["inspect", "recommend"], (
+        f"mode enum should expose 'inspect' and 'recommend' (both READ_ONLY); got {mode_enum}"
     )
 
 
@@ -158,6 +158,74 @@ async def test_non_inspect_mode_fails(tool: SystemOptimizerTool, ctx: ToolContex
     result = await tool.execute({"mode": "act"}, ctx)
     assert result.is_error is True
     assert "not supported" in (result.error or "").lower()
+
+
+# ---------------------------------------------------------------------------
+# Recommend mode
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_recommend_returns_structured_report(
+    tool: SystemOptimizerTool, ctx: ToolContext
+) -> None:
+    result = await tool.execute({"mode": "recommend"}, ctx)
+    assert result.is_error is False
+    out = result.output
+    assert "Mode: recommend (READ_ONLY)" in out
+    assert "Platform:" in out
+    # Either "No cleanup recommendations" or "N recommendation(s)"
+    assert "recommendation" in out.lower()
+
+
+@pytest.mark.asyncio
+async def test_recommend_never_recommends_killing_system_critical(
+    tool: SystemOptimizerTool, ctx: ToolContext
+) -> None:
+    """Any action_id that would kill a system-critical process must be absent."""
+    result = await tool.execute({"mode": "recommend"}, ctx)
+    out = result.output
+    # Deny-list members should not appear as targets of kill_process actions.
+    for critical in _SYSTEM_CRITICAL_NAMES.get("win32", frozenset()):
+        # We only care if the critical process actually appeared AS a kill target.
+        # `kill_process:<pid>:<name>` is the action_id format.
+        assert "kill_process:" not in out or f":{critical}" not in out, (
+            f"kill_process action targets system-critical {critical!r}"
+        )
+
+
+@pytest.mark.asyncio
+async def test_recommend_skips_system_idle_process(
+    tool: SystemOptimizerTool, ctx: ToolContext
+) -> None:
+    """PID 0 / 'System Idle Process' on Windows must not be a recommendation."""
+    result = await tool.execute({"mode": "recommend"}, ctx)
+    assert "System Idle Process" not in result.output
+    assert "kill_process:0:" not in result.output
+
+
+@pytest.mark.asyncio
+async def test_recommend_is_read_only_regardless_of_findings(
+    tool: SystemOptimizerTool, ctx: ToolContext
+) -> None:
+    """Recommend must not execute anything — risk_level stays READ_ONLY."""
+    assert tool.risk_level == RiskLevel.READ_ONLY
+    # Run it a few times; output should remain text only, no side effects.
+    for _ in range(2):
+        result = await tool.execute({"mode": "recommend"}, ctx)
+        assert result.is_error is False
+
+
+@pytest.mark.asyncio
+async def test_recommend_note_flags_act_not_implemented(
+    tool: SystemOptimizerTool, ctx: ToolContext
+) -> None:
+    """Output must tell the agent act mode doesn't exist yet."""
+    result = await tool.execute({"mode": "recommend"}, ctx)
+    # Either there were no recommendations (healthy system) or the
+    # explicit 'not yet implemented' note appears.
+    out = result.output.lower()
+    assert "not yet implemented" in out or "healthy" in out
 
 
 # ---------------------------------------------------------------------------

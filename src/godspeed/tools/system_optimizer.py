@@ -147,8 +147,13 @@ class SystemOptimizerTool(Tool):
             "properties": {
                 "mode": {
                     "type": "string",
-                    "enum": ["inspect"],
-                    "description": "Operation mode. Only 'inspect' is supported in this release.",
+                    "enum": ["inspect", "recommend"],
+                    "description": (
+                        "Operation mode. 'inspect' returns raw resource state; "
+                        "'recommend' returns a ranked list of safe cleanup actions "
+                        "(e.g. 'unload Ollama model X — idle 20 min, 15 GB VRAM'). "
+                        "Both modes are READ_ONLY."
+                    ),
                 },
                 "top": {
                     "type": "integer",
@@ -169,9 +174,10 @@ class SystemOptimizerTool(Tool):
 
     async def execute(self, arguments: dict[str, Any], context: ToolContext) -> ToolResult:
         mode = arguments.get("mode", "inspect")
-        if mode != "inspect":
+        if mode not in ("inspect", "recommend"):
             return ToolResult.failure(
-                f"mode={mode!r} not supported in this release; only 'inspect' is available."
+                f"mode={mode!r} not supported in this release; "
+                "choose 'inspect' or 'recommend' (both READ_ONLY)."
             )
 
         top = min(MAX_TOP, max(1, int(arguments.get("top") or DEFAULT_TOP)))
@@ -186,6 +192,9 @@ class SystemOptimizerTool(Tool):
                 "psutil is not installed. Add the [system] optional dependency: "
                 "pip install psutil (>=5.9)."
             )
+
+        if mode == "recommend":
+            return ToolResult.success(_build_recommend(psutil, top=top))
 
         lines: list[str] = []
         lines.append("Mode: inspect (READ_ONLY)")
@@ -372,6 +381,245 @@ def _is_system_critical(name: str) -> bool:
     if sys.platform == "linux":
         return any(name == critical or name.startswith(critical + "/") for critical in deny)
     return name in deny
+
+
+def _build_recommend(psutil: Any, *, top: int) -> str:
+    """Return a ranked list of safe cleanup recommendations.
+
+    READ_ONLY — only *suggests* actions; doesn't execute them. Each
+    recommendation carries a severity (HIGH / MEDIUM / LOW), a short
+    rationale, and an ``action_id`` that the future ``act`` mode will
+    use to dispatch. Recommendations that would touch a system-critical
+    process are omitted.
+    """
+    recs: list[tuple[str, str, str, str]] = []  # (severity, title, rationale, action_id)
+
+    # Collect raw state (duplicates some of the inspect-mode queries
+    # intentionally; keeps the two modes independent).
+    vmem = psutil.virtual_memory()
+    if vmem.percent >= 90:
+        recs.append(
+            (
+                "HIGH",
+                f"System memory at {vmem.percent:.1f}% ({_gb(vmem.used)}/{_gb(vmem.total)})",
+                "Close memory-hog user applications; consider swap expansion.",
+                "investigate_memory_pressure",
+            )
+        )
+    elif vmem.percent >= 80:
+        recs.append(
+            (
+                "MEDIUM",
+                f"System memory at {vmem.percent:.1f}% ({_gb(vmem.used)}/{_gb(vmem.total)})",
+                "Review top memory consumers before starting heavy workloads.",
+                "investigate_memory_pressure",
+            )
+        )
+
+    # Disk: any partition > 85%
+    try:
+        partitions = psutil.disk_partitions(all=False)
+    except Exception:
+        partitions = []
+    for part in partitions:
+        if "cdrom" in (part.opts or "").lower():
+            continue
+        if sys.platform == "win32" and part.fstype == "":
+            continue
+        try:
+            usage = psutil.disk_usage(part.mountpoint)
+        except (PermissionError, OSError):
+            continue
+        if usage.percent >= 90:
+            recs.append(
+                (
+                    "HIGH",
+                    f"Disk {part.mountpoint} at {usage.percent:.1f}% "
+                    f"({_gb(usage.used)} / {_gb(usage.total)})",
+                    (
+                        "Risk of write failures. Clear cache/temp dirs, old logs, "
+                        "orphaned build artifacts."
+                    ),
+                    f"investigate_disk_pressure:{part.mountpoint}",
+                )
+            )
+        elif usage.percent >= 85:
+            recs.append(
+                (
+                    "MEDIUM",
+                    f"Disk {part.mountpoint} at {usage.percent:.1f}%",
+                    "Review cache dirs; plan cleanup before hitting 90%.",
+                    f"investigate_disk_pressure:{part.mountpoint}",
+                )
+            )
+
+    # GPU: VRAM high and Ollama listed as a consumer
+    ollama_vram_recs = _check_ollama_vram()
+    recs.extend(ollama_vram_recs)
+
+    # Top processes: flag non-critical processes consuming > 3 GB memory or > 200% CPU
+    big_mem_procs, high_cpu_procs = _collect_outlier_processes(psutil, top=top)
+    for pid, name, mem in big_mem_procs:
+        if _is_system_critical(name):
+            continue
+        recs.append(
+            (
+                "LOW",
+                f"{name} (pid {pid}) holds {_gb(mem)} memory",
+                ("Consider closing if idle — this is the largest non-system process on the host."),
+                f"kill_process:{pid}:{name}",
+            )
+        )
+    for pid, name, cpu in high_cpu_procs:
+        if _is_system_critical(name):
+            continue
+        recs.append(
+            (
+                "LOW",
+                f"{name} (pid {pid}) using {cpu:.0f}% CPU",
+                "Sustained high CPU. Expected if this is the active app (e.g. game).",
+                f"kill_process:{pid}:{name}",
+            )
+        )
+
+    # Zombie Python processes (platform: linux/macos)
+    zombie_procs = _count_zombie_python(psutil)
+    if zombie_procs:
+        recs.append(
+            (
+                "LOW",
+                f"{zombie_procs} zombie Python process(es)",
+                "Orphaned children of a killed parent; reap by restarting the parent.",
+                "cleanup_zombies",
+            )
+        )
+
+    # Order by severity (HIGH > MEDIUM > LOW) then alphabetically by title
+    rank = {"HIGH": 0, "MEDIUM": 1, "LOW": 2}
+    recs.sort(key=lambda r: (rank.get(r[0], 99), r[1]))
+
+    out = ["Mode: recommend (READ_ONLY)"]
+    out.append(f"Platform: {sys.platform} ({platform.system()} {platform.release()})")
+    out.append("")
+    if not recs:
+        out.append("No cleanup recommendations — system state is healthy.")
+        return "\n".join(out)
+
+    out.append(f"{len(recs)} recommendation(s), most severe first:")
+    out.append("")
+    for i, (sev, title, rationale, action_id) in enumerate(recs, 1):
+        out.append(f"  {i}. [{sev}] {title}")
+        out.append(f"       {rationale}")
+        out.append(f"       action_id: {action_id!r}")
+        out.append("")
+    out.append(
+        "Note: 'act' mode (to execute these) is NOT yet implemented. "
+        "Until it ships, treat these as suggestions only; execute manually "
+        "after reviewing the specifics."
+    )
+    return "\n".join(out)
+
+
+def _check_ollama_vram() -> list[tuple[str, str, str, str]]:
+    """If Ollama has any model loaded, recommend unloading.
+
+    Reads `ollama ps` output. Returns empty list if ollama CLI is absent
+    or no models are loaded.
+    """
+    if shutil.which("ollama") is None:
+        return []
+    try:
+        result = subprocess.run(
+            ["ollama", "ps"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return []
+    if result.returncode != 0:
+        return []
+    # Parse `ollama ps`: first line is header, then each line is a model.
+    recs: list[tuple[str, str, str, str]] = []
+    for line in result.stdout.splitlines()[1:]:
+        parts = line.split()
+        if len(parts) < 4:
+            continue
+        name = parts[0]
+        size = " ".join(parts[2:4]) if len(parts) >= 4 else "?"
+        # Heuristic: any loaded model is a candidate for unload when user
+        # reports slowness. Phase 7 part 3's 'act' mode can dispatch the
+        # actual 'ollama stop' call.
+        recs.append(
+            (
+                "MEDIUM",
+                f"Ollama has model {name!r} loaded ({size})",
+                (
+                    "Holds VRAM even when idle. If not actively serving Godspeed, "
+                    "`ollama stop` to reclaim."
+                ),
+                f"ollama_stop:{name}",
+            )
+        )
+    return recs
+
+
+def _collect_outlier_processes(
+    psutil: Any, *, top: int
+) -> tuple[list[tuple[int, str, int]], list[tuple[int, str, float]]]:
+    """Return (big_memory, high_cpu) outlier lists, each bounded by top."""
+    big_mem: list[tuple[int, str, int]] = []
+    high_cpu: list[tuple[int, str, float]] = []
+    # Prime cpu_percent
+    for p in psutil.process_iter(attrs=["pid"]):
+        with contextlib.suppress(Exception):
+            p.cpu_percent(interval=None)
+    import time as _time
+
+    _time.sleep(0.2)
+
+    for p in psutil.process_iter(attrs=["pid", "name"]):
+        try:
+            with p.oneshot():
+                pid = p.pid
+                name = p.name() or "?"
+                mem = p.memory_info().rss
+                cpu = p.cpu_percent(interval=None)
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            continue
+        except Exception:  # noqa: S112
+            continue
+        # Skip synthetic OS accounting processes that psutil exposes but
+        # that aren't real workloads. "System Idle Process" (PID 0 on
+        # Windows) is Windows' idle-time counter; it will always look
+        # like 100-400% CPU depending on cores.
+        if pid == 0 or name.lower() in ("system idle process", "idle"):
+            continue
+        if mem > 3 * 1024**3:  # 3 GB
+            big_mem.append((pid, name, mem))
+        if cpu > 200.0:
+            high_cpu.append((pid, name, cpu))
+
+    big_mem.sort(key=lambda r: r[2], reverse=True)
+    high_cpu.sort(key=lambda r: r[2], reverse=True)
+    return big_mem[:top], high_cpu[:top]
+
+
+def _count_zombie_python(psutil: Any) -> int:
+    """Count zombie-state Python processes. Meaningful on linux/macos."""
+    if sys.platform == "win32":
+        return 0
+    count = 0
+    for p in psutil.process_iter(attrs=["pid", "name", "status"]):
+        try:
+            if p.info.get("status") == psutil.STATUS_ZOMBIE and (
+                p.info.get("name") or ""
+            ).lower().startswith("python"):
+                count += 1
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+    return count
 
 
 def _gb(n: int) -> str:

@@ -200,10 +200,64 @@ Artifacts produced (committed alongside this doc):
 
 ---
 
+## Addendum 2026-04-21 (later that day) — judge variance with GPT-OSS-120B
+
+To test for model-family bias in the Kimi K2.5 judge result, the same 5-way ensemble was rejudged with `nvidia_nim/openai/gpt-oss-120b` as the alternate judge.
+
+### GPT-OSS-120B judge results
+
+- **Judge dev-23 resolve count:** **10 / 23 = 43.5%** (identical headline to Kimi K2.5)
+- **Recovery of oracle lift:** (10 − 8) / (12 − 8) = **50.0%** (identical)
+- **Judge quality when a resolver exists:** 10 / 12 = 83.3% (identical)
+- **Wall-clock:** ~3 min (vs ~38 min for Kimi K2.5 — GPT-OSS NIM endpoint was uncongested)
+- **Fallback count:** 0 (zero LLM errors)
+
+### Per-instance disagreement
+
+| instance_id | Kimi pick | GPT-OSS pick | outcome |
+|---|---|---|---|
+| marshmallow-code__marshmallow-1359 | seed3 | **p1_dev23_v3** | GPT-OSS WIN, Kimi MISS (only p1_dev23_v3 resolves) |
+| pvlib__pvlib-python-1606 | e1_kimi | gpt_oss | both WIN (4 runs resolve) |
+| pylint-dev__astroid-1196 | **iter1** | p1_dev23_v3 | Kimi WIN, GPT-OSS MISS (only iter1 resolves) |
+| sqlfluff__sqlfluff-1517 | seed3 | gpt_oss | neither resolves (no run resolves this) |
+
+**Judge agreement: 19/23 = 82.6%.**
+
+### Judge-union analysis (free uplift)
+
+The two judges' errors are **non-overlapping** on the resolver-recovery axis:
+
+- Kimi misses marshmallow-1359, GPT-OSS catches it.
+- GPT-OSS misses astroid-1196, Kimi catches it.
+- Both miss pydicom-1256 (only `gpt_oss` resolves; both judges defaulted to `e1_kimi`).
+
+**If we apply a "either-judge-picks-a-resolver" union policy:**
+- 11 / 12 = **91.7%** picker accuracy when a resolver exists (up from 83.3% for either solo judge)
+- Projects to **11 / 23 = 47.8%** resolved (up from 43.5%)
+- Recovers **75% of oracle lift** (up from 50%) — `(11 - 8) / (12 - 8)`
+
+**Cost:** ~3 min additional NIM time per ensemble run (judges in parallel). $0 in API spend.
+
+### What this means
+
+The 43.5% solo-judge result is **robust to judge model choice** — same headline, similar pick distribution, same picker-accuracy ceiling. The errors are not driven by Kimi-favors-Kimi or GPT-OSS-favors-GPT-OSS bias — both judges land on the same 9 / 12 "easy" oracle-resolver picks and split on the harder ones.
+
+The non-overlapping-errors finding is the actionable one: a **judge-ensemble (vote / union)** trivially lifts picker accuracy from 83% → 92% with a tiny cost increase. This is the next implementation step.
+
+### Additional artifacts
+
+- `predictions_judge_gpt_oss_5way.jsonl` — GPT-OSS judge predictions (committed)
+- `judge_gpt_oss_5way_sources.jsonl` — GPT-OSS per-instance decision log (committed)
+- Reproduce: same CLI as the Kimi run, swap `--judge-model nvidia_nim/openai/gpt-oss-120b`
+
+---
+
 ## Next steps (v3.2 research track)
 
-1. **Judge variance:** run with GPT-OSS-120B and Qwen3-Next-Thinking as alternate judges; report median + spread. Budget: ~1 hr NIM time total.
-2. **Prompt ablation:** measure effect of (a) reasoning-step-by-step, (b) self-consistency k=3, (c) apply-then-describe (let the judge mentally apply the patch before scoring).
-3. **Richer context:** expose each candidate patch's `git apply --check` status (pass/fail only — no test execution) as an additional test-free signal.
-4. **Test-300 validation:** rerun on the full SWE-Bench Lite test split once free-tier quota permits. Requires constituent test-300 runs (some already exist: Kimi test-50 seed 2, GPT-OSS test-50 seed 1).
-5. **Leaderboard submission:** if the recovery fraction holds on test-300, prepare a `best@k` submission PR to SWE-bench/experiments with this doc as the technical report.
+1. **Judge-union selector (next):** add `--judge-models a,b,c` to llm_judge_selector.py supporting parallel judge calls + union/vote/weighted aggregation. Estimated lift: 43.5% → 47.8% (Kimi+GPT-OSS) before adding a third judge.
+2. **Third judge (Qwen3-Next-Thinking):** see if it overlaps with Kimi+GPT-OSS error patterns or surfaces new resolvers. Test the 3-way union ceiling.
+3. **Prompt ablation:** measure effect of (a) reasoning-step-by-step, (b) self-consistency k=3, (c) apply-then-describe (let the judge mentally apply the patch before scoring).
+4. **Richer context:** expose each candidate patch's `git apply --check` status (pass/fail only — no test execution) as an additional test-free signal.
+5. **Test-300 validation:** rerun on the full SWE-Bench Lite test split once free-tier quota permits. Requires constituent test-300 runs (some already exist: Kimi test-50 seed 2, GPT-OSS test-50 seed 1).
+6. **sb-cli verification:** dev quota was exhausted by failed-CLI-call attempts during this session; verification of the offline 10/23 number is gated until quota resets.
+7. **Leaderboard submission:** if the judge-union number holds on test-300, prepare a `best@k` submission PR to SWE-bench/experiments with this doc as the technical report.

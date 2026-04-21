@@ -2,12 +2,23 @@
 
 from __future__ import annotations
 
+import asyncio
+import time
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
 from godspeed.tools.base import ToolContext
-from godspeed.tools.web_fetch import WebFetchTool, _html_to_text, _is_local_url
+from godspeed.tools.web_fetch import (
+    CACHE_TTL_SECONDS,
+    WebFetchTool,
+    _cache_path_for,
+    _cache_read,
+    _cache_write,
+    _html_to_text,
+    _is_local_url,
+)
 from godspeed.tools.web_search import WebSearchTool, _parse_ddg_html
 
 
@@ -141,3 +152,79 @@ class TestParseDdgHtml:
             html += f'<a class="result__a" href="https://example.com/{i}">Title {i}</a>'
         results = _parse_ddg_html(html, max_results=3)
         assert len(results) == 3
+
+
+class TestWebFetchCache:
+    """Test the 7-day disk cache layer on WebFetchTool.
+
+    All tests redirect the cache dir into a tmp_path so we never touch
+    the real ``~/.godspeed/cache/web/`` during CI.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _isolated_cache(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Redirect _cache_dir() to a tmp path so tests don't pollute real cache."""
+        cache_dir = tmp_path / "webcache"
+        cache_dir.mkdir()
+        monkeypatch.setattr("godspeed.tools.web_fetch._cache_dir", lambda: cache_dir)
+
+    def test_cache_miss_returns_none(self) -> None:
+        assert _cache_read("https://example.com/never-seen") is None
+
+    def test_cache_write_then_read(self) -> None:
+        _cache_write("https://example.com/foo", "cached body text")
+        got = _cache_read("https://example.com/foo")
+        assert got == "cached body text"
+
+    def test_cache_expired_returns_none(self) -> None:
+        """An entry older than TTL must be treated as a miss."""
+        _cache_write("https://example.com/stale", "old text")
+        # Monkeypatch time.time to fast-forward past TTL
+        with patch(
+            "godspeed.tools.web_fetch.time.time", return_value=time.time() + CACHE_TTL_SECONDS + 1
+        ):
+            got = _cache_read("https://example.com/stale")
+        assert got is None
+
+    def test_cache_hit_shortcircuits_execute(self, ctx: ToolContext) -> None:
+        """A cached URL must return cached content without hitting the network."""
+
+        _cache_write("https://example.com/doc", "pre-cached body")
+        # Patch urlopen to explode if called — proves the cache short-circuited.
+        with patch(
+            "godspeed.tools.web_fetch.urllib.request.urlopen",
+            side_effect=AssertionError("urlopen should not be called on a cache hit"),
+        ):
+            result = asyncio.run(WebFetchTool().execute({"url": "https://example.com/doc"}, ctx))
+        assert result.is_error is False
+        assert "pre-cached body" in result.output
+        assert "(cached)" in result.output
+
+    def test_no_cache_flag_bypasses_cache(self, ctx: ToolContext) -> None:
+        """Passing no_cache=True must force a live fetch even with a fresh entry."""
+        import contextlib
+
+        _cache_write("https://example.com/live", "stale cache body")
+        with (
+            patch(
+                "godspeed.tools.web_fetch.urllib.request.urlopen",
+                side_effect=AssertionError("network call with no_cache=True — expected"),
+            ) as mock_urlopen,
+            contextlib.suppress(AssertionError),
+        ):
+            # Urlopen is called (proving cache bypass) and raises AssertionError;
+            # we swallow it to keep the test focused on the bypass decision.
+            asyncio.run(
+                WebFetchTool().execute({"url": "https://example.com/live", "no_cache": True}, ctx)
+            )
+        # The assertion error inside urlopen proves the cache was bypassed.
+        mock_urlopen.assert_called_once()
+
+    def test_cache_survives_corrupt_file(self, tmp_path: Path) -> None:
+        """A corrupt cache file must not crash the reader."""
+
+        path = _cache_path_for("https://example.com/corrupt")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("{not valid json", encoding="utf-8")
+        # _cache_read must return None, not raise.
+        assert _cache_read("https://example.com/corrupt") is None

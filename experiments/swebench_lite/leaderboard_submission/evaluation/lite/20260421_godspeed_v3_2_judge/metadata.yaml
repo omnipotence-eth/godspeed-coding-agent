@@ -1,0 +1,18 @@
+info:
+  name: Godspeed v3.2 (LLM-judge best@5)
+  site: https://github.com/omnipotence-eth/godspeed-coding-agent
+  report: https://github.com/omnipotence-eth/godspeed-coding-agent/blob/main/experiments/swebench_lite/findings_v3_2_judge_selector.md
+  authors:
+    - Tremayne Timms (independent; omnipotence-eth)
+tags:
+  checked: false
+  model:
+    - nvidia_nim/moonshotai/kimi-k2.5
+    - nvidia_nim/openai/gpt-oss-120b
+    - nvidia_nim/qwen/qwen3.5-397b-a17b
+  org:
+    - Godspeed (omnipotence-eth)
+  os_model: true
+  os_system: true
+  system:
+    attempts: "2+"

@@ -42,13 +42,29 @@ DEFAULT_PROMPT_TEMPLATE = """You are working in a git repository that contains a
 The issue to resolve:
 
 {problem_statement}
-{hints_block}{architect_block}
+{hints_block}{architect_block}{in_loop_block}
 Constraints:
 - Modify source files in this working tree to fix the reported issue.
 - Do NOT modify existing test files. New tests are optional.
 - Keep edits minimal and focused on the reported bug.
 - When you believe the fix is correct, stop. A separate test harness will
   verify your patch.
+"""
+
+IN_LOOP_BLOCK = """
+You have a `swebench_verify_patch` tool. Call it once you believe your
+fix is complete to check whether the instance resolves. If it returns
+`resolved=False`, read the test output tail and revise. Budget: 5 verify
+calls per instance; the tool refuses duplicate calls on an unchanged
+working tree, so you must edit between calls.
+
+Guidance:
+- Prefer a minimal targeted fix. A correct patch is usually under 40
+  lines; a 100+ line rewrite is often a wrong-direction signal.
+- If a revise makes test failures worse, prefer to revert that edit
+  before piling on more changes.
+- If you're stuck after 2-3 verify attempts, commit what you have and
+  stop rather than burning iterations.
 """
 
 HINTS_BLOCK_TEMPLATE = """
@@ -287,6 +303,15 @@ def main() -> int:
         help="Wall-clock timeout for each godspeed invocation (seconds)",
     )
     parser.add_argument(
+        "--instance-cooldown",
+        type=int,
+        default=0,
+        help="Seconds to sleep between instances. Useful with --agent-in-loop on "
+        "rate-limited free-tier providers (NVIDIA NIM R&D free tier is 40 RPM "
+        "shared; without cooldown, back-to-back instances sustain saturation and "
+        "most crash with llm_error). 60-90s recommended for agent-in-loop runs.",
+    )
+    parser.add_argument(
         "--resume",
         action="store_true",
         help="Skip instances already present in --out",
@@ -312,12 +337,41 @@ def main() -> int:
     parser.add_argument(
         "--verify-retry",
         action="store_true",
-        help="After initial patch, run the local SWE-Bench harness (via WSL+Docker) "
-        "to check whether the patch resolves the instance. If not, re-invoke "
-        "Godspeed with the failing test output as context and capture the "
-        "revised patch. Requires swebench installed in WSL Ubuntu.",
+        help="DEPRECATED in favor of --agent-in-loop. After initial patch, run the local "
+        "SWE-Bench harness (via WSL+Docker) to check whether the patch resolves the "
+        "instance. If not, re-invoke Godspeed with the failing test output as context "
+        "and capture the revised patch. Requires swebench installed in WSL Ubuntu. "
+        "Ignored when --agent-in-loop is set.",
+    )
+    parser.add_argument(
+        "--agent-in-loop",
+        action="store_true",
+        help="Drive the agent in-process via godspeed.agent.loop.agent_loop() with a "
+        "per-instance swebench_verify_patch tool registered. The agent can call the "
+        "tool mid-session to run the test harness and iterate until resolved. "
+        "Replaces --verify-retry (post-hoc single-shot retry). Requires swebench "
+        "installed in WSL Ubuntu (Windows) or natively (Linux).",
+    )
+    parser.add_argument(
+        "--allow-web-search",
+        action="store_true",
+        help="Enable web_search / web_fetch tools during agent sessions. OFF by default "
+        "for benchmark integrity — otherwise the agent could search GitHub for the "
+        "ground-truth fix by instance id. Only set for real-world (non-benchmark) runs.",
     )
     args = parser.parse_args()
+
+    if args.agent_in_loop and args.verify_retry:
+        logger.warning(
+            "--verify-retry is deprecated and ignored when --agent-in-loop is set; "
+            "the in-loop oracle replaces post-hoc retry."
+        )
+        args.verify_retry = False
+    elif args.verify_retry:
+        logger.warning(
+            "--verify-retry is deprecated; switch to --agent-in-loop for "
+            "mid-session oracle verification. This flag will be removed in v3.1."
+        )
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.metrics.parent.mkdir(parents=True, exist_ok=True)
@@ -335,6 +389,13 @@ def main() -> int:
     )
 
     for idx, inst in enumerate(to_run, 1):
+        if idx > 1 and args.instance_cooldown > 0:
+            logger.info(
+                "cooldown: sleeping %ds before next instance to let NIM RPM window reset",
+                args.instance_cooldown,
+            )
+            time.sleep(args.instance_cooldown)
+
         iid = inst["instance_id"]
         repo = inst["repo"]
         base = inst["base_commit"]
@@ -362,18 +423,44 @@ def main() -> int:
                 if args.include_hints and inst.get("hints_text"):
                     hints_block = HINTS_BLOCK_TEMPLATE.format(hints_text=inst["hints_text"].strip())
                 architect_block = ARCHITECT_BLOCK if args.architect else ""
+                in_loop_block = IN_LOOP_BLOCK if args.agent_in_loop else ""
                 prompt = DEFAULT_PROMPT_TEMPLATE.format(
                     problem_statement=inst["problem_statement"],
                     hints_block=hints_block,
                     architect_block=architect_block,
+                    in_loop_block=in_loop_block,
                 )
                 try:
-                    godspeed_payload = _run_godspeed(
-                        args.model, prompt, workspace, args.per_task_timeout
-                    )
+                    if args.agent_in_loop:
+                        # run_in_loop is a sibling script module; import by
+                        # path since run.py is typically invoked as a script.
+                        import sys as _sys
+
+                        _sys.path.insert(0, str(Path(__file__).parent))
+                        from run_in_loop import run_one as _run_one_in_loop
+
+                        godspeed_payload = _run_one_in_loop(
+                            instance_id=iid,
+                            model=args.model,
+                            prompt=prompt,
+                            project_dir=workspace,
+                            split=args.split,
+                            timeout_s=args.per_task_timeout,
+                            verify_workdir=args.out.parent.resolve(),
+                            max_iterations=40,
+                            tool_set="full" if args.allow_web_search else "local",
+                        )
+                    else:
+                        godspeed_payload = _run_godspeed(
+                            args.model, prompt, workspace, args.per_task_timeout
+                        )
                     if godspeed_payload.get("_shell_exit_code") != 0:
                         metrics["status"] = f"agent_exit_{godspeed_payload.get('_shell_exit_code')}"
                     patch = _capture_patch(base, workspace)
+                    metrics["agent_in_loop"] = bool(args.agent_in_loop)
+                    metrics["verify_call_count"] = godspeed_payload.get("verify_call_count", 0)
+                    metrics["iterations_used"] = godspeed_payload.get("iterations_used")
+                    metrics["exit_reason"] = godspeed_payload.get("exit_reason")
                     metrics["verify_retried"] = False
                     if args.verify_retry and patch.strip():
                         # verify_patch is a sibling module; this runner is

@@ -1,6 +1,6 @@
 [project]
 name = "godspeed"
-version = "2.12.0"
+version = "3.1.0"
 description = "Security-first open-source coding agent with parallel tool execution, multimodal input, 4-tier permissions, audit trails, and 200+ LLM provider support"
 readme = "README.md"
 license = "MIT"
@@ -45,10 +45,18 @@ dependencies = [
     "gitpython>=3.1.46,<4.0",
     "diff-match-patch>=20241021",
     "pyyaml>=6.0,<7.0",
+    # System introspection for SystemOptimizerTool (inspect/recommend modes).
+    # Cross-platform; ~800KB. Lighter than keeping it as an optional extra
+    # because the tool is registered by default and CI needs it to test.
+    "psutil>=5.9,<8.0",
     # Transitive pin-up: aiohttp is pulled in via litellm; versions < 3.13.4
     # have 10 CVEs (CVE-2026-34513..34525, CVE-2026-22815). Pin-up ensures CI
     # and consumers get the patched release regardless of litellm's own bound.
     "aiohttp>=3.13.4",
+    # python-dotenv CVE-2026-28684 is known (fix in 1.2.2) but litellm pins
+    # python-dotenv==1.0.1 strictly, making a pin-up unsatisfiable. CI's
+    # pip-audit call suppresses this one CVE via --ignore-vuln below. We'll
+    # remove the suppression when litellm relaxes its bound.
 ]
 
 [project.optional-dependencies]

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import platform
 import shutil
@@ -14,6 +15,47 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUT = 120
 MAX_TIMEOUT = 600
+
+
+def _kill_process_tree(pid: int) -> None:
+    """Force-kill a process and all its descendants.
+
+    Why this exists:
+      ``subprocess.run(..., timeout=N)`` is documented to kill the child
+      on TimeoutExpired, but on Windows (and sometimes on Linux with
+      certain pipe configurations) that kill does NOT propagate to
+      grandchildren. When the agent runs ``shell(command='python')`` the
+      shell spawns git-bash which spawns an interactive Python — killing
+      git-bash leaves Python holding stdout/stderr pipes, and
+      subprocess.run blocks indefinitely waiting for them to close.
+
+      Observed in SWE-Bench dev-23 attempt #3: instance sqlfluff-1517
+      hung for ~100 minutes after a bare ``python`` REPL call despite
+      the tool's 120s timeout. Instance sqlfluff-1733 hung ~60 min on a
+      recursive ``sqlfluff fix``. Both required manual PID kill to
+      unstick.
+
+    This helper uses psutil's ``children(recursive=True)`` to walk the
+    tree and issue kill() to each — which translates to
+    ``TerminateProcess`` on Windows and SIGKILL on Unix. Cross-platform.
+
+    Best-effort: if any process in the tree has already exited we skip
+    it silently. Never raises to the caller.
+    """
+    try:
+        import psutil
+    except ImportError:
+        logger.warning("psutil not available; cannot force-kill process tree for pid=%d", pid)
+        return
+    try:
+        parent = psutil.Process(pid)
+    except psutil.NoSuchProcess:
+        return
+    for child in parent.children(recursive=True):
+        with contextlib.suppress(psutil.NoSuchProcess, psutil.AccessDenied):
+            child.kill()
+    with contextlib.suppress(psutil.NoSuchProcess, psutil.AccessDenied):
+        parent.kill()
 
 
 def _detect_shell() -> list[str]:
@@ -111,30 +153,59 @@ class ShellTool(Tool):
         shell_prefix = _detect_shell()
         logger.info("shell.execute command=%r timeout=%d", command, timeout)
 
+        # Use Popen + communicate(timeout=...) instead of subprocess.run so
+        # we can explicitly kill the process tree on timeout. subprocess.run's
+        # timeout cleanup is unreliable on Windows when the child has holding
+        # pipes (see _kill_process_tree docstring).
         try:
-            proc = subprocess.run(
+            proc = subprocess.Popen(
                 [*shell_prefix, command],
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
                 text=True,
-                timeout=timeout,
                 cwd=str(context.cwd),
             )
-        except subprocess.TimeoutExpired:
-            logger.warning("shell.timeout command=%r timeout=%d", command, timeout)
-            return ToolResult.failure(f"Command timed out after {timeout}s")
         except FileNotFoundError as exc:
             return ToolResult.failure(f"Shell not found: {exc}")
 
+        try:
+            stdout, stderr = proc.communicate(timeout=timeout)
+            returncode = proc.returncode
+        except subprocess.TimeoutExpired:
+            logger.warning(
+                "shell.timeout pid=%d command=%r timeout=%d - force-killing process tree",
+                proc.pid,
+                command,
+                timeout,
+            )
+            _kill_process_tree(proc.pid)
+            # After killing the tree, drain any buffered output so the
+            # underlying pipe FDs close and we don't leak them. Give it
+            # a short window; if still blocked, move on with empty output.
+            try:
+                stdout, stderr = proc.communicate(timeout=5)
+            except subprocess.TimeoutExpired:
+                stdout, stderr = "", ""
+            tail = ""
+            if stdout:
+                tail += f"\nSTDOUT tail:\n{stdout[-2000:]}"
+            if stderr:
+                tail += f"\nSTDERR tail:\n{stderr[-2000:]}"
+            return ToolResult.failure(
+                f"Command timed out after {timeout}s and was force-killed "
+                f"(including any child processes).{tail}"
+            )
+
         output_parts: list[str] = []
-        if proc.stdout:
-            output_parts.append(proc.stdout)
-        if proc.stderr:
-            output_parts.append(f"STDERR:\n{proc.stderr}")
+        if stdout:
+            output_parts.append(stdout)
+        if stderr:
+            output_parts.append(f"STDERR:\n{stderr}")
 
         output = "\n".join(output_parts) if output_parts else "(no output)"
 
-        if proc.returncode != 0:
-            return ToolResult.failure(f"Exit code {proc.returncode}\n{output}")
+        if returncode != 0:
+            return ToolResult.failure(f"Exit code {returncode}\n{output}")
 
         return ToolResult.success(output)
 

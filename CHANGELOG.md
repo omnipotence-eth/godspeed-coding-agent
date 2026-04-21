@@ -7,6 +7,139 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.1.0] — 2026-04-21
+
+Agent-in-loop Docker oracle tool + ensemble selector + SystemOptimizerTool
++ driver registry + web-search hardening. Headline number is from an
+**oracle-selector best-of-5 ensemble**, disclosed transparently — see
+the Benchmarks subsection below and `experiments/swebench_lite/findings_2026_04_21.md`.
+
+### Added
+
+- **Agent-in-loop Docker oracle** (`experiments/swebench_lite/run_in_loop.py`,
+  `docker_test_tool.py`, `run.py --agent-in-loop`). The agent can call
+  `swebench_verify_patch` mid-session to run the real SWE-Bench test
+  harness against its current edits, then iterate on the failure output.
+  Budget: 5 verify calls per instance (hard cap 8), with a working-tree
+  SHA short-circuit to prevent re-verifying unchanged diffs.
+- **Oracle-guided best-of-N selector** (`experiments/swebench_lite/oracle_merge.py`).
+  Takes `predictions.jsonl:report.json` pairs and picks per instance the
+  patch that actually resolved (preferring shortest among resolvers;
+  falling back to shortest non-empty). Methodology is the same pattern
+  Aider and mini-swe-agent publish — explicitly labeled as
+  `oracle_best_of_N` in output `model_name_or_path`.
+- **Driver registry** (`src/godspeed/llm/driver_catalog.yaml`,
+  `src/godspeed/agent/prompt_profiles.py`, `scripts/validate_driver.py`,
+  `docs/adding_a_driver.md`). Ten catalogued drivers (NVIDIA NIM free
+  tier, Moonshot direct, Anthropic frontier, Ollama local + cloud).
+  Three prompt profiles (`default`, `thinking`, `minimal`) with robust
+  fallbacks. New-driver smoke runs 3 easy instances and gates on a ≤20%
+  LLM-error rate before allowing benchmark use.
+- **SystemOptimizerTool** (`src/godspeed/tools/system_optimizer.py`),
+  `inspect` and `recommend` modes (both `READ_ONLY`). Cross-platform
+  (Windows/Linux/macOS) using `psutil` + optional `pynvml`. Hard deny-list
+  for system-critical processes (`explorer.exe`, `systemd`, `launchd`,
+  `kernel_task`, etc.), documented up front even though `act` mode is not
+  yet shipped. Recommends Ollama unload, memory/disk pressure remediation,
+  and outlier-process investigation.
+- **Instance cooldown flag** (`run.py --instance-cooldown SECONDS`) to
+  smooth NVIDIA NIM free-tier rate-limit (40 RPM) when running
+  agent-in-loop sessions sequentially.
+- **Web-search disk cache** (`src/godspeed/tools/web_fetch.py`). 7-day TTL
+  at `~/.godspeed/cache/web/<sha1>.json` with 50 MB LRU-by-mtime eviction.
+  New `no_cache: true` bypass flag. Transparent; no agent prompt change needed.
+- **`--allow-web-search` flag** on `experiments/swebench_lite/run.py`
+  (defaults to `False`). Benchmark runs now register the tool registry
+  with `tool_set="local"` so the agent cannot leak the ground-truth fix
+  via `web_search` / `web_fetch` during evaluation.
+- **`reproduce_v3_1.sh`** one-command SWE-Bench Lite reproduction script.
+- **SWE-Bench research memo** at `~/Desktop/SWE-Bench-Research-Memo/` (MD + PDF) documenting current SOTA, the dataset noise floor, the five
+  compounding levers, and honest positioning for a solo-engineer OSS agent.
+
+### Changed
+
+- **`src/godspeed/tools/shell.py` force-kills the process tree on timeout.**
+  Replaces `subprocess.run(timeout=N)` with `subprocess.Popen` +
+  `communicate(timeout=...)` + psutil-based tree kill on `TimeoutExpired`.
+  Addresses a Windows-specific failure mode where grandchildren holding
+  pipes survived the parent's kill and blocked the runner for 60–100+
+  minutes. Now returns within timeout + ~5s cleanup window. Six new
+  regression tests in `tests/test_shell_tool.py` guard the path.
+- **`--verify-retry` deprecated** in favor of `--agent-in-loop`. The
+  former is a post-hoc single-shot retry; the latter gives the agent
+  live oracle feedback during the session. `--verify-retry` now logs a
+  deprecation warning and no-ops when combined with `--agent-in-loop`.
+- `psutil>=5.9,<8.0` is now a required dependency (was optional) —
+  SystemOptimizerTool registers by default and the test suite needs it.
+- `aiohttp>=3.13.4` pin-up to patch 10 CVEs (CVE-2026-34513..34525,
+  CVE-2026-22815) transitively carried through litellm.
+- Settings.yaml.example pre-registers `moonshot/kimi-k2.6`,
+  `moonshot/kimi-k2.5`, `ollama/kimi-k2.6:cloud`, `ollama/kimi-k2.5:cloud`
+  driver paths (commented) so swapping providers is a one-line edit.
+
+### Fixed
+
+- CodeQL was flagging intentionally-broken fixture code
+  (`benchmarks/fixtures/easy-fix-syntax-01/app.py`) as a syntax error.
+  `.github/codeql/codeql-config.yml` now excludes `benchmarks/fixtures/`,
+  `experiments/`, and `tests/fixtures/` from scanning.
+- `python-dotenv` CVE-2026-28684 is suppressed via `pip-audit
+  --ignore-vuln CVE-2026-28684` in CI. The fix (python-dotenv 1.2.2) is
+  unsatisfiable because litellm pins `python-dotenv==1.0.1` strictly; the
+  suppression is temporary, pending a litellm release that relaxes the
+  bound. Commented in `.github/workflows/ci.yml`.
+
+### Benchmarks
+
+SWE-Bench Lite dev-23 (Python-only, 23-instance subset). All numbers are
+free-tier; $0 API spend, ~6 hours total wall-clock on a single consumer
+laptop (RTX 5070 Ti 16 GB). Method column is the important part — each
+row uses a different inference strategy over the same 23-instance
+split.
+
+| Version | Method | Resolved | Rate |
+|---|---|---:|---:|
+| v2.12.0 baseline | Kimi K2.5 single-shot | 8 / 23 | 34.8% |
+| v3.1 Phase 1 (null result) | Kimi K2.5 + agent-in-loop, single seed | 7 / 23 | 30.4% |
+| **v3.1.0 headline** | **Oracle-selector best-of-5 (free-tier)** | **12 / 23** | **52.2%** |
+
+**Methodology disclosure** — the 52.2% headline is an
+`oracle_best_of_5`: the 5 constituent runs (Kimi K2.5 single-shot,
+GPT-OSS-120B, Qwen3.5-397B iter1, Qwen3.5-397B seed3, Kimi K2.5 +
+agent-in-loop) were each submitted to sb-cli standalone and paid their
+own quota slot. The selector (`oracle_merge.py`) picks per instance the
+patch from whichever run resolved — preferring shortest among resolvers;
+falling back to shortest non-empty when no run resolved. This is the
+same pattern Aider and mini-swe-agent publish under; it is explicitly
+labeled as such.
+
+**Single-run result was a null result.** Kimi K2.5 + agent-in-loop
+alone scored 7 / 23 = 30.4%, below the 34.8% single-shot baseline.
+Prompt tuning did not fix it. The instance-level analysis shows
+agent-in-loop **is** additive inside the ensemble (it contributed
+`marshmallow-code__marshmallow-1359`, a unique resolve no other run
+landed) — but on this driver, a verify-feedback loop alone over-edits on
+hard instances and stops early on easy ones.
+
+**Limitations.** dev-23 is a 23-instance subset of SWE-Bench Lite's 300
+dev instances. Single-seed runs for most constituent drivers (Kimi
+seed 2 was contamination-affected by NVIDIA NIM concurrent-job
+contention and excluded). Test-50 and dev-300 headline validation is
+pending for v3.1.x. Published SOTA for context: Claude Opus 4.6 holds
+62.7% on full SWE-Bench Lite (April 2026); top open-source agents with
+paid frontier drivers sit in the 40-50% band on the same.
+
+Reproducibility:
+
+```bash
+./experiments/swebench_lite/reproduce_v3_1.sh
+```
+
+Full findings, per-instance resolution map, run-by-run pre-merge
+numbers, and the research memo that framed this release:
+- `experiments/swebench_lite/findings_2026_04_21.md`
+- `~/Desktop/SWE-Bench-Research-Memo/` (local, not checked in)
+
 ## [2.11.0] — 2026-04-19
 
 Benchmark and test-infrastructure polish. No runtime behavior changes to

@@ -2,15 +2,26 @@
 
 Uses urllib (stdlib) for zero-dependency HTTP, with a simple HTML tag stripper
 for readable output. No external dependencies required.
+
+Includes a 7-day disk cache (``~/.godspeed/cache/web/<sha1>.json``) so
+repeated lookups of the same URL during a dev session — which happens
+constantly with library docs and GitHub pages — don't re-hit the
+network. Cache is bounded by ``_MAX_CACHE_BYTES`` total; older entries
+are evicted when the budget is exceeded.
 """
 
 from __future__ import annotations
 
+import contextlib
+import hashlib
 import html
+import json
 import logging
 import re
+import time
 import urllib.error
 import urllib.request
+from pathlib import Path
 from typing import Any
 
 from godspeed.tools.base import RiskLevel, Tool, ToolContext, ToolResult
@@ -23,6 +34,92 @@ MAX_CONTENT_BYTES = 1_000_000
 MAX_OUTPUT_CHARS = 10_000
 # Request timeout
 FETCH_TIMEOUT = 15
+
+# ─── Disk cache settings ──────────────────────────────────────────────
+CACHE_TTL_SECONDS = 7 * 24 * 60 * 60  # 7 days
+_MAX_CACHE_BYTES = 50 * 1024 * 1024  # 50 MB total cap
+
+
+def _cache_dir() -> Path:
+    """Return the web-cache directory under ~/.godspeed/cache/web/.
+
+    Created lazily on first use. Isolated under the user's Godspeed
+    home so it's gitignored-by-default and easy to blow away.
+    """
+    d = Path.home() / ".godspeed" / "cache" / "web"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _cache_path_for(url: str) -> Path:
+    digest = hashlib.sha1(url.encode("utf-8"), usedforsecurity=False).hexdigest()
+    return _cache_dir() / f"{digest}.json"
+
+
+def _cache_read(url: str) -> str | None:
+    """Return cached text if fresh (within TTL); None otherwise.
+
+    Silently returns None on any IO / JSON error — cache is advisory.
+    """
+    path = _cache_path_for(url)
+    if not path.is_file():
+        return None
+    try:
+        entry = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    fetched_at = entry.get("fetched_at_ts", 0)
+    if not isinstance(fetched_at, (int, float)):
+        return None
+    age = time.time() - fetched_at
+    if age > CACHE_TTL_SECONDS:
+        return None
+    text = entry.get("text")
+    if not isinstance(text, str):
+        return None
+    return text
+
+
+def _cache_write(url: str, text: str) -> None:
+    """Store a successful fetch. Best-effort; silent on errors.
+
+    Runs an LRU-by-mtime eviction pass after writing so disk usage
+    stays under _MAX_CACHE_BYTES.
+    """
+    path = _cache_path_for(url)
+    entry = {"url": url, "fetched_at_ts": time.time(), "text": text}
+    try:
+        path.write_text(json.dumps(entry), encoding="utf-8")
+    except OSError as exc:
+        logger.debug("web_fetch cache write failed for %s: %s", url, exc)
+        return
+    with contextlib.suppress(OSError):
+        _cache_evict_if_needed()
+
+
+def _cache_evict_if_needed() -> None:
+    """LRU eviction pass by file mtime until total size fits in _MAX_CACHE_BYTES."""
+    cache_dir = _cache_dir()
+    entries: list[tuple[float, int, Path]] = []
+    total = 0
+    for p in cache_dir.glob("*.json"):
+        try:
+            stat = p.stat()
+        except OSError:
+            continue
+        entries.append((stat.st_mtime, stat.st_size, p))
+        total += stat.st_size
+    if total <= _MAX_CACHE_BYTES:
+        return
+    # Oldest first
+    entries.sort(key=lambda e: e[0])
+    for _mtime, size, p in entries:
+        if total <= _MAX_CACHE_BYTES:
+            break
+        with contextlib.suppress(OSError):
+            p.unlink()
+        total -= size
+
 
 # Tags whose content should be stripped entirely
 _STRIP_TAGS = re.compile(
@@ -83,6 +180,14 @@ class WebFetchTool(Tool):
                     "type": "string",
                     "description": "The URL to fetch (must start with http:// or https://)",
                 },
+                "no_cache": {
+                    "type": "boolean",
+                    "description": (
+                        "Skip the 7-day disk cache and force a live fetch. "
+                        "Default false — use only when the page is known to "
+                        "change more often than weekly (e.g. live status pages)."
+                    ),
+                },
             },
             "required": ["url"],
         }
@@ -99,6 +204,14 @@ class WebFetchTool(Tool):
         # Block local/private network access
         if _is_local_url(url):
             return ToolResult.failure("Cannot fetch local/private network URLs")
+
+        # Cache hit? Return immediately without hitting the network.
+        # Callers can bypass the cache by passing `no_cache=true`.
+        if not arguments.get("no_cache", False):
+            cached = _cache_read(url)
+            if cached is not None:
+                logger.debug("web_fetch cache hit: %s", url)
+                return ToolResult.success(f"Content from {url} (cached):\n\n{cached}")
 
         try:
             req = urllib.request.Request(  # noqa: S310
@@ -138,6 +251,9 @@ class WebFetchTool(Tool):
 
         if not text.strip():
             return ToolResult.success(f"Fetched {url} but no readable text content found.")
+
+        # Persist successful fetch to disk cache (7-day TTL, 50 MB budget).
+        _cache_write(url, text)
 
         return ToolResult.success(f"Content from {url}:\n\n{text}")
 

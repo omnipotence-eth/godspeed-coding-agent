@@ -36,7 +36,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v7
       - run: uv sync --all-extras
-      - run: uv run pip-audit
+      # CVE-2026-28684 (python-dotenv 1.0.1 -> 1.2.2) is suppressed:
+      # litellm pins python-dotenv==1.0.1 strictly, making a pin-up
+      # unsatisfiable. Remove this ignore when litellm relaxes its
+      # bound (tracked in pyproject.toml dependencies block).
+      - run: uv run pip-audit --ignore-vuln CVE-2026-28684
       - run: uv run bandit -r src/ -ll
 
   test:

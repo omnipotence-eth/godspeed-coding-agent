@@ -309,6 +309,15 @@ def main() -> int:
         help="Wall-clock timeout for each godspeed invocation (seconds)",
     )
     parser.add_argument(
+        "--instance-cooldown",
+        type=int,
+        default=0,
+        help="Seconds to sleep between instances. Useful with --agent-in-loop on "
+        "rate-limited free-tier providers (NVIDIA NIM R&D free tier is 40 RPM "
+        "shared; without cooldown, back-to-back instances sustain saturation and "
+        "most crash with llm_error). 60-90s recommended for agent-in-loop runs.",
+    )
+    parser.add_argument(
         "--resume",
         action="store_true",
         help="Skip instances already present in --out",
@@ -386,6 +395,13 @@ def main() -> int:
     )
 
     for idx, inst in enumerate(to_run, 1):
+        if idx > 1 and args.instance_cooldown > 0:
+            logger.info(
+                "cooldown: sleeping %ds before next instance to let NIM RPM window reset",
+                args.instance_cooldown,
+            )
+            time.sleep(args.instance_cooldown)
+
         iid = inst["instance_id"]
         repo = inst["repo"]
         base = inst["base_commit"]

@@ -52,25 +52,19 @@ Constraints:
 """
 
 IN_LOOP_BLOCK = """
-IMPORTANT - You are REQUIRED to call the `swebench_verify_patch` tool
-before stopping. This tool runs the real SWE-Bench test harness on your
-current edits and tells you whether the instance is resolved. Do not stop
-without verifying.
+You have a `swebench_verify_patch` tool. Call it once you believe your
+fix is complete to check whether the instance resolves. If it returns
+`resolved=False`, read the test output tail and revise. Budget: 5 verify
+calls per instance; the tool refuses duplicate calls on an unchanged
+working tree, so you must edit between calls.
 
-Workflow:
-  1. Explore the repo and identify the fix location.
-  2. Make your edit with file_edit / file_write.
-  3. Call `swebench_verify_patch` (no arguments needed).
-  4. If it returns `resolved=True`, stop. You are done.
-  5. If it returns `resolved=False`, read the test output tail carefully
-     to see which test failed and why. Revise your edit, then call
-     `swebench_verify_patch` again.
-  6. Budget: 5 calls per instance. The tool refuses duplicate calls with
-     an unchanged working tree, so you must actually edit between calls.
-
-Skipping the verify step and stopping on an unverified patch is the
-wrong behavior - the whole point of this session is to iterate with the
-test harness as your oracle.
+Guidance:
+- Prefer a minimal targeted fix. A correct patch is usually under 40
+  lines; a 100+ line rewrite is often a wrong-direction signal.
+- If a revise makes test failures worse, prefer to revert that edit
+  before piling on more changes.
+- If you're stuck after 2-3 verify attempts, commit what you have and
+  stop rather than burning iterations.
 """
 
 HINTS_BLOCK_TEMPLATE = """

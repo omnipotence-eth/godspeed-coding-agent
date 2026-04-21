@@ -51,11 +51,18 @@ async def _run_one_async(
     timeout_s: int,
     verify_workdir: Path,
     max_iterations: int,
+    tool_set: str = "local",
 ) -> dict:
     """Run one agent-in-loop session; return metrics payload.
 
     Mirrors the setup in ``godspeed.cli._headless_run`` but scoped to
     a single SWE-Bench instance with the oracle tool registered.
+
+    ``tool_set`` defaults to ``"local"`` so SWE-Bench benchmark runs do
+    not have access to ``web_search`` / ``web_fetch`` — the agent could
+    otherwise leak the ground-truth fix by searching GitHub for the
+    instance id. Override to ``"full"`` for real-world (non-benchmark)
+    sessions that need live library docs.
     """
     # Imports kept local so this module stays cheap to import from run.py
     from godspeed.agent.conversation import Conversation
@@ -89,10 +96,11 @@ async def _run_one_async(
             "instance_id": instance_id,
             "split": split,
             "model": effective_model,
+            "tool_set": tool_set,
         },
     )
 
-    registry, risk_levels = _build_tool_registry()
+    registry, risk_levels = _build_tool_registry(tool_set=tool_set)
 
     # Register the per-instance oracle tool AFTER the default registry.
     verify_tool = SWEBenchVerifyTool(
@@ -231,6 +239,7 @@ def run_one(
     timeout_s: int,
     verify_workdir: Path,
     max_iterations: int = 40,
+    tool_set: str = "local",
 ) -> dict:
     """Synchronous entry point for ``run.py``'s main loop.
 
@@ -239,6 +248,10 @@ def run_one(
     ``_shell_exit_code``, ``tool_call_count``, ``cost_usd``,
     ``output_tokens``. Extras (``verify_call_count``, ``iterations_used``,
     ``exit_reason``) are included for the metrics JSONL line.
+
+    ``tool_set`` defaults to ``"local"`` (no web tools) so benchmark
+    runs cannot leak test ground truth via web search. Override to
+    ``"full"`` for real-world agent use.
     """
     t0 = time.monotonic()
     try:
@@ -252,6 +265,7 @@ def run_one(
                 timeout_s=timeout_s,
                 verify_workdir=verify_workdir,
                 max_iterations=max_iterations,
+                tool_set=tool_set,
             )
         )
         payload["_shell_exit_code"] = 0 if not payload.get("timed_out") else 6

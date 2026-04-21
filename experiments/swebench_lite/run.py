@@ -349,6 +349,13 @@ def main() -> int:
         "Replaces --verify-retry (post-hoc single-shot retry). Requires swebench "
         "installed in WSL Ubuntu (Windows) or natively (Linux).",
     )
+    parser.add_argument(
+        "--allow-web-search",
+        action="store_true",
+        help="Enable web_search / web_fetch tools during agent sessions. OFF by default "
+        "for benchmark integrity — otherwise the agent could search GitHub for the "
+        "ground-truth fix by instance id. Only set for real-world (non-benchmark) runs.",
+    )
     args = parser.parse_args()
 
     if args.agent_in_loop and args.verify_retry:
@@ -431,6 +438,7 @@ def main() -> int:
                             timeout_s=args.per_task_timeout,
                             verify_workdir=args.out.parent.resolve(),
                             max_iterations=40,
+                            tool_set="full" if args.allow_web_search else "local",
                         )
                     else:
                         godspeed_payload = _run_godspeed(

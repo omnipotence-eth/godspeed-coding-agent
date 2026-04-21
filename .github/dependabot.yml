@@ -5,6 +5,15 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 10
+    ignore:
+      # LiteLLM pins pydantic==2.12.5 strictly (BerriAI/litellm);
+      # Dependabot bumps to 2.13.x create unresolvable deps.
+      # Un-ignore once LiteLLM relaxes the pin. See PR #55 discussion.
+      - dependency-name: "pydantic"
+      # LiteLLM also pins python-dotenv==1.0.1 strictly; 1.2.x causes
+      # the same resolution conflict. CVE-2026-28684 is suppressed in
+      # ci.yml pip-audit pending litellm relaxation.
+      - dependency-name: "python-dotenv"
 
   - package-ecosystem: github-actions
     directory: "/"

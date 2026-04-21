@@ -53,6 +53,18 @@ bash experiments/swebench_lite/leaderboard_submission/run_local_swebench_eval.sh
 
 The runner detects git-bash vs WSL path styles, invokes the harness via WSL Ubuntu (swebench's `resource` import is Unix-only), and copies the per-instance artifacts into the submission's `logs/` subtree automatically.
 
+### ⚠️ Environmental caveat: local harness (swebench 4.1.0) vs sb-cli disagreement
+
+A 3-instance smoke run (2026-04-21) exposed a Docker-image drift bug in the pip-installed `swebench` 4.1.0 harness that affects pvlib instances:
+
+- **Symptom:** `pvlib__pvlib-python-1072` was graded `resolved=False` locally despite a byte-identical patch that sb-cli's cloud graded `resolved=True`.
+- **Root cause:** the pvlib Docker testbed image ships NumPy 2.0+, which removed `np.Inf`. pvlib's `singlediode.py` still uses the old alias, so `import pvlib` raises `AttributeError` at test collection time, causing every test in `test_temperature.py` to fail before our patch is exercised. This is a base-image upstream issue in swebench's published Docker images, not a defect in our patch.
+- **Blast radius:** ~5 of our 23 instances are pvlib. Running the full local harness would therefore produce 4-5 fewer "resolved" instances than sb-cli's correct grading.
+
+**Recommendation:** do NOT use the local harness output as the `logs/` source for the leaderboard submission until either (a) swebench's pvlib Docker image is fixed upstream, or (b) the local environment pins NumPy < 2.0 in the testbed image. Wait for sb-cli dev quota reset and use its cloud reports as authoritative.
+
+Smoke evidence committed in the `logs_smoke3/` subdirectory alongside this README so reviewers can audit the discrepancy directly.
+
 Either path is fine to close the leaderboard requirement; until one of the two is done, this directory is *complete in content but not in format* per SWE-bench's checklist.
 
 ## Dev-23 vs full-Lite

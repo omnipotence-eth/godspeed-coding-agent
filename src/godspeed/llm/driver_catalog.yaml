@@ -1,0 +1,153 @@
+# Godspeed LLM driver catalog
+#
+# Each entry keys on a LiteLLM model string and records the properties
+# Godspeed needs to handle the driver correctly:
+#   - provider: LiteLLM provider prefix ("nvidia_nim", "moonshot",
+#     "anthropic", "openai", "ollama", "azure", ...)
+#   - context_window: tokens (hard ceiling; we compact at 0.8 * this)
+#   - prompt_profile: which system-prompt template suits the driver.
+#     Choices live in src/godspeed/agent/prompt_profiles.py.
+#       "default"  — general instruction-tuned chat (most models)
+#       "thinking" — reasoning/extended-thinking models (Qwen3-Next Thinking,
+#                    DeepSeek R1, o1-style)
+#       "minimal"  — tiny or structure-rigid models (Ollama 1B-4B)
+#   - tool_call_format: "openai" (tools array) or "xml" (inline)
+#   - requires_env: name of env var (API key) the driver needs
+#   - cost_per_mtok_in / cost_per_mtok_out: for budget accounting (USD
+#     per 1M tokens); 0.0 for free tiers
+#   - known_ceilings: published or measured resolve rates (SWE-Bench Lite
+#     dev, test, etc.) for sanity-checking runs
+#   - notes: freeform operator context
+#
+# Adding a new driver:
+#   1. Append an entry here with the LiteLLM model string as the key.
+#   2. Pick the closest prompt_profile; adjust later if validate_driver.py
+#      shows empty-patch rate > 20% or agent_exit_4 rate > 20%.
+#   3. Run `scripts/validate_driver.py --model <model>` to smoke-test.
+#   4. If smoke passes, the driver can be used in ensembles (Phase 4).
+#
+# Do NOT add a driver here without a corresponding validate_driver.py
+# pass — untested drivers drag benchmark numbers down.
+
+version: 1
+
+drivers:
+
+  # ─── Free-tier — NVIDIA NIM R&D (40 RPM shared) ─────────────────────
+  nvidia_nim/moonshotai/kimi-k2.5:
+    provider: nvidia_nim
+    context_window: 262144
+    prompt_profile: default
+    tool_call_format: openai
+    requires_env: NVIDIA_NIM_API_KEY
+    cost_per_mtok_in: 0.0
+    cost_per_mtok_out: 0.0
+    known_ceilings:
+      swe_bench_lite_dev_23: 0.348        # N=3 single-shot baseline
+      swe_bench_lite_test_50_seed1: 0.240 # partial contention
+      swe_bench_lite_test_50_seed2: 0.380 # clean NIM window
+    notes: "Free-tier winner 2026-04 benchmark shootout. Cap NIM jobs at 3 concurrent."
+
+  nvidia_nim/qwen/qwen3.5-397b-a17b:
+    provider: nvidia_nim
+    context_window: 131072
+    prompt_profile: default
+    tool_call_format: openai
+    requires_env: NVIDIA_NIM_API_KEY
+    cost_per_mtok_in: 0.0
+    cost_per_mtok_out: 0.0
+    known_ceilings:
+      swe_bench_lite_dev_23_n3_mean: 0.217
+      swe_bench_lite_dev_23_n3_std: 0.044
+    notes: "N=3 mean 21.7% +/- 4.4pp on dev-23. Broader multi-seed baseline."
+
+  nvidia_nim/openai/gpt-oss-120b:
+    provider: nvidia_nim
+    context_window: 131072
+    prompt_profile: default
+    tool_call_format: openai
+    requires_env: NVIDIA_NIM_API_KEY
+    cost_per_mtok_in: 0.0
+    cost_per_mtok_out: 0.0
+    known_ceilings:
+      swe_bench_lite_test_50_seed1: 0.260
+      benchmarks_fixtures_mechanical: 1.000  # 13/13 on internal fixtures
+    notes: "Mechanical-pass leader; competitive test-50 driver."
+
+  nvidia_nim/moonshotai/kimi-k2-thinking:
+    provider: nvidia_nim
+    context_window: 262144
+    prompt_profile: thinking
+    tool_call_format: openai
+    requires_env: NVIDIA_NIM_API_KEY
+    cost_per_mtok_in: 0.0
+    cost_per_mtok_out: 0.0
+    notes: "Reasoning variant; use thinking prompt profile. Not yet benchmarked on SWE-Bench."
+
+  # ─── Paid — Moonshot direct (K2.6 not on NIM free as of 2026-04-20) ─
+  moonshot/kimi-k2.6:
+    provider: moonshot
+    context_window: 262144
+    prompt_profile: default
+    tool_call_format: openai
+    requires_env: MOONSHOT_API_KEY
+    cost_per_mtok_in: 0.95
+    cost_per_mtok_out: 4.00
+    known_ceilings:
+      swe_bench_verified_claimed: 0.802  # per Moonshot, not independently reproduced
+    notes: "Flagship; requires funded account. 80.2% Verified claimed."
+
+  moonshot/kimi-k2.5:
+    provider: moonshot
+    context_window: 262144
+    prompt_profile: default
+    tool_call_format: openai
+    requires_env: MOONSHOT_API_KEY
+    cost_per_mtok_in: 0.60
+    cost_per_mtok_out: 3.00
+    notes: "Direct equivalent of nvidia_nim/moonshotai/kimi-k2.5 without the 40 RPM cap."
+
+  # ─── Paid — Anthropic frontier ──────────────────────────────────────
+  anthropic/claude-opus-4-7:
+    provider: anthropic
+    context_window: 1000000
+    prompt_profile: default
+    tool_call_format: openai
+    requires_env: ANTHROPIC_API_KEY
+    cost_per_mtok_in: 15.00
+    cost_per_mtok_out: 75.00
+    known_ceilings:
+      swe_bench_verified: 0.876  # April 2026 leaderboard top
+      swe_bench_lite: null       # not separately published
+    notes: "Current SWE-Bench Verified leader (87.6%, April 2026). Phase 9 paid reference only."
+
+  anthropic/claude-sonnet-4-6:
+    provider: anthropic
+    context_window: 200000
+    prompt_profile: default
+    tool_call_format: openai
+    requires_env: ANTHROPIC_API_KEY
+    cost_per_mtok_in: 3.00
+    cost_per_mtok_out: 15.00
+    known_ceilings:
+      swe_bench_lite: 0.627  # Opus 4.6 actually — need to split if Sonnet differs
+    notes: "Mid-tier paid; good cost/capability balance for everyday use."
+
+  # ─── Local — Ollama (free, requires disk + VRAM) ────────────────────
+  ollama/qwen3:4b:
+    provider: ollama
+    context_window: 40960
+    prompt_profile: minimal
+    tool_call_format: openai
+    cost_per_mtok_in: 0.0
+    cost_per_mtok_out: 0.0
+    notes: "Default local fallback; 2.5 GB disk, ~3 GB VRAM when loaded."
+
+  ollama/qwen3-coder:latest:
+    provider: ollama
+    context_window: 262144
+    prompt_profile: default
+    tool_call_format: openai
+    cost_per_mtok_in: 0.0
+    cost_per_mtok_out: 0.0
+    notes: "MoE 30B-A3B; 18 GB disk, ~15 GB VRAM. Uses Qwen3-Coder tool-call parser shim."

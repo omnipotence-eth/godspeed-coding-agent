@@ -223,7 +223,7 @@ To test for model-family bias in the Kimi K2.5 judge result, the same 5-way ense
 
 **Judge agreement: 19/23 = 82.6%.**
 
-### Judge-union analysis (free uplift)
+### Judge-union ceiling (oracle-flavored upper bound)
 
 The two judges' errors are **non-overlapping** on the resolver-recovery axis:
 
@@ -231,18 +231,42 @@ The two judges' errors are **non-overlapping** on the resolver-recovery axis:
 - GPT-OSS misses astroid-1196, Kimi catches it.
 - Both miss pydicom-1256 (only `gpt_oss` resolves; both judges defaulted to `e1_kimi`).
 
-**If we apply a "either-judge-picks-a-resolver" union policy:**
-- 11 / 12 = **91.7%** picker accuracy when a resolver exists (up from 83.3% for either solo judge)
-- Projects to **11 / 23 = 47.8%** resolved (up from 43.5%)
-- Recovers **75% of oracle lift** (up from 50%) — `(11 - 8) / (12 - 8)`
+**Oracle-knowledge "either picks a resolver" union ceiling:**
+- 11 / 12 = **91.7%** picker accuracy if you knew which judge to trust per instance
+- Projects to **11 / 23 = 47.8%** resolved
+- Recovers **75% of oracle lift**
 
-**Cost:** ~3 min additional NIM time per ensemble run (judges in parallel). $0 in API spend.
+⚠️ **This 47.8% is a CEILING, not a deployable result.** Knowing "which judge picked the resolver" requires ground-truth verdicts (oracle access). A real non-oracle deployment must pick blindly when judges disagree — see the next section.
+
+### 2-judge plurality vote — the actual non-oracle result (NULL RESULT)
+
+When the oracle is removed and the selector applies a real **plurality vote with shortest-non-empty tiebreaker** (the rule we ship in `_aggregate_plurality`), the measured rate is **9/23 = 39.1% — worse than solo judge.**
+
+Why it regresses: the two judges agree on 19/23 instances (where plurality just echoes the solo judge). On the 4 disagreements, the shortest-non-empty tiebreaker has no signal about which slot resolves — it picks shorter patches under the "minimal change" prior. That prior is wrong on 3 of 4 disagreement instances:
+
+| instance_id | Kimi | GPT-OSS | shortest-non-empty pick | actually resolves? |
+|---|---|---|---|---|
+| marshmallow-1359 | seed3 | p1_dev23_v3 | seed3 | ✗ (only p1_dev23_v3 resolves) |
+| pvlib-1606 | e1_kimi | gpt_oss | gpt_oss | ✓ (4 runs resolve) |
+| astroid-1196 | iter1 | p1_dev23_v3 | p1_dev23_v3 | ✗ (only iter1 resolves) |
+| sqlfluff-1517 | seed3 | gpt_oss | seed3 | ✗ (no run resolves) |
+
+Net: plurality loses 1 instance vs solo Kimi (astroid-1196: Kimi solo got it, plurality flipped to p1_dev23_v3), and gains nothing the solo judge didn't already have on the disagreement slots.
+
+### What we learned about multi-judge
+
+- **2-judge plurality with simple tiebreakers is a regression, not a lift.** The optimistic "either-judge wins" framing is an oracle reading.
+- A 3+ judge ensemble could break ties via majority (no shortest-non-empty needed in most disagreement cases), which is the only path to a real lift. The 3rd-judge run (Kimi-K2-Thinking) was launched but the NIM endpoint repeatedly timed out and the run was inconclusive.
+- **The honest published number remains the solo judge at 10/23 = 43.5%.** Multi-judge work is a research direction, not a shippable improvement at N=2 with plurality+shortest-non-empty.
+- Better tiebreakers worth exploring: a meta-judge LLM call that picks between the disagreed slots; weighting judges by their solo recovery rates (legal: that comes from the same offline eval reports already used); requiring 2-of-3 agreement.
+
+**Cost:** the plurality vote experiment was offline-only (re-aggregating already-saved per-judge picks); zero new NIM calls.
 
 ### What this means
 
 The 43.5% solo-judge result is **robust to judge model choice** — same headline, similar pick distribution, same picker-accuracy ceiling. The errors are not driven by Kimi-favors-Kimi or GPT-OSS-favors-GPT-OSS bias — both judges land on the same 9 / 12 "easy" oracle-resolver picks and split on the harder ones.
 
-The non-overlapping-errors finding is the actionable one: a **judge-ensemble (vote / union)** trivially lifts picker accuracy from 83% → 92% with a tiny cost increase. This is the next implementation step.
+**The non-overlapping-errors finding does NOT translate into a free uplift via simple plurality.** When the oracle is removed and a real non-oracle plurality vote is applied (the rule shipped in `_aggregate_plurality`), the result regresses to 9/23 = 39.1% — see the next subsection. Recovering the union ceiling requires either a 3rd judge (so plurality can resolve disagreements without arbitrary tiebreakers) or a smarter meta-aggregator. Initial Kimi-K2-Thinking 3rd-judge attempts hit NIM timeout repeatedly and did not complete a full run.
 
 ### Additional artifacts
 

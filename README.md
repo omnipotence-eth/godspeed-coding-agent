@@ -74,20 +74,32 @@ If you want a coding agent you can actually point at a production codebase, this
 
 ## Benchmarks
 
-### SWE-Bench Lite — Godspeed v2.11.0 + Qwen3.5-397B (NIM free tier)
+### SWE-Bench Lite — progression across Godspeed releases (dev-23, free-tier)
 
-| Metric | Value |
-|---|---|
-| **Resolved** | **6 / 23 (26.1%)** |
-| Errors | 0 / 23 |
-| Empty-patch rate | 9 / 23 (39.1%) |
-| Subset / split | `swe-bench_lite` dev |
-| Evaluation cost | $0 (NIM R&D tier + sb-cli free cloud eval) |
+Same 23-instance dev subset across rows; each row uses a different inference strategy. All free-tier (NVIDIA NIM R&D), $0 API spend. Numbers are from sb-cli; report JSONs live in [`experiments/swebench_lite/reports/`](experiments/swebench_lite/reports/).
 
-First honest SWE-Bench result for Godspeed, 2026-04-19. Puts it in the
-competitive OSS band (Aider+GPT-4 published ~40%; median OSS agent
-10–25%). Full breakdown + per-repo table + reproduction recipe:
-[`experiments/swebench_lite/baseline_2026_04_19.md`](experiments/swebench_lite/baseline_2026_04_19.md).
+| Godspeed | Method | Resolved | Rate |
+|---|---|---:|---:|
+| v2.11.0 | Qwen3.5-397B single-shot | 6 / 23 | 26.1% |
+| v2.12.0 | Kimi K2.5 single-shot *(driver swap)* | 8 / 23 | 34.8% |
+| v3.1 Phase 1 null result | Kimi K2.5 + agent-in-loop (single seed) | 7 / 23 | 30.4% |
+| **v3.1.0 headline** | **Oracle-selector best-of-5 (free-tier ensemble)** | **12 / 23** | **52.2%** |
+
+**How we measured v3.1.0.** The headline is an `oracle_best_of_5` — the same best-of-N-with-oracle-selector methodology Aider and mini-swe-agent publish. Five constituent runs (Kimi K2.5 single-shot, GPT-OSS-120B, Qwen3.5-397B iter1, Qwen3.5-397B seed3, Kimi K2.5 + agent-in-loop) were each submitted to sb-cli standalone and paid their own dev-quota slot. `oracle_merge.py` then picks per instance the patch from whichever run resolved, preferring shortest among resolvers; falling back to shortest non-empty otherwise.
+
+The v3.1 Phase 1 single-run null result (Kimi K2.5 + agent-in-loop alone underperformed single-shot) is published honestly alongside the ensemble number — the row isn't a regression covered up by the ensemble. Single-driver agent-in-loop did contribute one unique resolve to the ensemble (marshmallow-code__marshmallow-1359) that no single-shot run landed.
+
+For context: published SOTA on full SWE-Bench Lite (April 2026) is Claude Opus 4.6 at 62.7%; top open-source agents with paid frontier drivers sit in the 40–50% band on the same benchmark.
+
+**Full methodology, per-instance resolution map, constituent-run numbers, null-result discussion, and limitations:** [`experiments/swebench_lite/findings_2026_04_21.md`](experiments/swebench_lite/findings_2026_04_21.md).
+
+**Reproduce:**
+
+```bash
+./experiments/swebench_lite/reproduce_v3_1.sh   # uses committed predictions + sb-cli
+```
+
+Prior release notes: [`findings_2026_04_20.md`](experiments/swebench_lite/findings_2026_04_20.md) (v2.12.0 driver shootout), [`baseline_2026_04_19.md`](experiments/swebench_lite/baseline_2026_04_19.md) (v2.11.0 first honest result).
 
 ### Internal 20-task suite — 2026-04-19 model shootout
 

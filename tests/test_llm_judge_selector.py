@@ -23,11 +23,13 @@ from llm_judge_selector import (  # noqa: E402
     SWE_BENCH_RESTRICTED_KEYS,
     Candidate,
     JudgeDecision,
+    _aggregate_plurality,
     _assemble_candidates,
     _build_judge_context,
     _build_judge_prompt,
     _compute_eval,
     _judge_one,
+    _multi_judge_one,
     _parse_judge_response,
     _parse_pairs,
     _shortest_nonempty_fallback,
@@ -321,3 +323,110 @@ def test_parse_pairs_handles_windows_paths() -> None:
     pairs = _parse_pairs([r"C:\preds\kimi.jsonl:kimi"])
     assert pairs[0][1] == "kimi"
     assert "kimi.jsonl" in str(pairs[0][0])
+
+
+# ---------------------------------------------------------------------------
+# Multi-judge plurality aggregation
+# ---------------------------------------------------------------------------
+
+
+def _cands(slots: list[str]) -> list[Candidate]:
+    """Helper: build candidates from patch strings."""
+    return [Candidate(label=f"r{i}", patch=p, char_len=len(p)) for i, p in enumerate(slots)]
+
+
+def test_plurality_unanimous_agreement() -> None:
+    cands = _cands(["diff_a", "diff_b", "diff_c"])
+    decisions = [
+        JudgeDecision("x", 1, "r", "judge_pick", 3),
+        JudgeDecision("x", 1, "r", "judge_pick", 3),
+        JudgeDecision("x", 1, "r", "judge_pick", 3),
+    ]
+    slot, reason = _aggregate_plurality(decisions, cands)
+    assert slot == 1
+    assert "3/3" in reason
+
+
+def test_plurality_majority_wins() -> None:
+    cands = _cands(["diff_a", "diff_b", "diff_c"])
+    decisions = [
+        JudgeDecision("x", 2, "", "judge_pick", 3),
+        JudgeDecision("x", 0, "", "judge_pick", 3),
+        JudgeDecision("x", 2, "", "judge_pick", 3),
+    ]
+    slot, reason = _aggregate_plurality(decisions, cands)
+    assert slot == 2
+    assert "2/3" in reason
+
+
+def test_plurality_tie_breaks_by_shortest_nonempty() -> None:
+    cands = _cands(["short", "longer_patch", "mid"])
+    decisions = [
+        JudgeDecision("x", 0, "", "judge_pick", 3),
+        JudgeDecision("x", 1, "", "judge_pick", 3),
+    ]
+    slot, reason = _aggregate_plurality(decisions, cands)
+    assert slot == 0
+    assert "tie" in reason.lower()
+
+
+def test_plurality_tie_ignores_empty_slots() -> None:
+    cands = _cands(["", "nonempty_patch"])
+    decisions = [
+        JudgeDecision("x", 0, "", "judge_pick", 2),
+        JudgeDecision("x", 1, "", "judge_pick", 2),
+    ]
+    slot, _reason = _aggregate_plurality(decisions, cands)
+    assert slot == 1
+
+
+def test_plurality_all_judges_skipped_falls_back() -> None:
+    cands = _cands(["a", "b"])
+    decisions = [
+        JudgeDecision("x", None, "", "judge_empty_fallback", 2),
+        JudgeDecision("x", None, "", "judge_empty_fallback", 2),
+    ]
+    slot, reason = _aggregate_plurality(decisions, cands)
+    assert slot == 0
+    assert "fallback" in reason.lower()
+
+
+def test_plurality_three_way_tie_shortest_wins() -> None:
+    cands = _cands(["longest_patch_here", "mid_sz", "s"])
+    decisions = [
+        JudgeDecision("x", 0, "", "judge_pick", 3),
+        JudgeDecision("x", 1, "", "judge_pick", 3),
+        JudgeDecision("x", 2, "", "judge_pick", 3),
+    ]
+    slot, _reason = _aggregate_plurality(decisions, cands)
+    assert slot == 2
+
+
+@pytest.mark.asyncio
+async def test_multi_judge_one_calls_all_and_aggregates() -> None:
+    client_a = AsyncMock()
+    client_a.chat = AsyncMock(return_value=_MockResp('{"chosen_slot": 1, "reason": "judge A"}'))
+    client_b = AsyncMock()
+    client_b.chat = AsyncMock(return_value=_MockResp('{"chosen_slot": 1, "reason": "judge B"}'))
+    cands = _cands(["patch_a", "patch_b"])
+    row = {"instance_id": "x", "problem_statement": "bug"}
+    decision, per_judge = await _multi_judge_one([client_a, client_b], "x", row, cands)
+    assert decision.chosen_slot == 1
+    assert decision.strategy == "judge_pick"
+    assert len(per_judge) == 2
+
+
+@pytest.mark.asyncio
+async def test_multi_judge_one_all_empty_short_circuit() -> None:
+    client_a = AsyncMock()
+    client_a.chat = AsyncMock()
+    cands = [
+        Candidate(label="a", patch="", char_len=0),
+        Candidate(label="b", patch="  ", char_len=2),
+    ]
+    row = {"instance_id": "x", "problem_statement": "bug"}
+    decision, per_judge = await _multi_judge_one([client_a], "x", row, cands)
+    assert decision.chosen_slot is None
+    assert decision.strategy == "judge_empty_fallback"
+    assert per_judge == []
+    client_a.chat.assert_not_called()

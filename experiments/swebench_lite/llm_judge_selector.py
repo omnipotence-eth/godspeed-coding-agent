@@ -465,6 +465,197 @@ def _parse_pairs(raw_pairs: list[str]) -> list[tuple[Path, str]]:
     return out
 
 
+# ---------------------------------------------------------------------------
+# Multi-judge aggregation (plurality vote, non-oracle)
+# ---------------------------------------------------------------------------
+
+
+def _aggregate_plurality(
+    decisions: list[JudgeDecision],
+    candidates: list[Candidate],
+) -> tuple[int | None, str]:
+    """Aggregate N judges' picks via plurality vote.
+
+    Tiebreaker: among tied slots, pick the one with the shortest non-empty
+    patch. If all tied slots are empty, return None.
+
+    This is a *non-oracle* aggregation — it uses only the judges' outputs,
+    never ground-truth resolver sets. Valid for leaderboard best@k.
+    """
+    slot_votes: dict[int, int] = {}
+    for d in decisions:
+        if d.chosen_slot is not None:
+            slot_votes[d.chosen_slot] = slot_votes.get(d.chosen_slot, 0) + 1
+
+    if not slot_votes:
+        fallback = _shortest_nonempty_fallback(candidates)
+        return fallback, "no judge picked a slot; fallback=shortest_nonempty"
+
+    max_votes = max(slot_votes.values())
+    tied_slots = sorted(s for s, v in slot_votes.items() if v == max_votes)
+
+    if len(tied_slots) == 1:
+        return tied_slots[
+            0
+        ], f"plurality vote {max_votes}/{len(decisions)} chose slot {tied_slots[0]}"
+
+    nonempty_tied = [(s, candidates[s].char_len) for s in tied_slots if candidates[s].patch.strip()]
+    if not nonempty_tied:
+        return None, f"tied slots {tied_slots} all empty"
+    nonempty_tied.sort(key=lambda sc: sc[1])
+    winner = nonempty_tied[0][0]
+    return (
+        winner,
+        f"plurality tie ({max_votes} votes each) among slots {tied_slots}; "
+        f"shortest-nonempty tiebreaker chose slot {winner}",
+    )
+
+
+async def _multi_judge_one(
+    clients: list[Any],
+    instance_id: str,
+    instance_row: dict[str, Any],
+    candidates: list[Candidate],
+) -> tuple[JudgeDecision, list[JudgeDecision]]:
+    """Call all judges in parallel for one instance; aggregate via plurality."""
+    if not candidates:
+        no_cand = JudgeDecision(instance_id, None, "no candidates", "judge_parse_error", 0)
+        return no_cand, []
+
+    if all(not c.patch.strip() for c in candidates):
+        return JudgeDecision(
+            instance_id, None, "all candidates empty", "judge_empty_fallback", len(candidates)
+        ), []
+
+    per_judge: list[JudgeDecision] = await asyncio.gather(
+        *(_judge_one(client, instance_id, instance_row, candidates) for client in clients)
+    )
+    winner_slot, reason = _aggregate_plurality(per_judge, candidates)
+    if winner_slot is None:
+        return JudgeDecision(
+            instance_id,
+            None,
+            reason,
+            "judge_empty_fallback",
+            len(candidates),
+        ), per_judge
+
+    defensive_empty = not candidates[winner_slot].patch.strip()
+    if defensive_empty:
+        fallback = _shortest_nonempty_fallback(candidates)
+        return JudgeDecision(
+            instance_id,
+            fallback,
+            f"plurality picked empty slot {winner_slot}; overriding with shortest_nonempty",
+            "judge_parse_error",
+            len(candidates),
+        ), per_judge
+
+    return JudgeDecision(instance_id, winner_slot, reason, "judge_pick", len(candidates)), per_judge
+
+
+async def run_multi_judge_merge(
+    pairs: list[tuple[Path, str]],
+    split: str,
+    judge_models: list[str],
+    out_path: Path,
+    source_log_path: Path,
+    eval_reports: list[Path] | None = None,
+    instance_filter: set[str] | None = None,
+) -> dict[str, Any]:
+    """Run multi-judge merge with plurality vote aggregation."""
+    from godspeed.llm.client import LLMClient
+
+    logger.info("multi_judge_merge %d judges: %s", len(judge_models), judge_models)
+    run_preds: list[tuple[str, dict[str, str]]] = [
+        (label, _load_predictions(p)) for p, label in pairs
+    ]
+
+    all_instance_ids: set[str] = set()
+    for _, preds in run_preds:
+        all_instance_ids.update(preds.keys())
+    if instance_filter:
+        all_instance_ids &= instance_filter
+
+    dataset = _load_dataset(split)
+
+    clients = [LLMClient(model=m, timeout=90) for m in judge_models]
+
+    decisions: list[JudgeDecision] = []
+    per_judge_log: list[list[JudgeDecision]] = []
+    chosen_patches: dict[str, tuple[str, str]] = {}
+
+    for instance_id in sorted(all_instance_ids):
+        if instance_id not in dataset:
+            logger.warning("multi_judge instance=%s not in dataset", instance_id)
+            continue
+        candidates = _assemble_candidates(instance_id, run_preds)
+        decision, per_judge = await _multi_judge_one(
+            clients, instance_id, dataset[instance_id], candidates
+        )
+        decisions.append(decision)
+        per_judge_log.append(per_judge)
+        if decision.chosen_slot is not None:
+            chosen = candidates[decision.chosen_slot]
+            chosen_patches[instance_id] = (chosen.label, chosen.patch)
+            logger.info(
+                "multi_judge_pick instance=%s slot=%d label=%s votes=%s",
+                instance_id,
+                decision.chosen_slot,
+                chosen.label,
+                [d.chosen_slot for d in per_judge],
+            )
+
+    model_tag = "plurality_vote_" + "__".join(m.split("/")[-1] for m in judge_models)
+    _write_predictions(out_path, chosen_patches, model_tag)
+    _write_multi_source_log(source_log_path, decisions, per_judge_log, run_preds, judge_models)
+
+    summary: dict[str, Any] = {
+        "judge_models": judge_models,
+        "aggregation": "plurality_vote",
+        "instances_judged": len(decisions),
+        "instances_picked": sum(1 for d in decisions if d.chosen_slot is not None),
+        "judge_pick_count": sum(1 for d in decisions if d.strategy == "judge_pick"),
+        "fallback_count": sum(1 for d in decisions if d.strategy != "judge_pick"),
+    }
+    if eval_reports is not None:
+        summary["eval"] = _compute_eval(pairs, eval_reports, decisions, run_preds)
+    return summary
+
+
+def _write_multi_source_log(
+    source_log_path: Path,
+    decisions: list[JudgeDecision],
+    per_judge_log: list[list[JudgeDecision]],
+    run_preds: list[tuple[str, dict[str, str]]],
+    judge_models: list[str],
+) -> None:
+    source_log_path.parent.mkdir(parents=True, exist_ok=True)
+    labels = [label for label, _ in run_preds]
+    with source_log_path.open("w", encoding="utf-8") as fh:
+        for d, judges in zip(decisions, per_judge_log, strict=True):
+            row: dict[str, Any] = {
+                "instance_id": d.instance_id,
+                "strategy": d.strategy,
+                "candidates_shown": d.candidates_shown,
+                "reason": d.reason[:200],
+                "per_judge": [
+                    {
+                        "model": judge_models[i],
+                        "slot": jd.chosen_slot,
+                        "label": labels[jd.chosen_slot] if jd.chosen_slot is not None else None,
+                        "strategy": jd.strategy,
+                    }
+                    for i, jd in enumerate(judges)
+                ],
+            }
+            if d.chosen_slot is not None:
+                row["chosen_slot"] = d.chosen_slot
+                row["chosen_label"] = labels[d.chosen_slot]
+            fh.write(json.dumps(row) + "\n")
+    logger.info("multi_judge_merge wrote source log to %s", source_log_path)
+
+
 def _build_argparser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0] if __doc__ else "")
     p.add_argument(
@@ -477,7 +668,20 @@ def _build_argparser() -> argparse.ArgumentParser:
     p.add_argument(
         "--judge-model",
         default="nvidia_nim/moonshotai/kimi-k2.5",
-        help="LiteLLM model string for the judge.",
+        help=(
+            "LiteLLM model string for the single-judge run. "
+            "Ignored when --judge-models is specified."
+        ),
+    )
+    p.add_argument(
+        "--judge-models",
+        nargs="+",
+        default=None,
+        help=(
+            "Two or more LiteLLM model strings for multi-judge plurality-vote mode. "
+            "When present, overrides --judge-model and runs each judge in parallel per "
+            "instance, aggregating via plurality vote with shortest-non-empty tiebreaker."
+        ),
     )
     p.add_argument("--out", type=Path, required=True, help="Output merged predictions JSONL path.")
     p.add_argument(
@@ -513,15 +717,26 @@ async def _amain(args: argparse.Namespace) -> int:
     eval_reports = [Path(p) for p in args.eval_reports] if args.eval_reports else None
     instance_filter = set(args.instances) if args.instances else None
 
-    summary = await run_judge_merge(
-        pairs=pairs,
-        split=args.split,
-        judge_model=args.judge_model,
-        out_path=args.out,
-        source_log_path=args.source_log,
-        eval_reports=eval_reports,
-        instance_filter=instance_filter,
-    )
+    if args.judge_models and len(args.judge_models) >= 2:
+        summary = await run_multi_judge_merge(
+            pairs=pairs,
+            split=args.split,
+            judge_models=args.judge_models,
+            out_path=args.out,
+            source_log_path=args.source_log,
+            eval_reports=eval_reports,
+            instance_filter=instance_filter,
+        )
+    else:
+        summary = await run_judge_merge(
+            pairs=pairs,
+            split=args.split,
+            judge_model=args.judge_model,
+            out_path=args.out,
+            source_log_path=args.source_log,
+            eval_reports=eval_reports,
+            instance_filter=instance_filter,
+        )
 
     print(json.dumps(summary, indent=2))
     return 0

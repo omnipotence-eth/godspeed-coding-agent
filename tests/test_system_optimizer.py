@@ -87,9 +87,7 @@ async def test_inspect_returns_structured_report(
 
 
 @pytest.mark.asyncio
-async def test_inspect_default_top(
-    tool: SystemOptimizerTool, ctx: ToolContext
-) -> None:
+async def test_inspect_default_top(tool: SystemOptimizerTool, ctx: ToolContext) -> None:
     """Default 'top' must equal DEFAULT_TOP rows in the process table."""
     result = await tool.execute({"mode": "inspect"}, ctx)
     out = result.output
@@ -111,24 +109,22 @@ async def test_inspect_default_top(
                 break
             if line.strip() and line.startswith("  "):
                 data_rows += 1
-    assert data_rows == DEFAULT_TOP, (
-        f"expected {DEFAULT_TOP} rows (default top); got {data_rows}"
-    )
+    assert data_rows == DEFAULT_TOP, f"expected {DEFAULT_TOP} rows (default top); got {data_rows}"
 
 
 @pytest.mark.asyncio
-async def test_inspect_respects_custom_top(
-    tool: SystemOptimizerTool, ctx: ToolContext
-) -> None:
+async def test_inspect_respects_custom_top(tool: SystemOptimizerTool, ctx: ToolContext) -> None:
     result = await tool.execute({"mode": "inspect", "top": 3}, ctx)
     out = result.output
     data_rows = [
-        ln for ln in out.splitlines()
+        ln
+        for ln in out.splitlines()
         if ln.startswith("  ") and not ln.startswith("  * ") and "PID" not in ln
     ]
     # Filter out CPU/Memory/Swap/Disk/GPU lines (they start with those keywords)
     proc_rows = [
-        ln for ln in data_rows
+        ln
+        for ln in data_rows
         if not any(
             ln.lstrip().startswith(k)
             for k in ("CPU:", "Memory:", "Swap:", "Disk", "GPU", "Utilization:", "Temperature:")
@@ -138,35 +134,27 @@ async def test_inspect_respects_custom_top(
 
 
 @pytest.mark.asyncio
-async def test_inspect_caps_at_max_top(
-    tool: SystemOptimizerTool, ctx: ToolContext
-) -> None:
+async def test_inspect_caps_at_max_top(tool: SystemOptimizerTool, ctx: ToolContext) -> None:
     """Requesting more than MAX_TOP should clamp, not error."""
     result = await tool.execute({"mode": "inspect", "top": MAX_TOP * 10}, ctx)
     assert result.is_error is False
 
 
 @pytest.mark.asyncio
-async def test_inspect_sort_by_cpu(
-    tool: SystemOptimizerTool, ctx: ToolContext
-) -> None:
+async def test_inspect_sort_by_cpu(tool: SystemOptimizerTool, ctx: ToolContext) -> None:
     result = await tool.execute({"mode": "inspect", "sort_by": "cpu"}, ctx)
     assert "Top" in result.output
     assert "by CPU" in result.output
 
 
 @pytest.mark.asyncio
-async def test_inspect_sort_by_memory_default(
-    tool: SystemOptimizerTool, ctx: ToolContext
-) -> None:
+async def test_inspect_sort_by_memory_default(tool: SystemOptimizerTool, ctx: ToolContext) -> None:
     result = await tool.execute({"mode": "inspect"}, ctx)
     assert "by memory" in result.output
 
 
 @pytest.mark.asyncio
-async def test_non_inspect_mode_fails(
-    tool: SystemOptimizerTool, ctx: ToolContext
-) -> None:
+async def test_non_inspect_mode_fails(tool: SystemOptimizerTool, ctx: ToolContext) -> None:
     result = await tool.execute({"mode": "act"}, ctx)
     assert result.is_error is True
     assert "not supported" in (result.error or "").lower()

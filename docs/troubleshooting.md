@@ -31,6 +31,57 @@ Persist it by adding to `~/.bashrc` / `~/.zshrc` / PowerShell profile.
 
 ---
 
+## `AuthenticationError: api_key client option must be set`
+
+**Symptom:** First prompt at the `⚡ godspeed>` shell returns:
+
+```
+litellm.AuthenticationError: AuthenticationError: Nvidia_nimException -
+The api_key client option must be set either by passing api_key to the
+client or by setting the NVIDIA_NIM_API_KEY environment variable
+```
+
+(Or the equivalent for `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, etc.)
+
+**Cause:** LiteLLM reads API keys from `os.environ`. Your key is
+saved to `~/.godspeed/.env.local` but nothing had loaded that file
+into the process environment before LiteLLM ran.
+
+**Fix (v3.5.0+):** Godspeed auto-loads env files on CLI startup in
+this priority order (later wins, shell env always wins overall):
+
+1. `~/.godspeed/.env`
+2. `~/.godspeed/.env.local`
+3. `<project>/.godspeed/.env`
+4. `<project>/.godspeed/.env.local`
+
+Put your key in `~/.godspeed/.env.local` (gitignore-safe) once:
+
+```ini
+# ~/.godspeed/.env.local
+NVIDIA_NIM_API_KEY=nvapi-...
+```
+
+**Pre-v3.5.0 workaround:** set the env var explicitly before launching:
+
+```powershell
+# PowerShell — one-off
+$env:NVIDIA_NIM_API_KEY = "nvapi-..."
+godspeed
+
+# Persist for all future PowerShell sessions
+setx NVIDIA_NIM_API_KEY "nvapi-..."
+# close + reopen PowerShell for setx to take effect
+```
+
+```bash
+# bash / zsh / git-bash
+export NVIDIA_NIM_API_KEY=nvapi-...
+godspeed
+```
+
+---
+
 ## NVIDIA NIM free-tier: 40 RPM rate limit hits during long runs
 
 **Symptom:** `litellm.Timeout: APITimeoutError - Request timed out` after

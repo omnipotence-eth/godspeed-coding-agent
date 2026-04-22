@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Auto-load `~/.godspeed/.env.local` on startup** (`cli._load_env_files`).
+  API keys in `~/.godspeed/.env` / `.env.local` (and the project's
+  `.godspeed/.env` / `.env.local`) are now injected into `os.environ`
+  before LiteLLM runs, so `NVIDIA_NIM_API_KEY=... godspeed` one-offs
+  AND long-lived `~/.godspeed/.env.local` files both work without
+  extra shell plumbing. Precedence: project/.env.local >
+  project/.env > global/.env.local > global/.env; **shell env wins
+  over all of them** so per-run overrides keep working. Matches
+  dotenv/Vite/Next convention: `.env.local` is the gitignored local
+  override. Log messages contain key names only, never values.
+  Closes the "first-run auth error" UX paper cut that required users
+  to remember to `$env:NVIDIA_NIM_API_KEY = ...` every shell.
+- Troubleshooting doc: new "AuthenticationError: api_key client
+  option must be set" section in `docs/troubleshooting.md` with the
+  fix + the pre-v3.5.0 workaround.
+
 ## [3.4.0] — 2026-04-22
 
 Phase 2 of the world-class UX push. Two independent additions on top

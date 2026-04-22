@@ -88,9 +88,19 @@ Per-constituent apply rates on dev-23:
 
 4. **The 47.8% oracle-union ceiling is unreachable without test knowledge.** Reaching it requires a selector that can tell applying-and-wrong from applying-and-right *without running tests*. None of Kimi/GPT-OSS/Kimi-Thinking/Qwen can.
 
-## Paths that remain open (v3.4 research, deferred)
+### Addendum — Attempt 4 (the "meta-judge on disagreements" direction): FOURTH NULL
 
-- **Meta-judge on disagreements only:** for each 2-judge disagreement, call a 4th LLM with both patches + both judges' rationales + problem statement, and pick. Cost: ≤4 extra calls on our 23-instance set. Small experiment, not done tonight.
+Implemented [`meta_judge.py`](meta_judge.py) — for each 2-judge disagreement instance, call a 3rd LLM with both judges' picks + both rationales + both full diffs + problem statement, and have it pick between the two options.
+
+Tested with two meta-judge models:
+- **Kimi K2.5 as meta-judge:** 10/23 (same as Kimi K2.5 solo). Self-echo: same model, same prior → picks its own original choice on every tie. Gives us no new information.
+- **Qwen3.5-397B as meta-judge (heterogeneous):** 10/23 (same). Qwen picked Kimi's side 3 of 4 times, GPT-OSS's side 1 of 4 times. Critically, on marshmallow-1359 (the only disagreement instance where picking correctly would lift us to 11/23), Qwen ALSO chose `seed3` over `p1_dev23_v3` — the same wrong answer Kimi K2.5's solo judge made. Both meta-judges agreed that seed3's patch "looks better" — it IS more minimal. Tests are what reveal it doesn't work.
+
+**This is the ceiling.** When the visually-better patch is wrong and only tests distinguish right-from-wrong, no test-free selector (solo, ensemble, apply-check, or meta-judge) can find the right answer.
+
+## Paths that remain open (v3.5+ research, deferred)
+
+**The following would require material departures from the "free-tier, test-free, single-pass" regime:**
 - **Weighted voting by per-instance confidence:** each judge emits a confidence score; vote weighted by that. Subtly closer to oracle than equal-weight plurality.
 - **Instance-difficulty routing:** some instances are "easy" (multiple constituents resolve) and some are "hard" (unique resolver). A meta-selector could route hard instances to an expensive frontier judge.
 - **Tool-augmented judge:** the judge gets file-reading permission + can inspect the project's test scaffolding (not test outputs!) to see if the patch targets the right module. Still test-free.

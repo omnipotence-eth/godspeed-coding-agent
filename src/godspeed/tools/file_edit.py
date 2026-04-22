@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import ast
+import json
 import logging
 from difflib import SequenceMatcher
 from typing import Any
@@ -13,6 +15,57 @@ logger = logging.getLogger(__name__)
 
 # Minimum similarity ratio for fuzzy matching
 FUZZY_THRESHOLD = 0.8
+
+# Extensions for which we run a post-edit syntax gate. If the edit changes
+# the file from parseable to unparseable, we revert and surface the error —
+# protecting against the "looks mostly right but actually broken" failure
+# mode observed with multi-line edits that drop indentation.
+_SYNTAX_GATED_EXTS = frozenset({".py", ".pyi"})
+
+
+def _syntax_check(path_ext: str, before_content: str, after_content: str) -> str | None:
+    """Return an error message if the edit broke syntax that previously parsed.
+
+    Currently covers Python (.py, .pyi) via ast.parse and JSON via json.loads.
+    Returns None if the edit is safe — either the file type is not gated, or
+    the file was already broken before the edit (we don't blame the edit for
+    pre-existing breakage), or the new content still parses.
+    """
+    ext = path_ext.lower()
+
+    if ext not in _SYNTAX_GATED_EXTS and ext != ".json":
+        return None
+
+    is_python = ext in _SYNTAX_GATED_EXTS
+
+    def _parse(source: str) -> None:
+        if is_python:
+            ast.parse(source)
+        else:
+            json.loads(source)
+
+    # Skip the gate if the pre-edit content already didn't parse — the edit
+    # isn't responsible for pre-existing breakage, and a blocked revert would
+    # prevent the agent from fixing the underlying issue.
+    try:
+        _parse(before_content)
+    except (SyntaxError, ValueError):
+        return None
+
+    try:
+        _parse(after_content)
+    except SyntaxError as exc:
+        return (
+            f"Post-edit syntax check failed — the edit would leave the file unparseable. "
+            f"Line {exc.lineno}: {exc.msg}. "
+            "This commonly means a multi-line replacement dropped indentation. "
+            "Re-read the file and include enough surrounding context in old_string "
+            "to preserve whitespace in new_string."
+        )
+    except ValueError as exc:
+        return f"Post-edit JSON parse failed — the edit would produce invalid JSON: {exc}."
+
+    return None
 
 
 class FileEditTool(Tool):
@@ -140,6 +193,18 @@ class FileEditTool(Tool):
                 match_line,
                 file_path_str,
             )
+
+        # Post-edit syntax gate: for .py / .pyi / .json, refuse edits that
+        # would turn a parseable file into an unparseable one. Catches the
+        # "multi-line replace drops indentation" failure mode.
+        syntax_err = _syntax_check(resolved.suffix, content, new_content)
+        if syntax_err is not None:
+            logger.warning(
+                "Rejected edit on %s — post-edit syntax gate failed: %s",
+                file_path_str,
+                syntax_err,
+            )
+            return ToolResult.failure(syntax_err)
 
         resolved.write_text(new_content, encoding="utf-8")
         logger.info(

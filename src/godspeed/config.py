@@ -191,6 +191,17 @@ class GodspeedSettings(BaseSettings):
     # Architect mode — two-model pipeline (plan then execute)
     architect_model: str = ""  # model for planning phase; empty = use main model
 
+    # Task-aware routing shortcuts. Populate `routing` for the canonical
+    # task types (see godspeed.llm.router) without requiring users to
+    # learn the dict syntax. Explicit `routing:` entries always win.
+    #
+    #   strong_model  → routing["plan"]      (fresh reasoning turns)
+    #   cheap_model   → routing["edit"], routing["read"], routing["shell"]
+    #
+    # Leave empty to skip the shortcut for that tier.
+    cheap_model: str = ""
+    strong_model: str = ""
+
     # Sandboxing
     sandbox: str = "none"  # "none" | "docker"
 
@@ -237,6 +248,24 @@ class GodspeedSettings(BaseSettings):
             msg = f"max_context_tokens must be at least 1000, got {v}"
             raise ValueError(msg)
         return v
+
+    @model_validator(mode="after")
+    def populate_routing_from_shortcuts(self) -> GodspeedSettings:
+        """Fill ``routing[<task_type>]`` from the cheap/strong/architect shortcuts.
+
+        Explicit ``routing:`` entries always win — the shortcuts only
+        fill gaps via ``setdefault``. Empty-string field values are
+        treated as "not set" and skipped. Canonical task types come
+        from :mod:`godspeed.llm.router`.
+        """
+        if self.cheap_model:
+            for task_type in ("edit", "read", "shell"):
+                self.routing.setdefault(task_type, self.cheap_model)
+        if self.strong_model:
+            self.routing.setdefault("plan", self.strong_model)
+        if self.architect_model:
+            self.routing.setdefault("architect", self.architect_model)
+        return self
 
     @model_validator(mode="before")
     @classmethod

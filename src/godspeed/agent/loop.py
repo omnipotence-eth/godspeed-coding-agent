@@ -18,6 +18,7 @@ from typing import Any
 from godspeed.agent.conversation import Conversation
 from godspeed.agent.result import AgentCancelledError, AgentMetrics, ExitReason
 from godspeed.llm.client import ChatResponse, LLMClient
+from godspeed.llm.router import classify_task_type
 from godspeed.tools.base import ToolCall, ToolContext, ToolResult
 from godspeed.tools.registry import ToolRegistry
 
@@ -150,6 +151,12 @@ async def agent_loop(
         if conversation.is_near_limit:
             await _compact_conversation(conversation, llm_client)
 
+        # Task-aware routing: classify the upcoming call from conversation
+        # state. Cheap heuristic (no extra LLM call); resolves to one of
+        # plan/edit/read/shell. The router translates that to a model
+        # via settings.routing (or the cheap_model/strong_model shortcuts).
+        task_type = classify_task_type(conversation.messages)
+
         # Call LLM (streaming or batch)
         try:
             if on_assistant_chunk is not None:
@@ -162,11 +169,13 @@ async def agent_loop(
                     tool_context=tool_context,
                     speculative_cache=speculative_cache,
                     cancel_event=cancel_event,
+                    task_type=task_type,
                 )
             else:
                 response = await llm_client.chat(
                     messages=conversation.messages,
                     tools=tool_schemas if tool_schemas else None,
+                    task_type=task_type,
                 )
         except AgentCancelledError:
             # Finalize with INTERRUPTED and unwind — don't wrap in LLM_ERROR.
@@ -887,6 +896,7 @@ async def _streaming_call(
     tool_context: ToolContext | None = None,
     speculative_cache: dict[str, asyncio.Task[ToolResult]] | None = None,
     cancel_event: asyncio.Event | None = None,
+    task_type: str | None = None,
 ) -> ChatResponse:
     """Make a streaming LLM call, invoking on_chunk for each text delta.
 
@@ -903,7 +913,7 @@ async def _streaming_call(
     """
     final_response: ChatResponse | None = None
 
-    stream = llm_client.stream_chat(messages=messages, tools=tools)
+    stream = llm_client.stream_chat(messages=messages, tools=tools, task_type=task_type)
     try:
         async for chunk in stream:
             if chunk.finish_reason is None and chunk.content:

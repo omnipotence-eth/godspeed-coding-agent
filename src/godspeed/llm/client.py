@@ -528,12 +528,42 @@ class LLMClient:
         self,
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]] | None = None,
+        task_type: str | None = None,
     ) -> AsyncGenerator[ChatResponse, None]:
         """Stream LLM response chunks.
 
         Yields ChatResponse objects as they arrive. The final response
         has finish_reason set.
+
+        Args:
+            messages: Conversation messages.
+            tools: Tool schemas for function calling.
+            task_type: Optional task hint for model routing (see
+                :mod:`godspeed.llm.router`). When set and the router
+                has a mapping, ``self.model`` is swapped for the
+                duration of the stream and restored on cleanup.
         """
+        # Apply task-aware routing for the duration of the stream.
+        # The finally restores self.model even on early generator
+        # close (aclose() in the agent loop's cancel path).
+        routed_model = self.router.route(self.model, task_type)
+        swap_model = routed_model != self.model
+        original_model = self.model
+        if swap_model:
+            self.model = routed_model
+        try:
+            async for chunk in self._stream_chat_inner(messages, tools):
+                yield chunk
+        finally:
+            if swap_model:
+                self.model = original_model
+
+    async def _stream_chat_inner(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None = None,
+    ) -> AsyncGenerator[ChatResponse, None]:
+        """Inner streaming body — assumes ``self.model`` is already routed."""
         effective = self._effective_model()
         kwargs: dict[str, Any] = {
             "model": effective,

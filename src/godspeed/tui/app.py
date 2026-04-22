@@ -14,6 +14,7 @@ from prompt_toolkit.keys import Keys
 
 from godspeed.agent.conversation import Conversation
 from godspeed.agent.loop import agent_loop
+from godspeed.agent.result import AgentCancelledError
 from godspeed.audit.trail import AuditTrail
 from godspeed.llm.client import LLMClient
 from godspeed.security.permissions import ALLOW, ASK, PermissionDecision, PermissionEngine
@@ -94,6 +95,11 @@ class TUIApp:
         # Pause/resume event for human-in-the-loop
         self._pause_event = asyncio.Event()
         self._pause_event.set()  # Start in running state
+
+        # Mid-turn cancel: set by Ctrl+C while the agent is running. Cleared
+        # each time a new turn starts. Distinct from _pause_event — pause
+        # stalls at iteration boundary, cancel unwinds immediately.
+        self._cancel_event = asyncio.Event()
 
         self._commands = Commands(
             conversation=conversation,
@@ -272,6 +278,41 @@ class TUIApp:
                 format_thinking(text)
                 _s.start()
 
+            # Fresh cancel state per turn
+            self._cancel_event.clear()
+
+            # Install a SIGINT handler on the running loop. First Ctrl+C
+            # sets cancel_event (the loop's next checkpoint raises
+            # AgentCancelledError and unwinds cleanly). Second Ctrl+C within 1s
+            # raises KeyboardInterrupt for a hard exit — matches the
+            # Jupyter "press twice" pattern most developers expect.
+            self._last_sigint_monotonic = 0.0
+
+            def _on_sigint(self_ref: TUIApp = self) -> None:
+                now = time.monotonic()
+                if (
+                    self_ref._cancel_event.is_set()
+                    and (now - self_ref._last_sigint_monotonic) < 1.0
+                ):
+                    # Second press within 1s → escalate to hard interrupt.
+                    raise KeyboardInterrupt
+                self_ref._last_sigint_monotonic = now
+                self_ref._cancel_event.set()
+
+            running_loop = asyncio.get_running_loop()
+            _sigint_installed = False
+            try:
+                import signal as _signal
+
+                running_loop.add_signal_handler(_signal.SIGINT, _on_sigint)
+                _sigint_installed = True
+            except (NotImplementedError, RuntimeError):
+                # Windows: asyncio.ProactorEventLoop does not support
+                # add_signal_handler. Fall back to the default KeyboardInterrupt
+                # path and the AgentCancelledError will still fire if _cancel_event
+                # is set via another mechanism (e.g. /cancel slash command).
+                pass
+
             try:
                 spinner.start()
                 await agent_loop(
@@ -287,6 +328,7 @@ class TUIApp:
                     on_assistant_chunk=spinner.wrap(_on_assistant_chunk),
                     max_iterations=self._commands.max_iterations,
                     pause_event=self._pause_event,
+                    cancel_event=self._cancel_event,
                     hook_executor=self._hook_executor,
                     skip_user_message=not effective_input,
                     on_parallel_start=_track_parallel_start,
@@ -294,13 +336,28 @@ class TUIApp:
                     on_thinking=_on_thinking,
                 )
                 console.print()  # End streaming output with newline
+            except AgentCancelledError:
+                console.print(f"\n  [{DIM}]Agent cancelled. Send another prompt or /quit.[/{DIM}]")
             except KeyboardInterrupt:
+                # Hard interrupt: user pressed Ctrl+C twice (or the loop-level
+                # signal handler wasn't installed on this platform). Treat
+                # same as cancel for display, but surface the distinct reason.
                 console.print(f"\n  [{DIM}]Agent interrupted.[/{DIM}]")
             except Exception as exc:
                 logger.error("Agent loop error: %s", exc, exc_info=True)
                 format_error(f"Agent error: {exc}")
             finally:
                 spinner.stop()
+                if _sigint_installed:
+                    # Restore default SIGINT handling while we're waiting for
+                    # the next prompt — otherwise a Ctrl+C at the prompt would
+                    # silently set an unused cancel_event and swallow the key.
+                    try:
+                        import signal as _signal
+
+                        running_loop.remove_signal_handler(_signal.SIGINT)
+                    except (NotImplementedError, RuntimeError, ValueError):
+                        pass
 
         # Session summary on exit
         duration = time.monotonic() - start_time

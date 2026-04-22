@@ -679,3 +679,143 @@ class TestTokenCounter:
 
         count = count_tokens("")
         assert count == 0
+
+
+class TestCancelEvent:
+    """Mid-turn cancellation: the agent loop must unwind on cancel_event.
+
+    Exercises the cancel checkpoints at (a) top of iteration,
+    (b) between streaming chunks, and (c) the AgentCancelledError unwind path.
+    """
+
+    @pytest.mark.asyncio
+    async def test_cancel_before_first_iteration(self) -> None:
+        """cancel_event set before loop start → AgentCancelledError raised immediately."""
+        import asyncio
+
+        from godspeed.agent.result import AgentCancelledError
+
+        cancel = asyncio.Event()
+        cancel.set()
+
+        llm = AsyncMock(spec=LLMClient)
+        llm.chat = AsyncMock()  # must never be called
+
+        conv = Conversation(system_prompt="x")
+        reg = ToolRegistry()
+
+        with pytest.raises(AgentCancelledError):
+            await agent_loop(
+                user_input="hi",
+                conversation=conv,
+                llm_client=llm,
+                tool_registry=reg,
+                tool_context=None,  # type: ignore[arg-type]
+                cancel_event=cancel,
+            )
+
+        llm.chat.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_cancel_between_streaming_chunks(self) -> None:
+        """cancel_event set mid-stream → chunk loop stops; stream.aclose() called."""
+        import asyncio
+
+        from godspeed.agent.result import AgentCancelledError
+
+        cancel = asyncio.Event()
+
+        aclose_calls: list[int] = []
+
+        class FakeStream:
+            def __init__(self, chunks: list[ChatResponse]) -> None:
+                self._chunks = list(chunks)
+
+            def __aiter__(self) -> FakeStream:
+                return self
+
+            async def __anext__(self) -> ChatResponse:
+                if not self._chunks:
+                    raise StopAsyncIteration
+                chunk = self._chunks.pop(0)
+                # After the first chunk is delivered, set cancel
+                if chunk.content == "first":
+                    cancel.set()
+                return chunk
+
+            async def aclose(self) -> None:
+                aclose_calls.append(1)
+
+        chunks = [
+            ChatResponse(content="first", tool_calls=[], finish_reason=None),
+            ChatResponse(content="second", tool_calls=[], finish_reason=None),
+            ChatResponse(content="", tool_calls=[], finish_reason="stop"),
+        ]
+
+        llm = AsyncMock(spec=LLMClient)
+        llm.stream_chat = lambda **_: FakeStream(chunks)
+
+        got_chunks: list[str] = []
+
+        def on_chunk(text: str) -> None:
+            got_chunks.append(text)
+
+        conv = Conversation(system_prompt="x")
+        reg = ToolRegistry()
+
+        with pytest.raises(AgentCancelledError):
+            await agent_loop(
+                user_input="hi",
+                conversation=conv,
+                llm_client=llm,
+                tool_registry=reg,
+                tool_context=None,  # type: ignore[arg-type]
+                on_assistant_chunk=on_chunk,
+                cancel_event=cancel,
+            )
+
+        # First chunk was delivered (before cancel fired); second chunk was
+        # never processed (cancel checkpoint raises before on_chunk runs).
+        assert got_chunks == ["first"]
+        # aclose was called on the underlying stream.
+        assert aclose_calls == [1]
+
+    @pytest.mark.asyncio
+    async def test_cancel_event_unset_does_not_cancel(self) -> None:
+        """Event object provided but never set → loop runs normally."""
+        import asyncio
+
+        cancel = asyncio.Event()  # never set
+        llm = AsyncMock(spec=LLMClient)
+        llm.chat = AsyncMock(return_value=_make_text_response("hello"))
+
+        conv = Conversation(system_prompt="x")
+        reg = ToolRegistry()
+
+        result = await agent_loop(
+            user_input="hi",
+            conversation=conv,
+            llm_client=llm,
+            tool_registry=reg,
+            tool_context=None,  # type: ignore[arg-type]
+            cancel_event=cancel,
+        )
+        assert result == "hello"
+
+    @pytest.mark.asyncio
+    async def test_cancel_none_preserves_existing_behavior(self) -> None:
+        """cancel_event=None (default) must not affect baseline behavior."""
+        llm = AsyncMock(spec=LLMClient)
+        llm.chat = AsyncMock(return_value=_make_text_response("hello"))
+
+        conv = Conversation(system_prompt="x")
+        reg = ToolRegistry()
+
+        result = await agent_loop(
+            user_input="hi",
+            conversation=conv,
+            llm_client=llm,
+            tool_registry=reg,
+            tool_context=None,  # type: ignore[arg-type]
+        )
+        assert result == "hello"

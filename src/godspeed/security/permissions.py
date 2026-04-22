@@ -131,6 +131,29 @@ class PermissionEngine:
         risk = self._tool_risk_levels.get(tool_call.tool_name, RiskLevel.HIGH)
         return self._default_for_risk(risk)
 
+    def add_rule(self, pattern: str, action: str) -> None:
+        """Add a pattern to the in-memory rule list at runtime.
+
+        Used by the ``/remember`` slash command so a persisted rule
+        takes effect immediately in the current session, not just on
+        next restart.
+
+        Args:
+            pattern: ``Tool(glob)`` style pattern.
+            action: ``"allow" | "deny" | "ask"``.
+        """
+        action_lc = action.lower()
+        if action_lc == "allow":
+            self._allow_rules.extend(parse_rules([pattern], RuleAction.ALLOW))
+        elif action_lc == "deny":
+            self._deny_rules.extend(parse_rules([pattern], RuleAction.DENY))
+        elif action_lc == "ask":
+            self._ask_rules.extend(parse_rules([pattern], RuleAction.ASK))
+        else:
+            msg = f"action must be 'allow' | 'deny' | 'ask', got {action!r}"
+            raise ValueError(msg)
+        logger.info("Runtime rule added action=%s pattern=%s", action_lc, pattern)
+
     def grant_session_permission(self, pattern: str) -> None:
         """Grant a session-scoped permission for a pattern.
 

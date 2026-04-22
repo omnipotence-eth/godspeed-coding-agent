@@ -292,17 +292,33 @@ class GodspeedSettings(BaseSettings):
         return merged
 
 
-def append_allow_rule(pattern: str, project_dir: Path | None = None) -> bool:
-    """Append an allow rule to the project or global settings.yaml.
+def append_permission_rule(
+    pattern: str,
+    action: str,
+    project_dir: Path | None = None,
+) -> Path | None:
+    """Append a permission rule to the project or global ``settings.yaml``.
 
-    Reads existing YAML, adds the pattern to permissions.allow, writes back.
-    Preserves existing content. Returns True on success.
+    Reads existing YAML, adds the pattern under ``permissions.<action>``,
+    writes back. Preserves existing content. Duplicate patterns are
+    silently skipped (re-running the command is idempotent).
 
     Args:
-        pattern: Permission pattern to add (e.g. "Shell(git status)").
-        project_dir: Project directory for .godspeed/settings.yaml.
-            Falls back to global settings if None or project config missing.
+        pattern: Permission pattern to add (e.g. ``"Shell(git status)"``).
+        action: One of ``"allow" | "deny" | "ask"``.
+        project_dir: Project directory for ``.godspeed/settings.yaml``.
+            Falls back to the global settings file when ``None``.
+
+    Returns:
+        The :class:`Path` written on success, or ``None`` on OS error.
+
+    Raises:
+        ValueError: if ``action`` is not one of the three valid tiers.
     """
+    if action not in ("allow", "deny", "ask"):
+        msg = f"action must be 'allow' | 'deny' | 'ask', got {action!r}"
+        raise ValueError(msg)
+
     # Determine which settings file to write to
     if project_dir is not None:
         settings_path = project_dir / ".godspeed" / "settings.yaml"
@@ -318,19 +334,24 @@ def append_allow_rule(pattern: str, project_dir: Path | None = None) -> bool:
             data = {}
 
         permissions = data.setdefault("permissions", {})
-        allow_list = permissions.setdefault("allow", [])
+        rule_list = permissions.setdefault(action, [])
 
-        if pattern not in allow_list:
-            allow_list.append(pattern)
+        if pattern not in rule_list:
+            rule_list.append(pattern)
 
         with open(settings_path, "w", encoding="utf-8") as f:
             yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)
 
-        logger.info("Appended allow rule '%s' to %s", pattern, settings_path)
-        return True
+        logger.info("Appended %s rule '%s' to %s", action, pattern, settings_path)
+        return settings_path
     except OSError as exc:
-        logger.warning("Failed to write allow rule: %s", exc)
-        return False
+        logger.warning("Failed to write %s rule: %s", action, exc)
+        return None
+
+
+def append_allow_rule(pattern: str, project_dir: Path | None = None) -> bool:
+    """Back-compat wrapper around :func:`append_permission_rule` for allow rules."""
+    return append_permission_rule(pattern, "allow", project_dir) is not None
 
 
 def _merge_configs(base: dict[str, Any], override: dict[str, Any]) -> None:

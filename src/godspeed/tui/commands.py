@@ -6,8 +6,9 @@ import logging
 from collections.abc import Callable
 from datetime import UTC
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
+from godspeed.config import append_permission_rule
 from godspeed.tui.output import (
     console,
     format_error,
@@ -96,6 +97,7 @@ class Commands:
         self._handlers["/undo"] = self._cmd_undo
         self._handlers["/audit"] = self._cmd_audit
         self._handlers["/permissions"] = self._cmd_permissions
+        self._handlers["/remember"] = self._cmd_remember
         self._handlers["/extend"] = self._cmd_extend
         self._handlers["/context"] = self._cmd_context
         self._handlers["/plan"] = self._cmd_plan
@@ -193,6 +195,7 @@ class Commands:
                 [
                     ("/audit", "Show audit trail and verify chain"),
                     ("/permissions", "Show permission rules"),
+                    ("/remember <act> <pat>", "Persist a permission rule to settings.yaml"),
                     ("/undo", "Undo last git commit"),
                 ],
             ),
@@ -317,6 +320,111 @@ class Commands:
             table.add_row(f"[{PERM_SESSION}]SESSION[/{PERM_SESSION}]", grant)
 
         console.print(table)
+        return CommandResult(handled=True)
+
+    # Map user-friendly action aliases to the canonical rule tier.
+    # "approve" reads more naturally than "allow" in a conversational
+    # CLI — `/remember approve Shell(pytest*)`.
+    _REMEMBER_ACTIONS: ClassVar[dict[str, str]] = {
+        "approve": "allow",
+        "allow": "allow",
+        "deny": "deny",
+        "ask": "ask",
+    }
+
+    def _cmd_remember(self, args: str = "") -> CommandResult:
+        """Persist a permission rule to settings.yaml.
+
+        Usage:
+            /remember approve Shell(pytest *)        — global allow
+            /remember deny FileWrite(*.env*)         — global deny
+            /remember ask Shell(rm *)                — global ask
+            /remember approve Shell(make) --project  — scope to this repo
+
+        The rule is written to ~/.godspeed/settings.yaml (or the
+        project's .godspeed/settings.yaml with --project) AND added
+        to the live permission engine so it takes effect immediately —
+        no restart needed.
+        """
+
+        if self._permission_engine is None:
+            format_error("Permission engine not loaded — /remember unavailable.")
+            return CommandResult(handled=True)
+
+        raw = args.strip()
+        if not raw:
+            format_info(
+                "Usage: /remember <approve|deny|ask> <Pattern> [--project]\n"
+                "  e.g.  /remember approve Shell(pytest *)\n"
+                "        /remember deny FileWrite(*.env*)"
+            )
+            return CommandResult(handled=True)
+
+        # Parse trailing --project flag (scope selector).
+        tokens = raw.split()
+        scope_project = False
+        if tokens and tokens[-1] == "--project":
+            scope_project = True
+            tokens = tokens[:-1]
+
+        if len(tokens) < 2:
+            format_error(
+                "Need both an action and a pattern. Example: /remember approve Shell(pytest *)"
+            )
+            return CommandResult(handled=True)
+
+        action_word = tokens[0].lower()
+        action = self._REMEMBER_ACTIONS.get(action_word)
+        if action is None:
+            format_error(
+                f"Unknown action {action_word!r}. Expected one of: approve, allow, deny, ask."
+            )
+            return CommandResult(handled=True)
+
+        # Everything after the action word is the pattern — rejoin so
+        # patterns with spaces like `Shell(git *)` work unquoted.
+        pattern = " ".join(tokens[1:]).strip()
+
+        # Minimal syntactic validation — full glob semantics are
+        # validated by fnmatch at match time. We just require the
+        # Tool(argument) shape so users get an immediate error for
+        # obvious typos instead of a silently-saved unmatchable rule.
+        if "(" not in pattern or not pattern.endswith(")"):
+            format_error(
+                f"Pattern must be in Tool(argument) form, got: {pattern!r}\n"
+                "  e.g.  Shell(pytest *), FileRead(*.pem), FileWrite(.env*)"
+            )
+            return CommandResult(handled=True)
+
+        # Persist to YAML.
+        written_path = append_permission_rule(
+            pattern=pattern,
+            action=action,
+            project_dir=self._cwd if scope_project else None,
+        )
+        if written_path is None:
+            format_error(
+                "Failed to write rule to settings.yaml. Check filesystem permissions or see logs."
+            )
+            return CommandResult(handled=True)
+
+        # Add to the live permission engine so it takes effect this turn.
+        try:
+            self._permission_engine.add_rule(pattern, action)
+        except ValueError as exc:
+            format_error(f"Permission engine rejected rule: {exc}")
+            return CommandResult(handled=True)
+
+        scope_label = "project" if scope_project else "global"
+        action_upper = action.upper()
+        format_success(f"Remembered {action_upper} {pattern}  ({scope_label}: {written_path})")
+        logger.info(
+            "Rule persisted action=%s pattern=%s scope=%s path=%s",
+            action,
+            pattern,
+            scope_label,
+            written_path,
+        )
         return CommandResult(handled=True)
 
     def _cmd_plan(self, _args: str = "") -> CommandResult:

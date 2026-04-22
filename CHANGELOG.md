@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`/remember` slash command** for persisting permission rules without
+  leaving the TUI (`tui.commands._cmd_remember`). Writes to
+  `~/.godspeed/settings.yaml` (or `.godspeed/settings.yaml` with
+  `--project`) and adds the rule to the live
+  `PermissionEngine` so it takes effect immediately — no restart.
+  Accepts `approve` / `allow` / `deny` / `ask` as the action word;
+  `approve` is an alias for `allow` that reads more naturally. Pattern
+  syntax is validated up-front (`Tool(argument)` form) so typos fail
+  loudly instead of saving an unmatchable rule. Duplicates are
+  silently idempotent. New companion doc: `docs/permissions.md`
+  covering the 4-tier model end-to-end.
+- **`PermissionEngine.add_rule(pattern, action)`** for runtime rule
+  injection — used by `/remember` but available for any code path that
+  needs to widen (or narrow) the permission set mid-session.
+- **`config.append_permission_rule(pattern, action, project_dir=)`** —
+  generic YAML write-back helper covering all three tiers. Replaces
+  the old allow-only `append_allow_rule`, which is kept as a
+  back-compat wrapper.
 - **Task-aware model routing** (`llm/router.py`,
   `GodspeedSettings.cheap_model` / `strong_model`). Each LLM turn is
   classified from conversation state (no extra LLM call) into one of

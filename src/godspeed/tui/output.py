@@ -425,6 +425,45 @@ def format_permission_denied(tool_name: str, reason: str) -> None:
     console.print(f"  {marker} {styled('Blocked:', BOLD_ERROR)} {tool_name} -- {reason}")
 
 
+def format_status_hud(
+    input_tokens: int,
+    output_tokens: int,
+    cost_usd: float,
+    model: str,
+    turns: int,
+    budget_usd: float = 0.0,
+) -> None:
+    """Print a compact one-line session HUD after each completed turn.
+
+    Example rendering:
+        · 1,234 in + 567 out · $0.0024 · qwen3.5-397b · 3 turns
+
+    When ``budget_usd`` > 0, the cost is shown as ``$X / $Y`` with a red
+    tint if we're within 20% of the hard limit. Callers pass the
+    already-known LLMClient totals so this function stays pure — no
+    coupling to session/app state.
+    """
+    total_tokens = input_tokens + output_tokens
+    tokens_text = styled(f"{input_tokens:,} in + {output_tokens:,} out ({total_tokens:,})", DIM)
+
+    if budget_usd > 0:
+        remaining = max(0.0, budget_usd - cost_usd)
+        near_limit = remaining < budget_usd * 0.2
+        cost_style = WARNING if near_limit else DIM
+        cost_text = styled(f"${cost_usd:.4f} / ${budget_usd:.2f}", cost_style)
+    else:
+        cost_text = styled(f"${cost_usd:.4f}", DIM)
+
+    # Short model label — drop provider prefix for readability when present
+    model_short = model.split("/", 1)[-1] if "/" in model else model
+    model_text = styled(model_short, MUTED)
+
+    turns_text = styled(f"{turns} turn{'s' if turns != 1 else ''}", DIM)
+    sep = styled(SEPARATOR_DOT, MUTED)
+
+    console.print(f"  {sep} {tokens_text} {sep} {cost_text} {sep} {model_text} {sep} {turns_text}")
+
+
 def format_diff_review_prompt(
     tool_name: str,
     path: str,

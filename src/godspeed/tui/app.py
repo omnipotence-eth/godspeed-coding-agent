@@ -32,6 +32,7 @@ from godspeed.tui.output import (
     format_permission_denied,
     format_permission_prompt,
     format_session_summary,
+    format_status_hud,
     format_thinking,
     format_tool_call,
     format_tool_result,
@@ -101,6 +102,9 @@ class TUIApp:
         # each time a new turn starts. Distinct from _pause_event — pause
         # stalls at iteration boundary, cancel unwinds immediately.
         self._cancel_event = asyncio.Event()
+
+        # Per-session turn counter, displayed in the status HUD.
+        self._turn_count = 0
 
         self._commands = Commands(
             conversation=conversation,
@@ -366,6 +370,21 @@ class TUIApp:
                         running_loop.remove_signal_handler(_signal.SIGINT)
                     except (NotImplementedError, RuntimeError, ValueError):
                         pass
+
+                # Per-turn status HUD: compact one-line summary of tokens,
+                # cost, model, and turn count. Prints after spinner + output
+                # so it appears as the last line of the turn before the
+                # next prompt. Uses LLMClient's own accumulators so no
+                # session-state plumbing needed.
+                self._turn_count += 1
+                format_status_hud(
+                    input_tokens=self._llm_client.total_input_tokens,
+                    output_tokens=self._llm_client.total_output_tokens,
+                    cost_usd=self._llm_client.total_cost_usd,
+                    model=self._llm_client.model,
+                    turns=self._turn_count,
+                    budget_usd=getattr(self._llm_client, "max_cost_usd", 0.0),
+                )
 
         # Session summary on exit
         duration = time.monotonic() - start_time

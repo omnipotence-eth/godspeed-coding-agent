@@ -33,26 +33,27 @@ def _syntax_check(path_ext: str, before_content: str, after_content: str) -> str
     """
     ext = path_ext.lower()
 
-    if ext in _SYNTAX_GATED_EXTS:
-        parser = ast.parse
-    elif ext == ".json":
-
-        def parser(s: str) -> object:
-            return json.loads(s)
-
-    else:
+    if ext not in _SYNTAX_GATED_EXTS and ext != ".json":
         return None
+
+    is_python = ext in _SYNTAX_GATED_EXTS
+
+    def _parse(source: str) -> None:
+        if is_python:
+            ast.parse(source)
+        else:
+            json.loads(source)
 
     # Skip the gate if the pre-edit content already didn't parse — the edit
     # isn't responsible for pre-existing breakage, and a blocked revert would
     # prevent the agent from fixing the underlying issue.
     try:
-        parser(before_content)
+        _parse(before_content)
     except (SyntaxError, ValueError):
         return None
 
     try:
-        parser(after_content)
+        _parse(after_content)
     except SyntaxError as exc:
         return (
             f"Post-edit syntax check failed — the edit would leave the file unparseable. "

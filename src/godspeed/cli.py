@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import io
 import logging
 import shutil
 import subprocess
@@ -16,6 +17,42 @@ from uuid import uuid4
 import click
 
 from godspeed import __version__
+
+
+def _force_utf8_stdio() -> None:
+    """Make stdout/stderr survive non-ASCII output on legacy consoles.
+
+    Default stdout encoding on Windows is often cp1252, which cannot encode
+    common agent output characters (arrows, em-dashes, smart quotes) and
+    crashes with UnicodeEncodeError after the agent already finished real
+    work — masking success with a nonzero exit. We rewrap stdout/stderr in
+    UTF-8 with errors='replace' so stray high-bit chars become '?' instead
+    of crashing. Idempotent; only rewraps when the current encoding is not
+    already utf-8.
+    """
+    for name in ("stdout", "stderr"):
+        stream = getattr(sys, name, None)
+        if stream is None or not hasattr(stream, "buffer"):
+            continue
+        enc = (getattr(stream, "encoding", "") or "").lower().replace("-", "")
+        if enc == "utf8":
+            continue
+        try:
+            setattr(
+                sys,
+                name,
+                io.TextIOWrapper(
+                    stream.buffer,
+                    encoding="utf-8",
+                    errors="replace",
+                    line_buffering=True,
+                ),
+            )
+        except (AttributeError, OSError):
+            continue
+
+
+_force_utf8_stdio()
 
 logger = logging.getLogger(__name__)
 

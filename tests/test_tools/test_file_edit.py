@@ -194,3 +194,135 @@ class TestConfidenceReporting:
         assert "match=fuzzy" in result.output
         assert "confidence=" in result.output
         assert "line=" in result.output
+
+
+class TestPostEditSyntaxGate:
+    """Syntax gate: edits that break a previously-parseable file must be rejected.
+
+    Protects against the "multi-line replace drops indentation" failure mode
+    observed in the daily-use benchmark (benchmark T4: user_id -> account_id
+    rename de-indented function body and produced a SyntaxError).
+    """
+
+    @pytest.mark.asyncio
+    async def test_py_indent_strip_rejected(
+        self, tool: FileEditTool, tool_context: ToolContext
+    ) -> None:
+        """Fuzzy-match edit that drops indentation on a .py file must be rejected."""
+        f = tool_context.cwd / "api.py"
+        f.write_text(
+            'def handle(req):\n    uid = req["user_id"]\n    return uid\n',
+            encoding="utf-8",
+        )
+        # Agent provides new_string without the leading 4-space indent.
+        # Fuzzy match will still find it (whitespace drift), but writing
+        # would produce an IndentationError. The gate must reject.
+        result = await tool.execute(
+            {
+                "file_path": "api.py",
+                "old_string": '    uid = req["user_id"]\n    return uid',
+                "new_string": 'uid = req["account_id"]\nreturn uid',
+            },
+            tool_context,
+        )
+        assert result.is_error, f"expected reject, got: {result.output}"
+        assert "syntax" in (result.error or "").lower()
+        # File content must be unchanged
+        assert f.read_text(encoding="utf-8").count("user_id") == 1
+
+    @pytest.mark.asyncio
+    async def test_py_correctly_indented_replacement_allowed(
+        self, tool: FileEditTool, tool_context: ToolContext
+    ) -> None:
+        """A properly-indented replacement passes the gate."""
+        f = tool_context.cwd / "api.py"
+        f.write_text(
+            'def handle(req):\n    uid = req["user_id"]\n    return uid\n',
+            encoding="utf-8",
+        )
+        result = await tool.execute(
+            {
+                "file_path": "api.py",
+                "old_string": '    uid = req["user_id"]\n    return uid',
+                "new_string": '    uid = req["account_id"]\n    return uid',
+            },
+            tool_context,
+        )
+        assert not result.is_error, f"expected success, got: {result.error}"
+        assert 'req["account_id"]' in f.read_text(encoding="utf-8")
+
+    @pytest.mark.asyncio
+    async def test_py_already_broken_allows_edit(
+        self, tool: FileEditTool, tool_context: ToolContext
+    ) -> None:
+        """If file was already broken, gate doesn't block an edit (agent may be fixing it)."""
+        f = tool_context.cwd / "broken.py"
+        f.write_text("def foo(:\n    return 1\n", encoding="utf-8")  # pre-existing syntax error
+        result = await tool.execute(
+            {
+                "file_path": "broken.py",
+                "old_string": "def foo(:",
+                "new_string": "def foo():",
+            },
+            tool_context,
+        )
+        assert not result.is_error
+        # After the fix, file should parse
+        import ast
+
+        ast.parse(f.read_text(encoding="utf-8"))
+
+    @pytest.mark.asyncio
+    async def test_non_py_file_skips_gate(
+        self, tool: FileEditTool, tool_context: ToolContext
+    ) -> None:
+        """Non-.py files are not gated — an edit that would break Python syntax
+        in a .txt file should still go through."""
+        f = tool_context.cwd / "notes.txt"
+        f.write_text("def foo():\n    return 1\n", encoding="utf-8")
+        result = await tool.execute(
+            {
+                "file_path": "notes.txt",
+                "old_string": "return 1",
+                "new_string": "return 1 +",  # would be Python-invalid
+            },
+            tool_context,
+        )
+        assert not result.is_error
+
+    @pytest.mark.asyncio
+    async def test_json_broken_rejected(
+        self, tool: FileEditTool, tool_context: ToolContext
+    ) -> None:
+        f = tool_context.cwd / "config.json"
+        f.write_text('{"a": 1, "b": 2}\n', encoding="utf-8")
+        # Drop the closing quote on a key — breaks JSON
+        result = await tool.execute(
+            {
+                "file_path": "config.json",
+                "old_string": '"b": 2',
+                "new_string": '"b: 2',
+            },
+            tool_context,
+        )
+        assert result.is_error
+        assert "JSON" in (result.error or "")
+        # Content unchanged
+        assert f.read_text(encoding="utf-8") == '{"a": 1, "b": 2}\n'
+
+    @pytest.mark.asyncio
+    async def test_json_valid_allowed(
+        self, tool: FileEditTool, tool_context: ToolContext
+    ) -> None:
+        f = tool_context.cwd / "config.json"
+        f.write_text('{"a": 1}\n', encoding="utf-8")
+        result = await tool.execute(
+            {
+                "file_path": "config.json",
+                "old_string": '{"a": 1}',
+                "new_string": '{"a": 2}',
+            },
+            tool_context,
+        )
+        assert not result.is_error
+        assert '{"a": 2}' in f.read_text(encoding="utf-8")

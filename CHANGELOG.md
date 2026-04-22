@@ -7,6 +7,109 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.3.0] — 2026-04-22
+
+World-class coding-agent UX push. Five additions on top of the
+security-first core, all born from a 6-task daily-use benchmark that
+surfaced two real production bugs (both fixed) and four UX gaps (all
+addressed). Every change shipped with tests, CI-green across Python
+3.11 / 3.12 / 3.13.
+
+Version jumps 3.1.0 → 3.3.0 to align with the research-track label
+(v3.2 covered the LLM-judge / best@k selector + four null results;
+artifacts are in `experiments/swebench_lite/` and the tech-report
+draft on Desktop).
+
+### Added
+
+- **Mid-turn cancellation** (`agent.result.AgentCancelledError`,
+  `agent.loop.agent_loop(cancel_event=...)`). The agent now checks
+  a cancel event at three checkpoints per iteration — top of loop,
+  after pause release, between streaming chunks — and unwinds
+  cleanly via `AgentCancelledError` when set. `_streaming_call`
+  uses a `finally`-block `aclose()` so the underlying httpx stream
+  shuts down promptly. TUI installs an `asyncio` SIGINT handler on
+  Linux/macOS: first Ctrl+C cancels the current turn; second press
+  within 1 s hard-interrupts (Jupyter pattern). Windows
+  `ProactorEventLoop` degrades gracefully. Distinct from pause —
+  pause stops at iteration boundary; cancel stops immediately.
+- **Diff approve-before-write gate** (`tools.base.DiffReviewer`
+  Protocol, `Tool.produces_diff` class attribute,
+  `ToolContext.diff_reviewer`). Two independent axes of consent
+  now: `PermissionEvaluator` answers "may this tool run?"
+  (existing); `DiffReviewer` answers "should THIS specific diff
+  be applied?" (new). `file_edit` / `file_write` / `diff_apply`
+  opt in via `produces_diff = True`; each calls
+  `await context.diff_reviewer.review(tool_name, path, before,
+  after)` just before write. `"accept"` proceeds; any other value
+  (including forward-compat `"edit"`) rejects. TUI
+  `_InteractiveDiffReviewer` renders a side-by-side diff via
+  Rich's `Syntax("diff")` lexer with `(y)es · (n)o · (a)lways`
+  keys; session-scoped `"a"` bypass. Headless/CI:
+  `diff_reviewer` stays `None`, writes proceed as before.
+- **Per-turn cost/token HUD** (`tui.output.format_status_hud`).
+  Compact one-line summary after every agent turn:
+  `· 1,234 in + 567 out (1,801) · $0.0024 · model · 3 turns`.
+  When `max_cost_usd > 0` shows `$X / $Y` and tints `WARNING`
+  when remaining budget drops below 20%. Provider prefix stripped
+  for readability. Pure function; reuses existing `LLMClient`
+  accumulators.
+- **Troubleshooting + Windows quickstart docs**
+  (`docs/troubleshooting.md`, `docs/quickstart_windows.md`,
+  `docs/demo.md`). Top-of-funnel issues from the production audit:
+  `UnicodeEncodeError` on cp1252, NIM 40 RPM mitigations, WSL +
+  Docker for swebench (with swebench 4.1.0 pvlib NumPy bug
+  caveat), audit-verify workflow, Ollama first-run, post-edit
+  syntax gate rejections, diff reviewer keys, mid-turn Ctrl+C
+  semantics. Windows quickstart: 5-minute path from Miniconda →
+  pip → `godspeed init` → first task. Demo recording is
+  user-gated; `docs/demo.md` captures the asciinema + agg recipe.
+- **README "What's new in v3.3.0"** section — 5-row summary table
+  cross-linking every new feature + the production audit.
+
+### Fixed
+
+- **`file_edit` silent indentation corruption on multi-line
+  replace** (PR #78). The fuzzy matcher could find an indented
+  region, but a poorly-indented `new_string` would write a
+  syntactically broken file without warning. Now the tool runs
+  `ast.parse(new_content)` on `.py` / `.pyi` and
+  `json.loads(new_content)` on `.json`. If the pre-edit content
+  parsed but the post-edit would not, the write is rejected with
+  a clear error asking the agent to include more context.
+  Pre-broken files pass through so the agent can fix them.
+  Surfaced by the daily-use benchmark's T4 task (multi-file
+  `user_id → account_id` rename); with the fix the same task
+  now passes.
+- **Windows `UnicodeEncodeError` on CLI exit** (PR #78). The
+  agent's final summary often contains `→`, `—`, or smart quotes
+  — none encodable in cp1252. `cli.py` now calls
+  `_force_utf8_stdio()` at module load to re-wrap `sys.stdout` and
+  `sys.stderr` as `TextIOWrapper(encoding="utf-8",
+  errors="replace")`. Idempotent; skips already-utf8 streams.
+
+### Changed
+
+- Dependabot now ignores `pydantic` and `python-dotenv` bumps
+  (PR #73). Both are pinned strictly by `litellm>=1.83.7`
+  (`pydantic==2.12.5`, `python-dotenv==1.0.1`) — upstream-blocked
+  so auto-opened PRs are unmergeable. Un-ignore when LiteLLM
+  relaxes its pins.
+
+### Tested
+
+- **Daily-use benchmark** on
+  `C:\Users\ttimm\Desktop\godspeed_benchmark\` runs 4/4 passes
+  after the two fixes above; extended to 6/6 with harder refactor
+  + bug-fix scenarios (T5, T6).
+- **Production audit** adds path-traversal (T7a blocked
+  correctly), audit-trail chain verify (21 records on a live
+  session, tamper detection confirmed), and full-suite regression
+  (1861+ pass; 10 flaky `system_optimizer` tests pre-exist and
+  are environmental).
+- **CI** 8/8 green across lint / security / type-check / CodeQL
+  / Analyze / tests 3.11/3.12/3.13 on every feature PR (#78-#82).
+
 ## [3.1.0] — 2026-04-21
 
 Agent-in-loop Docker oracle tool + ensemble selector + SystemOptimizerTool

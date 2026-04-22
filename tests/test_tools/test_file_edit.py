@@ -311,9 +311,7 @@ class TestPostEditSyntaxGate:
         assert f.read_text(encoding="utf-8") == '{"a": 1, "b": 2}\n'
 
     @pytest.mark.asyncio
-    async def test_json_valid_allowed(
-        self, tool: FileEditTool, tool_context: ToolContext
-    ) -> None:
+    async def test_json_valid_allowed(self, tool: FileEditTool, tool_context: ToolContext) -> None:
         f = tool_context.cwd / "config.json"
         f.write_text('{"a": 1}\n', encoding="utf-8")
         result = await tool.execute(

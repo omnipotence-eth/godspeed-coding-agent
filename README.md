@@ -18,6 +18,28 @@ An AI coding agent that treats security as a first-class concern -- not an after
 
 ---
 
+## What's new in v3.3.0
+
+Five UX-focused additions on top of the security-first core. Every one
+shipped with tests + CI-green.
+
+| Area | What changed | Why |
+|---|---|---|
+| **Mid-turn cancel** | `Ctrl+C` now stops the agent mid-streaming-chunk, not at iteration boundary. Second press within 1 s hard-interrupts. | Previously you had to wait for the whole turn if the model went off-track. Cursor / Claude Code pattern — table stakes for a coding agent. |
+| **Diff approve-before-write** | `file_edit` / `file_write` / `diff_apply` now prompt with a side-by-side diff before hitting disk. `(y)es · (n)o · (a)lways` keys. | Two independent axes of consent: `PermissionEvaluator` ("may this tool run?") + `DiffReviewer` ("apply THIS specific diff?"). |
+| **Per-turn cost HUD** | Compact status line after every turn: `· 1,234 in + 567 out · $0.0024 · model · 3 turns`. Tints WARNING when budget < 20%. | `/stats` is great for a deep check but you want continuous awareness without typing. |
+| **Post-edit syntax gate** (v3.2.x) | `.py` / `.pyi` / `.json` edits that break parse are rejected before write. | Caught a multi-line-replace indentation bug surfaced by the production audit. See `docs/production_audit.md`. |
+| **Windows UTF-8 stdio** (v3.2.x) | CLI auto-wraps stdout/stderr with `errors='replace'` at startup. | Fixes `UnicodeEncodeError` on default cp1252 consoles when the agent emits arrows/em-dashes/smart quotes. |
+
+For the background on each — including the 6-task daily-use benchmark
+that surfaced the first two fixes — see
+`docs/production_audit.md` (once committed to the repo; currently on
+`C:\Users\ttimm\Desktop\godspeed_benchmark\production_audit.md`) and
+`docs/troubleshooting.md`.
+
+**Platform docs:** Windows users should read [`docs/quickstart_windows.md`](docs/quickstart_windows.md) for
+platform-specific setup (Miniconda, `PYTHONIOENCODING`, WSL for SWE-bench).
+
 ## Why
 
 Every open-source coding agent gives an LLM the ability to read files, write code, and run shell commands. None of them ship with a deny-first permission engine, a tamper-evident audit trail, or multi-layer secret protection out of the box. You are expected to bolt security on yourself, or trust the model not to `rm -rf /`.

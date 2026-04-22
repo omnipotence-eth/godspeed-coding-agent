@@ -14,7 +14,7 @@ from prompt_toolkit.keys import Keys
 
 from godspeed.agent.conversation import Conversation
 from godspeed.agent.loop import agent_loop
-from godspeed.agent.result import AgentCancelled
+from godspeed.agent.result import AgentCancelledError
 from godspeed.audit.trail import AuditTrail
 from godspeed.llm.client import LLMClient
 from godspeed.security.permissions import ALLOW, ASK, PermissionDecision, PermissionEngine
@@ -283,7 +283,7 @@ class TUIApp:
 
             # Install a SIGINT handler on the running loop. First Ctrl+C
             # sets cancel_event (the loop's next checkpoint raises
-            # AgentCancelled and unwinds cleanly). Second Ctrl+C within 1s
+            # AgentCancelledError and unwinds cleanly). Second Ctrl+C within 1s
             # raises KeyboardInterrupt for a hard exit — matches the
             # Jupyter "press twice" pattern most developers expect.
             self._last_sigint_monotonic = 0.0
@@ -309,7 +309,7 @@ class TUIApp:
             except (NotImplementedError, RuntimeError):
                 # Windows: asyncio.ProactorEventLoop does not support
                 # add_signal_handler. Fall back to the default KeyboardInterrupt
-                # path and the AgentCancelled will still fire if _cancel_event
+                # path and the AgentCancelledError will still fire if _cancel_event
                 # is set via another mechanism (e.g. /cancel slash command).
                 pass
 
@@ -336,7 +336,7 @@ class TUIApp:
                     on_thinking=_on_thinking,
                 )
                 console.print()  # End streaming output with newline
-            except AgentCancelled:
+            except AgentCancelledError:
                 console.print(f"\n  [{DIM}]Agent cancelled. Send another prompt or /quit.[/{DIM}]")
             except KeyboardInterrupt:
                 # Hard interrupt: user pressed Ctrl+C twice (or the loop-level

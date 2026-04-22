@@ -16,7 +16,7 @@ from collections.abc import Callable
 from typing import Any
 
 from godspeed.agent.conversation import Conversation
-from godspeed.agent.result import AgentCancelled, AgentMetrics, ExitReason
+from godspeed.agent.result import AgentCancelledError, AgentMetrics, ExitReason
 from godspeed.llm.client import ChatResponse, LLMClient
 from godspeed.tools.base import ToolCall, ToolContext, ToolResult
 from godspeed.tools.registry import ToolRegistry
@@ -104,7 +104,7 @@ async def agent_loop(
         pause_event: Optional asyncio.Event for pause/resume. When cleared,
             the loop waits at the top of each iteration until set again.
         cancel_event: Optional asyncio.Event for mid-turn cancellation.
-            When set, the loop raises AgentCancelled at the next safe
+            When set, the loop raises AgentCancelledError at the next safe
             checkpoint — between streaming chunks, before an LLM call,
             or before dispatching tools — so the user can interrupt a
             long-running turn immediately instead of waiting for the
@@ -132,7 +132,7 @@ async def agent_loop(
 
     for iteration in range(iteration_limit):
         # Cancel check: before pause check, so a cancel delivered during a
-        # pause doesn't strand the loop. Raises AgentCancelled; caller unwinds.
+        # pause doesn't strand the loop. Raises AgentCancelledError; caller unwinds.
         _check_cancel(cancel_event)
 
         # Pause/resume: if pause_event exists and is cleared, wait for it
@@ -168,7 +168,7 @@ async def agent_loop(
                     messages=conversation.messages,
                     tools=tool_schemas if tool_schemas else None,
                 )
-        except AgentCancelled:
+        except AgentCancelledError:
             # Finalize with INTERRUPTED and unwind — don't wrap in LLM_ERROR.
             logger.info("Agent loop cancelled mid-turn at iteration=%d", iteration)
             if metrics is not None:
@@ -868,14 +868,14 @@ async def _compact_conversation(conversation: Conversation, llm_client: LLMClien
 
 
 def _check_cancel(cancel_event: asyncio.Event | None) -> None:
-    """Raise AgentCancelled if the event has been set.
+    """Raise AgentCancelledError if the event has been set.
 
     Called at checkpoint boundaries inside the agent loop: top of
     iteration, between streaming chunks, before tool dispatch. Cheap
     (single atomic is_set() read) — safe to sprinkle liberally.
     """
     if cancel_event is not None and cancel_event.is_set():
-        raise AgentCancelled("cancel_event set by caller")
+        raise AgentCancelledError("cancel_event set by caller")
 
 
 async def _streaming_call(
@@ -896,7 +896,7 @@ async def _streaming_call(
     main loop can await them instead of re-dispatching.
 
     When cancel_event is provided, the chunk loop checks it between each
-    yielded chunk and raises AgentCancelled — closing the underlying
+    yielded chunk and raises AgentCancelledError — closing the underlying
     litellm stream promptly (its aclose() fires on generator cleanup).
 
     Returns the final complete ChatResponse for conversation history.
@@ -919,7 +919,7 @@ async def _streaming_call(
             # Cancel checkpoint: between chunks. If the caller (TUI signal
             # handler, headless SIGINT) set cancel_event during the last
             # chunk's on_chunk callback — or any time before now — we raise
-            # AgentCancelled here. The generator cleanup path in `finally`
+            # AgentCancelledError here. The generator cleanup path in `finally`
             # closes the underlying HTTP stream.
             _check_cancel(cancel_event)
     finally:

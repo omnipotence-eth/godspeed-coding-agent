@@ -58,11 +58,11 @@ EXIT_REASON_TO_CODE: dict[ExitReason, ExitCode] = {
 }
 
 
-class AgentCancelled(Exception):
+class AgentCancelledError(Exception):
     """Raised inside the agent loop when an external cancel_event is set.
 
     Distinct from KeyboardInterrupt so that:
-      - Callers can catch AgentCancelled specifically without catching
+      - Callers can catch AgentCancelledError specifically without catching
         unrelated KeyboardInterrupts (prompt-toolkit, stdin reads, etc).
       - The loop can unwind cleanly: stop the current streaming call,
         record partial assistant text, finalize metrics with

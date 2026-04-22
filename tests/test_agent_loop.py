@@ -685,15 +685,15 @@ class TestCancelEvent:
     """Mid-turn cancellation: the agent loop must unwind on cancel_event.
 
     Exercises the cancel checkpoints at (a) top of iteration,
-    (b) between streaming chunks, and (c) the AgentCancelled unwind path.
+    (b) between streaming chunks, and (c) the AgentCancelledError unwind path.
     """
 
     @pytest.mark.asyncio
     async def test_cancel_before_first_iteration(self) -> None:
-        """cancel_event set before loop start → AgentCancelled raised immediately."""
+        """cancel_event set before loop start → AgentCancelledError raised immediately."""
         import asyncio
 
-        from godspeed.agent.result import AgentCancelled
+        from godspeed.agent.result import AgentCancelledError
 
         cancel = asyncio.Event()
         cancel.set()
@@ -704,7 +704,7 @@ class TestCancelEvent:
         conv = Conversation(system_prompt="x")
         reg = ToolRegistry()
 
-        with pytest.raises(AgentCancelled):
+        with pytest.raises(AgentCancelledError):
             await agent_loop(
                 user_input="hi",
                 conversation=conv,
@@ -721,7 +721,7 @@ class TestCancelEvent:
         """cancel_event set mid-stream → chunk loop stops; stream.aclose() called."""
         import asyncio
 
-        from godspeed.agent.result import AgentCancelled
+        from godspeed.agent.result import AgentCancelledError
 
         cancel = asyncio.Event()
 
@@ -763,7 +763,7 @@ class TestCancelEvent:
         conv = Conversation(system_prompt="x")
         reg = ToolRegistry()
 
-        with pytest.raises(AgentCancelled):
+        with pytest.raises(AgentCancelledError):
             await agent_loop(
                 user_input="hi",
                 conversation=conv,

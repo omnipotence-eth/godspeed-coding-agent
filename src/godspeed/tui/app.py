@@ -25,6 +25,7 @@ from godspeed.tui.completions import GodspeedCompleter
 from godspeed.tui.output import (
     console,
     format_assistant_text,
+    format_diff_review_prompt,
     format_error,
     format_parallel_results,
     format_parallel_tool_calls,
@@ -140,6 +141,13 @@ class TUIApp:
                 permission_engine,
                 approval_tracker=self._approval_tracker,
             )
+
+        # Diff-review gate: diff-producing tools (file_edit, file_write,
+        # diff_apply) consult this reviewer just before writing. TUI only —
+        # headless/CI path leaves diff_reviewer None so writes proceed as
+        # before.
+        self._diff_reviewer = _InteractiveDiffReviewer()
+        tool_context.diff_reviewer = self._diff_reviewer
 
     async def run(self) -> None:
         """Run the main TUI loop."""
@@ -545,3 +553,48 @@ class _InteractivePermissionProxy:
                     f"  [{WARNING}]Could not persist rule. Added for this session only.[/{WARNING}]"
                 )
                 self._engine.grant_session_permission(pattern)
+
+
+class _InteractiveDiffReviewer:
+    """Implements `ToolContext.DiffReviewer` by prompting the human via the TUI.
+
+    Distinct from `_InteractivePermissionProxy` — permission answers
+    "should this tool run?" once; the reviewer answers "should THIS
+    specific diff be applied?" per pending write.
+
+    Current decision vocabulary: `"accept"` / `"reject"`. Future:
+    `"edit"` (open the patch in $EDITOR before apply). Unknown values
+    degrade to reject by the calling tool.
+    """
+
+    def __init__(self) -> None:
+        # Session-scoped "accept all" bypass. Set by the user answering "a".
+        self._always_accept = False
+
+    async def review(
+        self,
+        *,
+        tool_name: str,
+        path: str,
+        before: str,
+        after: str,
+    ) -> str:
+        if self._always_accept:
+            return "accept"
+
+        # Render the diff (Rich `console.input` is sync; run in a thread so
+        # we don't block the asyncio loop while waiting for keystrokes).
+        format_diff_review_prompt(tool_name, path, before, after)
+        try:
+            answer = await asyncio.to_thread(
+                lambda: console.input(f"[{BOLD_WARNING}]  > [/{BOLD_WARNING}]").strip().lower()
+            )
+        except (KeyboardInterrupt, EOFError):
+            answer = "n"
+
+        if answer in ("y", "yes", ""):
+            return "accept"
+        if answer in ("a", "always"):
+            self._always_accept = True
+            return "accept"
+        return "reject"

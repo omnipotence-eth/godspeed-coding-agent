@@ -120,6 +120,40 @@ class LLMInvoker(Protocol):
         ...
 
 
+@runtime_checkable
+class DiffReviewer(Protocol):
+    """Optional hook that lets a human approve / reject a concrete diff
+    BEFORE a file is written.
+
+    Permission (``PermissionEvaluator``) answers the question "is this
+    tool allowed to run at all?" It fires once per tool invocation.
+
+    ``DiffReviewer`` answers the question "should THIS specific change be
+    applied?" It fires once per pending write, with the actual before /
+    after content in hand. Two independent axes of consent.
+
+    When ``ToolContext.diff_reviewer`` is ``None``, diff-producing tools
+    write without review (headless / CI default). When present, the TUI
+    (or a test double) implements the Protocol to prompt the user.
+    """
+
+    async def review(
+        self,
+        *,
+        tool_name: str,
+        path: str,
+        before: str,
+        after: str,
+    ) -> str:
+        """Return ``"accept"`` to apply the change or ``"reject"`` to skip it.
+
+        Future return values (``"edit"``, etc) are reserved; implementations
+        should treat anything other than ``"accept"`` as a reject for forward
+        compatibility.
+        """
+        ...
+
+
 class ToolContext(BaseModel):
     """Execution context passed to every tool."""
 
@@ -128,6 +162,7 @@ class ToolContext(BaseModel):
     permissions: PermissionEvaluator | None = None
     audit: AuditRecorder | None = None
     llm_client: LLMInvoker | None = None
+    diff_reviewer: DiffReviewer | None = None
 
     model_config = {"arbitrary_types_allowed": True}
 
@@ -139,6 +174,12 @@ class Tool(abc.ABC):
     The same protocol is used for built-in tools, MCP tools, and future
     computer-use tools.
     """
+
+    #: When True, the tool writes a file whose before/after content should be
+    #: gated through ``ToolContext.diff_reviewer`` (if one is configured)
+    #: before the write actually happens. Default False — read-only tools and
+    #: shell-like tools opt out. File edit / write / diff-apply tools opt in.
+    produces_diff: bool = False
 
     @property
     @abc.abstractmethod

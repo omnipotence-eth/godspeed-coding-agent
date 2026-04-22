@@ -285,6 +285,8 @@ class DiffApplyTool(Tool):
     when exact position doesn't match.
     """
 
+    produces_diff = True
+
     @property
     def name(self) -> str:
         return "diff_apply"
@@ -334,6 +336,31 @@ class DiffApplyTool(Tool):
 
         if not file_diffs:
             return ToolResult.failure("No file diffs found in the provided diff content")
+
+        # Diff review gate: when a reviewer is attached (typically the TUI)
+        # and this is not a dry_run, let the human accept or reject the whole
+        # multi-file diff before anything is written. One review call covers
+        # the whole operation — diff_apply is treated as atomic from the
+        # user's perspective. Dry runs skip the gate since nothing is written.
+        if context.diff_reviewer is not None and not dry_run:
+            path_summary = ", ".join(fd.new_path for fd in file_diffs[:5])
+            if len(file_diffs) > 5:
+                path_summary += f", ... ({len(file_diffs) - 5} more)"
+            decision = await context.diff_reviewer.review(
+                tool_name=self.name,
+                path=path_summary,
+                before="",  # raw diff IS the before/after delta — shown verbatim
+                after=diff_text,
+            )
+            if decision != "accept":
+                logger.info(
+                    "diff_apply rejected by diff_reviewer: files=%d decision=%s",
+                    len(file_diffs),
+                    decision,
+                )
+                return ToolResult.failure(
+                    f"Diff rejected by reviewer ({len(file_diffs)} files) — no changes written."
+                )
 
         total_hunks = 0
         total_fuzzy = 0

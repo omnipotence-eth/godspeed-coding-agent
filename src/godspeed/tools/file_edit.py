@@ -77,6 +77,8 @@ class FileEditTool(Tool):
     to whitespace drift.
     """
 
+    produces_diff = True
+
     @property
     def name(self) -> str:
         return "file_edit"
@@ -205,6 +207,27 @@ class FileEditTool(Tool):
                 syntax_err,
             )
             return ToolResult.failure(syntax_err)
+
+        # Diff review gate: when a diff_reviewer is attached to the context
+        # (typically the TUI), let the human accept or reject this specific
+        # change before it hits disk. Headless / CI: diff_reviewer is None →
+        # auto-accept, preserving backward-compatible behavior.
+        if context.diff_reviewer is not None:
+            decision = await context.diff_reviewer.review(
+                tool_name=self.name,
+                path=file_path_str,
+                before=content,
+                after=new_content,
+            )
+            if decision != "accept":
+                logger.info(
+                    "Edit rejected by diff_reviewer: path=%s decision=%s",
+                    file_path_str,
+                    decision,
+                )
+                return ToolResult.failure(
+                    f"Edit rejected by reviewer for {file_path_str} — no changes written."
+                )
 
         resolved.write_text(new_content, encoding="utf-8")
         logger.info(

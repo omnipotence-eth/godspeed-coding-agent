@@ -425,6 +425,61 @@ def format_permission_denied(tool_name: str, reason: str) -> None:
     console.print(f"  {marker} {styled('Blocked:', BOLD_ERROR)} {tool_name} -- {reason}")
 
 
+def format_diff_review_prompt(
+    tool_name: str,
+    path: str,
+    before: str,
+    after: str,
+) -> None:
+    """Render a pending-edit diff and prompt text.
+
+    Called by the TUI's DiffReviewer just before the write. Distinct from
+    ``format_permission_prompt``: that one asks whether the tool should run
+    at all; this one asks whether THIS specific diff should be applied.
+
+    For ``diff_apply`` the ``after`` is the raw unified diff (``before`` is
+    empty) — we render it verbatim via the ``diff`` syntax lexer so the
+    user sees exactly what will be applied.
+    """
+    import difflib
+
+    console.print()
+    marker = styled(MARKER_WARNING, WARNING)
+    header = styled("Review proposed edit", BOLD_WARNING)
+    console.print(f"  {marker}  {header}")
+    console.print()
+    console.print(f"    {styled(tool_name, BOLD_PRIMARY)}  {path}")
+
+    # For diff_apply: "before" is empty, "after" is the raw unified diff text.
+    if (not before and after.startswith("diff --git")) or after.startswith("---"):
+        diff_text = after
+    else:
+        before_lines = before.splitlines()
+        after_lines = after.splitlines()
+        added = sum(1 for line in difflib.ndiff(before_lines, after_lines) if line.startswith("+ "))
+        removed = sum(
+            1 for line in difflib.ndiff(before_lines, after_lines) if line.startswith("- ")
+        )
+        console.print(f"    {styled(f'+{added} -{removed} lines', DIM)}")
+        diff_lines = list(
+            difflib.unified_diff(
+                before_lines,
+                after_lines,
+                fromfile="before",
+                tofile="after",
+                lineterm="",
+                n=3,
+            )
+        )
+        diff_content = diff_lines[2:] if len(diff_lines) > 2 else diff_lines
+        diff_text = "\n".join(diff_content[:80])
+        if len(diff_content) > 80:
+            diff_text += f"\n... ({len(diff_content) - 80} more lines)"
+
+    console.print(Syntax(diff_text, "diff", theme=SYNTAX_THEME, word_wrap=True))
+    console.print(f"    {styled('Apply?', WARNING)} {styled(f'(y)es {SEPARATOR_DOT} (n)o', DIM)}")
+
+
 def format_stats(
     input_tokens: int,
     output_tokens: int,

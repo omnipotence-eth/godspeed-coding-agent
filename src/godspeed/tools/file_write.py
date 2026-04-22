@@ -18,6 +18,8 @@ class FileWriteTool(Tool):
     Use file_write only for creating new files or complete rewrites.
     """
 
+    produces_diff = True
+
     @property
     def name(self) -> str:
         return "file_write"
@@ -65,6 +67,31 @@ class FileWriteTool(Tool):
             resolved = resolve_tool_path(file_path_str, context.cwd)
         except ValueError as exc:
             return ToolResult.failure(str(exc))
+
+        # Diff review gate: when a diff_reviewer is attached to the context
+        # (typically the TUI), let the human accept or reject this specific
+        # write before it hits disk. Read current content for the diff if the
+        # file already exists; for new files, the "before" is empty string.
+        if context.diff_reviewer is not None:
+            try:
+                before = resolved.read_text(encoding="utf-8") if resolved.exists() else ""
+            except UnicodeDecodeError:
+                before = "<binary>"
+            decision = await context.diff_reviewer.review(
+                tool_name=self.name,
+                path=file_path_str,
+                before=before,
+                after=content,
+            )
+            if decision != "accept":
+                logger.info(
+                    "Write rejected by diff_reviewer: path=%s decision=%s",
+                    file_path_str,
+                    decision,
+                )
+                return ToolResult.failure(
+                    f"Write rejected by reviewer for {file_path_str} — no changes written."
+                )
 
         try:
             # Create parent directories

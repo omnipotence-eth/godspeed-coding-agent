@@ -7,6 +7,7 @@ and Claude Code. The model decides when to stop. No framework overhead.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hashlib
 import json
 import logging
@@ -15,7 +16,7 @@ from collections.abc import Callable
 from typing import Any
 
 from godspeed.agent.conversation import Conversation
-from godspeed.agent.result import AgentMetrics, ExitReason
+from godspeed.agent.result import AgentCancelled, AgentMetrics, ExitReason
 from godspeed.llm.client import ChatResponse, LLMClient
 from godspeed.tools.base import ToolCall, ToolContext, ToolResult
 from godspeed.tools.registry import ToolRegistry
@@ -66,6 +67,7 @@ async def agent_loop(
     on_assistant_chunk: OnChunk | None = None,
     max_iterations: int | None = None,
     pause_event: asyncio.Event | None = None,
+    cancel_event: asyncio.Event | None = None,
     hook_executor: Any | None = None,
     parallel_tool_calls: bool = True,
     skip_user_message: bool = False,
@@ -101,6 +103,12 @@ async def agent_loop(
         max_iterations: Override the default iteration limit (MAX_ITERATIONS).
         pause_event: Optional asyncio.Event for pause/resume. When cleared,
             the loop waits at the top of each iteration until set again.
+        cancel_event: Optional asyncio.Event for mid-turn cancellation.
+            When set, the loop raises AgentCancelled at the next safe
+            checkpoint — between streaming chunks, before an LLM call,
+            or before dispatching tools — so the user can interrupt a
+            long-running turn immediately instead of waiting for the
+            iteration boundary. The TUI binds Ctrl+C to set this event.
         parallel_tool_calls: Execute multiple tool calls concurrently when True
             (default). Falls back to sequential when False or for single calls.
 
@@ -123,11 +131,18 @@ async def agent_loop(
     speculative_cache: dict[str, asyncio.Task[ToolResult]] = {}
 
     for iteration in range(iteration_limit):
+        # Cancel check: before pause check, so a cancel delivered during a
+        # pause doesn't strand the loop. Raises AgentCancelled; caller unwinds.
+        _check_cancel(cancel_event)
+
         # Pause/resume: if pause_event exists and is cleared, wait for it
         if pause_event is not None and not pause_event.is_set():
             logger.info("Agent loop paused at iteration=%d", iteration)
             await pause_event.wait()
             logger.info("Agent loop resumed at iteration=%d", iteration)
+
+        # Cancel check #2: may have been set while we were paused.
+        _check_cancel(cancel_event)
 
         logger.debug("Agent loop iteration=%d tokens=%d", iteration, conversation.token_count)
 
@@ -146,12 +161,20 @@ async def agent_loop(
                     tool_registry=tool_registry,
                     tool_context=tool_context,
                     speculative_cache=speculative_cache,
+                    cancel_event=cancel_event,
                 )
             else:
                 response = await llm_client.chat(
                     messages=conversation.messages,
                     tools=tool_schemas if tool_schemas else None,
                 )
+        except AgentCancelled:
+            # Finalize with INTERRUPTED and unwind — don't wrap in LLM_ERROR.
+            logger.info("Agent loop cancelled mid-turn at iteration=%d", iteration)
+            if metrics is not None:
+                metrics.iterations_used = iteration
+                metrics.finalize(ExitReason.INTERRUPTED)
+            raise
         except Exception as exc:
             # Import here to avoid circular import at module level
             from godspeed.llm.client import BudgetExceededError
@@ -844,6 +867,17 @@ async def _compact_conversation(conversation: Conversation, llm_client: LLMClien
         # Don't crash — just warn and continue with full history
 
 
+def _check_cancel(cancel_event: asyncio.Event | None) -> None:
+    """Raise AgentCancelled if the event has been set.
+
+    Called at checkpoint boundaries inside the agent loop: top of
+    iteration, between streaming chunks, before tool dispatch. Cheap
+    (single atomic is_set() read) — safe to sprinkle liberally.
+    """
+    if cancel_event is not None and cancel_event.is_set():
+        raise AgentCancelled("cancel_event set by caller")
+
+
 async def _streaming_call(
     llm_client: LLMClient,
     messages: list[dict[str, Any]],
@@ -852,6 +886,7 @@ async def _streaming_call(
     tool_registry: ToolRegistry | None = None,
     tool_context: ToolContext | None = None,
     speculative_cache: dict[str, asyncio.Task[ToolResult]] | None = None,
+    cancel_event: asyncio.Event | None = None,
 ) -> ChatResponse:
     """Make a streaming LLM call, invoking on_chunk for each text delta.
 
@@ -860,17 +895,40 @@ async def _streaming_call(
     main loop processes them. Results are stored in speculative_cache so the
     main loop can await them instead of re-dispatching.
 
+    When cancel_event is provided, the chunk loop checks it between each
+    yielded chunk and raises AgentCancelled — closing the underlying
+    litellm stream promptly (its aclose() fires on generator cleanup).
+
     Returns the final complete ChatResponse for conversation history.
     """
     final_response: ChatResponse | None = None
 
-    async for chunk in llm_client.stream_chat(messages=messages, tools=tools):
-        if chunk.finish_reason is None and chunk.content:
-            # Intermediate chunk — stream text to caller
-            on_chunk(chunk.content)
-        elif chunk.finish_reason is not None:
-            # Final aggregated response
-            final_response = chunk
+    stream = llm_client.stream_chat(messages=messages, tools=tools)
+    try:
+        async for chunk in stream:
+            if chunk.finish_reason is None and chunk.content:
+                # Intermediate chunk — stream text to caller first, THEN
+                # check cancel. This way the user sees the text the model
+                # already produced before we unwind — a cleaner UX than
+                # cutting off mid-word.
+                on_chunk(chunk.content)
+            elif chunk.finish_reason is not None:
+                # Final aggregated response
+                final_response = chunk
+
+            # Cancel checkpoint: between chunks. If the caller (TUI signal
+            # handler, headless SIGINT) set cancel_event during the last
+            # chunk's on_chunk callback — or any time before now — we raise
+            # AgentCancelled here. The generator cleanup path in `finally`
+            # closes the underlying HTTP stream.
+            _check_cancel(cancel_event)
+    finally:
+        # Ensure the underlying async generator is closed on cancel OR on
+        # any exception. aclose() is idempotent and cheap.
+        aclose = getattr(stream, "aclose", None)
+        if aclose is not None:
+            with contextlib.suppress(Exception):
+                await aclose()
 
     if final_response is None:
         # Stream ended without a finish_reason — shouldn't happen but be safe

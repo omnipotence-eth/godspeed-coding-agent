@@ -58,6 +58,20 @@ EXIT_REASON_TO_CODE: dict[ExitReason, ExitCode] = {
 }
 
 
+class AgentCancelled(Exception):
+    """Raised inside the agent loop when an external cancel_event is set.
+
+    Distinct from KeyboardInterrupt so that:
+      - Callers can catch AgentCancelled specifically without catching
+        unrelated KeyboardInterrupts (prompt-toolkit, stdin reads, etc).
+      - The loop can unwind cleanly: stop the current streaming call,
+        record partial assistant text, finalize metrics with
+        ExitReason.INTERRUPTED, and return.
+      - The TUI's "first Ctrl+C cancels the turn; second Ctrl+C exits"
+        UX works without the signal racing with prompt-toolkit reads.
+    """
+
+
 @dataclasses.dataclass(slots=True)
 class ToolCallRecord:
     """One tool invocation, as seen by the loop."""

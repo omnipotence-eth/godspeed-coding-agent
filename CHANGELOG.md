@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.4.0] — 2026-04-22
+
+Phase 2 of the world-class UX push. Two independent additions on top
+of v3.3.0, both landed with full test coverage and CI-green across
+Python 3.11 / 3.12 / 3.13. Zero breaking changes — every default
+behaves identically to v3.3.0 until you opt in.
+
 ### Added
 
 - **`/remember` slash command** for persisting permission rules without

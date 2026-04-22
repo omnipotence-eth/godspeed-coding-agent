@@ -6,6 +6,7 @@ import asyncio
 import contextlib
 import io
 import logging
+import os
 import shutil
 import subprocess
 import sys
@@ -17,6 +18,7 @@ from uuid import uuid4
 import click
 
 from godspeed import __version__
+from godspeed.config import DEFAULT_GLOBAL_DIR
 
 
 def _force_utf8_stdio() -> None:
@@ -58,6 +60,123 @@ logger = logging.getLogger(__name__)
 
 OLLAMA_URL = "http://localhost:11434/api/tags"
 OLLAMA_STARTUP_TIMEOUT = 15  # seconds to wait for ollama to come up
+
+
+def _parse_env_file(path: Path) -> dict[str, str]:
+    """Parse a simple ``KEY=value`` env file into a dict.
+
+    Supports:
+    - ``# ...`` comments (line must start with ``#``; inline comments aren't stripped)
+    - Blank lines
+    - Optional surrounding ``"..."`` or ``'...'`` quotes on values
+
+    Malformed lines (no ``=``, empty key) are silently skipped — an env
+    file should never crash startup. Returns an empty dict if the file
+    is missing or unreadable.
+    """
+    result: dict[str, str] = {}
+    if not path.exists():
+        return result
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        # OSError: permissions / transient FS issue.
+        # UnicodeDecodeError: someone wrote a binary blob or cp1252 file
+        # into .env.local — log and skip rather than crash the CLI.
+        logger.debug("Could not read env file %s: %s", path, exc)
+        return result
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        value = value.strip()
+        if not key:
+            continue
+        # Strip a matching pair of surrounding quotes so
+        # ``KEY="value with spaces"`` works as expected.
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in ('"', "'"):
+            value = value[1:-1]
+        result[key] = value
+    return result
+
+
+def _load_env_files(project_dir: Path | None = None) -> list[tuple[Path, list[str]]]:
+    """Load env files from standard locations into ``os.environ``.
+
+    Precedence (highest to lowest):
+
+    1. **Shell environment** — always wins. Keys already in ``os.environ``
+       are never overwritten. This keeps ``$env:NVIDIA_NIM_API_KEY = ...;
+       godspeed`` one-offs working and matches every ``.env`` library's
+       convention.
+    2. ``<project_dir>/.godspeed/.env.local`` — project-scoped override
+    3. ``<project_dir>/.godspeed/.env`` — project-scoped defaults
+    4. ``~/.godspeed/.env.local`` — user-wide override
+    5. ``~/.godspeed/.env`` — user-wide defaults
+
+    Files are merged in low-to-high priority order so higher-priority
+    files overwrite lower-priority ones BEFORE the single shell-env
+    check. In-file semantics mirror dotenv / Vite / Next: ``.env.local``
+    is the gitignored local override, ``.env`` is the checked-in default.
+
+    Returns a list of ``(path, injected_keys)`` pairs for each file
+    that contributed at least one variable — used by the caller to log
+    which files the session picked up. Never raises; bad files are
+    silently skipped so a malformed ``.env.local`` can't brick the CLI.
+    """
+
+    # Lowest priority first so later files overwrite earlier ones in
+    # the merged dict. Shell-env wins is applied at the very end.
+    candidates: list[Path] = [
+        DEFAULT_GLOBAL_DIR / ".env",
+        DEFAULT_GLOBAL_DIR / ".env.local",
+    ]
+    if project_dir is not None:
+        candidates.extend(
+            [
+                project_dir / ".godspeed" / ".env",
+                project_dir / ".godspeed" / ".env.local",
+            ]
+        )
+
+    resolved: dict[str, str] = {}
+    contributions: list[tuple[Path, list[str]]] = []
+    for path in candidates:
+        parsed = _parse_env_file(path)
+        if not parsed:
+            continue
+        # Record which keys this file will contribute to the merged view.
+        # (The actual injection into os.environ happens after the full
+        # merge; shell-env wins over everything below.)
+        contributions.append((path, sorted(parsed.keys())))
+        resolved.update(parsed)
+
+    loaded: list[tuple[Path, list[str]]] = []
+    injected_keys: set[str] = set()
+    for key, value in resolved.items():
+        if key in os.environ:
+            continue
+        os.environ[key] = value
+        injected_keys.add(key)
+
+    # Re-project contributions onto actually-injected keys, so the log
+    # reflects what the session ended up with after shell-env overrides.
+    for path, keys in contributions:
+        effective = [k for k in keys if k in injected_keys]
+        if not effective:
+            continue
+        loaded.append((path, effective))
+        logger.info(
+            "Loaded %d env var(s) from %s: %s",
+            len(effective),
+            path,
+            ", ".join(effective),
+        )
+    return loaded
 
 
 def _setup_logging(verbose: bool) -> None:
@@ -515,6 +634,12 @@ def main(
     """Godspeed -- Security-first open-source coding agent."""
     _setup_logging(verbose)
 
+    # Auto-load env files so API keys in ~/.godspeed/.env.local (and the
+    # project's .godspeed/.env.local) reach LiteLLM without requiring
+    # per-shell env configuration. Shell env still wins — see
+    # _load_env_files for the precedence rules.
+    _load_env_files(project_dir=project_dir)
+
     # Store params for subcommands
     ctx.ensure_object(dict)
     ctx.obj["model"] = model
@@ -560,7 +685,6 @@ def audit_verify(session_id: str | None, audit_dir: Path | None) -> None:
     from rich.console import Console as RichConsole
 
     from godspeed.audit.trail import AuditTrail
-    from godspeed.config import DEFAULT_GLOBAL_DIR
     from godspeed.tui.theme import DIM, ERROR, SUCCESS
 
     c = RichConsole()
@@ -603,7 +727,6 @@ def init() -> None:
 
     from rich.console import Console as RichConsole
 
-    from godspeed.config import DEFAULT_GLOBAL_DIR
     from godspeed.tui.theme import ACCENT, BOLD_PRIMARY, DIM, SUCCESS
 
     c = RichConsole()
@@ -1104,7 +1227,6 @@ def export_training(
     """
     from rich.console import Console as RichConsole
 
-    from godspeed.config import DEFAULT_GLOBAL_DIR
     from godspeed.training.exporter import ExportFilters, TrainingExporter
     from godspeed.tui.theme import DIM, ERROR, SUCCESS
 

@@ -256,11 +256,46 @@ Net: plurality loses 1 instance vs solo Kimi (astroid-1196: Kimi solo got it, pl
 ### What we learned about multi-judge
 
 - **2-judge plurality with simple tiebreakers is a regression, not a lift.** The optimistic "either-judge wins" framing is an oracle reading.
-- A 3+ judge ensemble could break ties via majority (no shortest-non-empty needed in most disagreement cases), which is the only path to a real lift. The 3rd-judge run (Kimi-K2-Thinking) was launched but the NIM endpoint repeatedly timed out and the run was inconclusive.
-- **The honest published number remains the solo judge at 10/23 = 43.5%.** Multi-judge work is a research direction, not a shippable improvement at N=2 with plurality+shortest-non-empty.
-- Better tiebreakers worth exploring: a meta-judge LLM call that picks between the disagreed slots; weighting judges by their solo recovery rates (legal: that comes from the same offline eval reports already used); requiring 2-of-3 agreement.
+- **The honest published number remains the solo judge at 10/23 = 43.5%.** Multi-judge work is a research direction, not a shippable improvement at N=2 or N=3 with plurality+shortest-non-empty.
 
-**Cost:** the plurality vote experiment was offline-only (re-aggregating already-saved per-judge picks); zero new NIM calls.
+**Cost:** the plurality vote experiment was offline-only (re-aggregating already-saved per-judge picks); zero new NIM calls for the aggregation step.
+
+### Addendum 2026-04-21 (late session) — 3rd judge + 3-judge plurality (SECOND NULL RESULT)
+
+`nvidia_nim/moonshotai/kimi-k2-thinking` (reasoning-model variant) was run as a 3rd judge on the same 5-way ensemble to test whether majority-vote with a 3rd tie-breaker could recover the oracle-union ceiling.
+
+**Kimi-K2-Thinking solo result:**
+- Judge dev-23 resolve: **9 / 23 = 39.1%** (worse than Kimi K2.5 solo at 10/23 = 43.5% and GPT-OSS-120B solo at 10/23 = 43.5%)
+- 20 judge_picks + 3 fallbacks (NIM endpoint chronic timeouts on the thinking variant; 3 fallbacks were shortest-non-empty)
+- Picker accuracy when a resolver exists: 9/12 = 75.0% (vs 83.3% for the non-thinking judges)
+- ~75 min wall-clock (vs ~3 min for GPT-OSS, ~38 min for Kimi K2.5)
+
+**3-judge plurality vote (Kimi K2.5 + GPT-OSS-120B + Kimi-K2-Thinking):**
+- Result: **9 / 23 = 39.1%** — NO IMPROVEMENT over 2-judge plurality, WORSE than any solo non-thinking judge.
+- Per-instance disagreement breakdown (6 disagreements of 23):
+
+| instance_id | Kimi K2.5 | GPT-OSS | Kimi-Thinking | plurality pick | outcome |
+|---|---|---|---|---|---|
+| marshmallow-1359 | seed3 | p1_dev23_v3 | seed3 | seed3 (2-of-3) | **MISS** (only p1_dev23_v3 resolves) |
+| pvlib-1606 | e1_kimi | gpt_oss | e1_kimi | e1_kimi (2-of-3) | WIN |
+| pvlib-1854 | p1_dev23_v3 | p1_dev23_v3 | e1_kimi | p1_dev23_v3 (2-of-3) | WIN |
+| pylint-astroid-1196 | iter1 | p1_dev23_v3 | e1_kimi | p1_dev23_v3 (shortest-nonempty tiebreak) | **MISS** (only iter1 resolves) |
+| sqlfluff-1517 | seed3 | gpt_oss | seed3 | seed3 (2-of-3) | - (no run resolves) |
+
+**Why a 3rd judge didn't help:**
+
+1. **marshmallow-1359** (only p1_dev23_v3 resolves): 2 of 3 judges voted seed3 → plurality locks in the wrong answer with full confidence. The non-thinking Kimi K2.5 and the thinking variant BOTH preferred seed3's minimal patch over p1_dev23_v3's verify-in-loop output; the "minimal diff" bias is shared across judges.
+2. **pylint-astroid-1196** (only iter1 resolves): All 3 judges disagreed (iter1, p1_dev23_v3, e1_kimi), so plurality fell back to shortest-non-empty — which picked p1_dev23_v3 (14 lines, non-resolver) over iter1 (38 lines, resolver). The shortest-non-empty heuristic is wrong on this instance.
+3. **Correlated judge biases beat majority voting.** When 2+ judges share the same "minimal-diff" or "targets-obvious-file" prior, majority vote reinforces the wrong answer rather than correcting it.
+
+**Updated conclusion:** multi-judge plurality with simple tiebreakers doesn't lift the solo-judge result **at N=2 or N=3 with the judges tested**. Paths that might actually work (future research):
+
+- **Meta-judge:** a 4th LLM call seeing problem + only the disagreed-slot diffs + individual judge rationales, trained to break ties (hard because most "training" signal requires oracle labels — bootstrapping risk).
+- **Heterogeneous judges:** include a judge from a different architecture family (e.g. an instruction-tuned Llama-70B) to break the correlated-bias pattern. Our 3 judges were all Moonshot/OpenAI/Moonshot — too correlated.
+- **Test-free signal:** expose `git apply --check` pass/fail per slot. Would have caught pylint-astroid-1196 where iter1's patch applies and others don't (need to verify).
+- **Weighted vote using per-judge solo recovery rate:** Kimi K2.5 and GPT-OSS both solve 10/12; Kimi-Thinking 9/12. Weighting by solo accuracy still would have landed on the same picks above — not an obvious win either.
+
+**The publishable number stays at 10/23 = 43.5% solo judge (either Kimi K2.5 or GPT-OSS-120B).** v3.2's contribution is the *eligibility-guard framework* + the robust cross-judge replication of the 10/23 result + the honest negative results on N=2/N=3 plurality aggregation.
 
 ### What this means
 

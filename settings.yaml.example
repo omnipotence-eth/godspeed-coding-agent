@@ -76,6 +76,27 @@ fallback_models: []
 #     - nvidia_nim/deepseek-ai/deepseek-v3
 #     - claude-sonnet-4-20250514
 
+# ─── Task-aware model routing ───────────────────────────────────────────
+# Use a strong model for fresh planning turns and a cheap one for
+# everything else (file edits, reads, shell continuations). The
+# classifier in godspeed/llm/router.py decides per-turn — no extra LLM
+# call. Empty values are skipped.
+#
+# Example: NIM Kimi for reasoning, local Ollama for the rest.
+#   strong_model: nvidia_nim/moonshotai/kimi-k2.5
+#   cheap_model:  ollama/qwen3:4b
+#
+# Power users can write `routing:` directly — explicit entries always
+# win over the shortcuts:
+#   routing:
+#     plan:      claude-opus-4
+#     edit:      ollama/qwen3-coder:latest
+#     read:      ollama/qwen3:4b
+#     shell:     ollama/qwen3:4b
+#     architect: claude-opus-4
+strong_model: ""
+cheap_model: ""
+
 # ─── Context ────────────────────────────────────────────────────────────
 max_context_tokens: 100000
 compaction_threshold: 0.8

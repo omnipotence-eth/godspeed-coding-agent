@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Task-aware model routing** (`llm/router.py`,
+  `GodspeedSettings.cheap_model` / `strong_model`). Each LLM turn is
+  classified from conversation state (no extra LLM call) into one of
+  `plan` / `edit` / `read` / `shell`; the existing `ModelRouter`
+  swaps `self.model` for the duration of the call and restores on
+  cleanup. `cheap_model` populates `routing[edit/read/shell]` and
+  `strong_model` populates `routing[plan]` so users get the
+  cost-vs-quality split without writing the full dict. Explicit
+  `routing:` entries in YAML still win. Streaming and non-streaming
+  paths both honor the `task_type` parameter; mid-turn cancel still
+  closes the routed stream cleanly via the existing `aclose()`
+  finally-block. Headless mode and configs without shortcuts behave
+  identically to v3.3.0 (no routing → default model for every call).
+
 ## [3.3.0] — 2026-04-22
 
 World-class coding-agent UX push. Five additions on top of the

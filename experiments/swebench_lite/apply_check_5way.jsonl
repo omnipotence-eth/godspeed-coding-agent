@@ -1,0 +1,115 @@
+{"instance_id": "marshmallow-code__marshmallow-1343", "label": "e1_kimi", "applies": true, "reason": "ok"}
+{"instance_id": "marshmallow-code__marshmallow-1343", "label": "gpt_oss", "applies": true, "reason": "ok"}
+{"instance_id": "marshmallow-code__marshmallow-1343", "label": "iter1", "applies": true, "reason": "ok"}
+{"instance_id": "marshmallow-code__marshmallow-1343", "label": "seed3", "applies": true, "reason": "ok"}
+{"instance_id": "marshmallow-code__marshmallow-1343", "label": "p1_dev23_v3", "applies": true, "reason": "ok"}
+{"instance_id": "marshmallow-code__marshmallow-1359", "label": "e1_kimi", "applies": false, "reason": "empty patch"}
+{"instance_id": "marshmallow-code__marshmallow-1359", "label": "gpt_oss", "applies": false, "reason": "empty patch"}
+{"instance_id": "marshmallow-code__marshmallow-1359", "label": "iter1", "applies": true, "reason": "ok"}
+{"instance_id": "marshmallow-code__marshmallow-1359", "label": "seed3", "applies": true, "reason": "ok"}
+{"instance_id": "marshmallow-code__marshmallow-1359", "label": "p1_dev23_v3", "applies": true, "reason": "ok"}
+{"instance_id": "pvlib__pvlib-python-1072", "label": "e1_kimi", "applies": true, "reason": "ok"}
+{"instance_id": "pvlib__pvlib-python-1072", "label": "gpt_oss", "applies": true, "reason": "ok"}
+{"instance_id": "pvlib__pvlib-python-1072", "label": "iter1", "applies": false, "reason": "empty patch"}
+{"instance_id": "pvlib__pvlib-python-1072", "label": "seed3", "applies": false, "reason": "empty patch"}
+{"instance_id": "pvlib__pvlib-python-1072", "label": "p1_dev23_v3", "applies": true, "reason": "ok"}
+{"instance_id": "pvlib__pvlib-python-1154", "label": "e1_kimi", "applies": true, "reason": "ok"}
+{"instance_id": "pvlib__pvlib-python-1154", "label": "gpt_oss", "applies": true, "reason": "ok"}
+{"instance_id": "pvlib__pvlib-python-1154", "label": "iter1", "applies": false, "reason": "empty patch"}
+{"instance_id": "pvlib__pvlib-python-1154", "label": "seed3", "applies": true, "reason": "ok"}
+{"instance_id": "pvlib__pvlib-python-1154", "label": "p1_dev23_v3", "applies": true, "reason": "ok"}
+{"instance_id": "pvlib__pvlib-python-1606", "label": "e1_kimi", "applies": true, "reason": "ok"}
+{"instance_id": "pvlib__pvlib-python-1606", "label": "gpt_oss", "applies": true, "reason": "ok"}
+{"instance_id": "pvlib__pvlib-python-1606", "label": "iter1", "applies": true, "reason": "ok"}
+{"instance_id": "pvlib__pvlib-python-1606", "label": "seed3", "applies": true, "reason": "ok"}
+{"instance_id": "pvlib__pvlib-python-1606", "label": "p1_dev23_v3", "applies": true, "reason": "ok"}
+{"instance_id": "pvlib__pvlib-python-1707", "label": "e1_kimi", "applies": true, "reason": "ok"}
+{"instance_id": "pvlib__pvlib-python-1707", "label": "gpt_oss", "applies": true, "reason": "ok"}
+{"instance_id": "pvlib__pvlib-python-1707", "label": "iter1", "applies": true, "reason": "ok"}
+{"instance_id": "pvlib__pvlib-python-1707", "label": "seed3", "applies": true, "reason": "ok"}
+{"instance_id": "pvlib__pvlib-python-1707", "label": "p1_dev23_v3", "applies": false, "reason": "empty patch"}
+{"instance_id": "pvlib__pvlib-python-1854", "label": "e1_kimi", "applies": true, "reason": "ok"}
+{"instance_id": "pvlib__pvlib-python-1854", "label": "gpt_oss", "applies": true, "reason": "ok"}
+{"instance_id": "pvlib__pvlib-python-1854", "label": "iter1", "applies": true, "reason": "ok"}
+{"instance_id": "pvlib__pvlib-python-1854", "label": "seed3", "applies": true, "reason": "ok"}
+{"instance_id": "pvlib__pvlib-python-1854", "label": "p1_dev23_v3", "applies": true, "reason": "ok"}
+{"instance_id": "pydicom__pydicom-1139", "label": "e1_kimi", "applies": true, "reason": "ok"}
+{"instance_id": "pydicom__pydicom-1139", "label": "gpt_oss", "applies": true, "reason": "ok"}
+{"instance_id": "pydicom__pydicom-1139", "label": "iter1", "applies": true, "reason": "ok"}
+{"instance_id": "pydicom__pydicom-1139", "label": "seed3", "applies": false, "reason": "empty patch"}
+{"instance_id": "pydicom__pydicom-1139", "label": "p1_dev23_v3", "applies": true, "reason": "ok"}
+{"instance_id": "pydicom__pydicom-1256", "label": "e1_kimi", "applies": true, "reason": "ok"}
+{"instance_id": "pydicom__pydicom-1256", "label": "gpt_oss", "applies": true, "reason": "ok"}
+{"instance_id": "pydicom__pydicom-1256", "label": "iter1", "applies": true, "reason": "ok"}
+{"instance_id": "pydicom__pydicom-1256", "label": "seed3", "applies": true, "reason": "ok"}
+{"instance_id": "pydicom__pydicom-1256", "label": "p1_dev23_v3", "applies": true, "reason": "ok"}
+{"instance_id": "pydicom__pydicom-1413", "label": "e1_kimi", "applies": true, "reason": "ok"}
+{"instance_id": "pydicom__pydicom-1413", "label": "gpt_oss", "applies": true, "reason": "ok"}
+{"instance_id": "pydicom__pydicom-1413", "label": "iter1", "applies": false, "reason": "empty patch"}
+{"instance_id": "pydicom__pydicom-1413", "label": "seed3", "applies": true, "reason": "ok"}
+{"instance_id": "pydicom__pydicom-1413", "label": "p1_dev23_v3", "applies": false, "reason": "empty patch"}
+{"instance_id": "pydicom__pydicom-1694", "label": "e1_kimi", "applies": true, "reason": "ok"}
+{"instance_id": "pydicom__pydicom-1694", "label": "gpt_oss", "applies": true, "reason": "ok"}
+{"instance_id": "pydicom__pydicom-1694", "label": "iter1", "applies": true, "reason": "ok"}
+{"instance_id": "pydicom__pydicom-1694", "label": "seed3", "applies": true, "reason": "ok"}
+{"instance_id": "pydicom__pydicom-1694", "label": "p1_dev23_v3", "applies": false, "reason": "empty patch"}
+{"instance_id": "pydicom__pydicom-901", "label": "e1_kimi", "applies": true, "reason": "ok"}
+{"instance_id": "pydicom__pydicom-901", "label": "gpt_oss", "applies": true, "reason": "ok"}
+{"instance_id": "pydicom__pydicom-901", "label": "iter1", "applies": true, "reason": "ok"}
+{"instance_id": "pydicom__pydicom-901", "label": "seed3", "applies": true, "reason": "ok"}
+{"instance_id": "pydicom__pydicom-901", "label": "p1_dev23_v3", "applies": true, "reason": "ok"}
+{"instance_id": "pylint-dev__astroid-1196", "label": "e1_kimi", "applies": true, "reason": "ok"}
+{"instance_id": "pylint-dev__astroid-1196", "label": "gpt_oss", "applies": true, "reason": "ok"}
+{"instance_id": "pylint-dev__astroid-1196", "label": "iter1", "applies": true, "reason": "ok"}
+{"instance_id": "pylint-dev__astroid-1196", "label": "seed3", "applies": true, "reason": "ok"}
+{"instance_id": "pylint-dev__astroid-1196", "label": "p1_dev23_v3", "applies": true, "reason": "ok"}
+{"instance_id": "pylint-dev__astroid-1268", "label": "e1_kimi", "applies": true, "reason": "ok"}
+{"instance_id": "pylint-dev__astroid-1268", "label": "gpt_oss", "applies": true, "reason": "ok"}
+{"instance_id": "pylint-dev__astroid-1268", "label": "iter1", "applies": false, "reason": "empty patch"}
+{"instance_id": "pylint-dev__astroid-1268", "label": "seed3", "applies": false, "reason": "empty patch"}
+{"instance_id": "pylint-dev__astroid-1268", "label": "p1_dev23_v3", "applies": true, "reason": "ok"}
+{"instance_id": "pylint-dev__astroid-1333", "label": "e1_kimi", "applies": false, "reason": "empty patch"}
+{"instance_id": "pylint-dev__astroid-1333", "label": "gpt_oss", "applies": true, "reason": "ok"}
+{"instance_id": "pylint-dev__astroid-1333", "label": "iter1", "applies": false, "reason": "empty patch"}
+{"instance_id": "pylint-dev__astroid-1333", "label": "seed3", "applies": false, "reason": "empty patch"}
+{"instance_id": "pylint-dev__astroid-1333", "label": "p1_dev23_v3", "applies": false, "reason": "empty patch"}
+{"instance_id": "pylint-dev__astroid-1866", "label": "e1_kimi", "applies": true, "reason": "ok"}
+{"instance_id": "pylint-dev__astroid-1866", "label": "gpt_oss", "applies": false, "reason": "empty patch"}
+{"instance_id": "pylint-dev__astroid-1866", "label": "iter1", "applies": true, "reason": "ok"}
+{"instance_id": "pylint-dev__astroid-1866", "label": "seed3", "applies": true, "reason": "ok"}
+{"instance_id": "pylint-dev__astroid-1866", "label": "p1_dev23_v3", "applies": true, "reason": "ok"}
+{"instance_id": "pylint-dev__astroid-1978", "label": "e1_kimi", "applies": true, "reason": "ok"}
+{"instance_id": "pylint-dev__astroid-1978", "label": "gpt_oss", "applies": true, "reason": "ok"}
+{"instance_id": "pylint-dev__astroid-1978", "label": "iter1", "applies": true, "reason": "ok"}
+{"instance_id": "pylint-dev__astroid-1978", "label": "seed3", "applies": true, "reason": "ok"}
+{"instance_id": "pylint-dev__astroid-1978", "label": "p1_dev23_v3", "applies": true, "reason": "ok"}
+{"instance_id": "pyvista__pyvista-4315", "label": "e1_kimi", "applies": false, "reason": "empty patch"}
+{"instance_id": "pyvista__pyvista-4315", "label": "gpt_oss", "applies": true, "reason": "ok"}
+{"instance_id": "pyvista__pyvista-4315", "label": "iter1", "applies": true, "reason": "ok"}
+{"instance_id": "pyvista__pyvista-4315", "label": "seed3", "applies": true, "reason": "ok"}
+{"instance_id": "pyvista__pyvista-4315", "label": "p1_dev23_v3", "applies": false, "reason": "empty patch"}
+{"instance_id": "sqlfluff__sqlfluff-1517", "label": "e1_kimi", "applies": true, "reason": "ok"}
+{"instance_id": "sqlfluff__sqlfluff-1517", "label": "gpt_oss", "applies": true, "reason": "ok"}
+{"instance_id": "sqlfluff__sqlfluff-1517", "label": "iter1", "applies": false, "reason": "empty patch"}
+{"instance_id": "sqlfluff__sqlfluff-1517", "label": "seed3", "applies": true, "reason": "ok"}
+{"instance_id": "sqlfluff__sqlfluff-1517", "label": "p1_dev23_v3", "applies": false, "reason": "empty patch"}
+{"instance_id": "sqlfluff__sqlfluff-1625", "label": "e1_kimi", "applies": true, "reason": "ok"}
+{"instance_id": "sqlfluff__sqlfluff-1625", "label": "gpt_oss", "applies": true, "reason": "ok"}
+{"instance_id": "sqlfluff__sqlfluff-1625", "label": "iter1", "applies": false, "reason": "empty patch"}
+{"instance_id": "sqlfluff__sqlfluff-1625", "label": "seed3", "applies": true, "reason": "ok"}
+{"instance_id": "sqlfluff__sqlfluff-1625", "label": "p1_dev23_v3", "applies": true, "reason": "ok"}
+{"instance_id": "sqlfluff__sqlfluff-1733", "label": "e1_kimi", "applies": false, "reason": "empty patch"}
+{"instance_id": "sqlfluff__sqlfluff-1733", "label": "gpt_oss", "applies": true, "reason": "ok"}
+{"instance_id": "sqlfluff__sqlfluff-1733", "label": "iter1", "applies": false, "reason": "empty patch"}
+{"instance_id": "sqlfluff__sqlfluff-1733", "label": "seed3", "applies": false, "reason": "empty patch"}
+{"instance_id": "sqlfluff__sqlfluff-1733", "label": "p1_dev23_v3", "applies": false, "reason": "empty patch"}
+{"instance_id": "sqlfluff__sqlfluff-1763", "label": "e1_kimi", "applies": true, "reason": "ok"}
+{"instance_id": "sqlfluff__sqlfluff-1763", "label": "gpt_oss", "applies": true, "reason": "ok"}
+{"instance_id": "sqlfluff__sqlfluff-1763", "label": "iter1", "applies": false, "reason": "empty patch"}
+{"instance_id": "sqlfluff__sqlfluff-1763", "label": "seed3", "applies": true, "reason": "ok"}
+{"instance_id": "sqlfluff__sqlfluff-1763", "label": "p1_dev23_v3", "applies": false, "reason": "empty patch"}
+{"instance_id": "sqlfluff__sqlfluff-2419", "label": "e1_kimi", "applies": true, "reason": "ok"}
+{"instance_id": "sqlfluff__sqlfluff-2419", "label": "gpt_oss", "applies": true, "reason": "ok"}
+{"instance_id": "sqlfluff__sqlfluff-2419", "label": "iter1", "applies": true, "reason": "ok"}
+{"instance_id": "sqlfluff__sqlfluff-2419", "label": "seed3", "applies": true, "reason": "ok"}
+{"instance_id": "sqlfluff__sqlfluff-2419", "label": "p1_dev23_v3", "applies": true, "reason": "ok"}

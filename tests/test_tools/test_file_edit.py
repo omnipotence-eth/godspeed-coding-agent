@@ -324,3 +324,109 @@ class TestPostEditSyntaxGate:
         )
         assert not result.is_error
         assert '{"a": 2}' in f.read_text(encoding="utf-8")
+
+
+class TestDiffReviewerGate:
+    """Diff-review gate: an attached `diff_reviewer` can accept or reject
+    a proposed edit BEFORE it hits disk.
+
+    Uses a test double that records each call and returns a scripted
+    decision. The production implementation lives in the TUI.
+    """
+
+    @pytest.mark.asyncio
+    async def test_file_edit_declares_produces_diff(self, tool: FileEditTool) -> None:
+        """Class attribute must be True so the loop knows to gate this tool."""
+        assert FileEditTool.produces_diff is True
+
+    @pytest.mark.asyncio
+    async def test_accept_allows_write(self, tool: FileEditTool, tool_context: ToolContext) -> None:
+        from godspeed.tools.base import DiffReviewer
+
+        seen: list[dict[str, str]] = []
+
+        class AcceptingReviewer(DiffReviewer):
+            async def review(self, *, tool_name: str, path: str, before: str, after: str) -> str:
+                seen.append(
+                    {
+                        "tool_name": tool_name,
+                        "path": path,
+                        "before": before,
+                        "after": after,
+                    }
+                )
+                return "accept"
+
+        f = tool_context.cwd / "ok.py"
+        f.write_text("x = 1\n", encoding="utf-8")
+        tool_context.diff_reviewer = AcceptingReviewer()
+
+        result = await tool.execute(
+            {"file_path": "ok.py", "old_string": "x = 1", "new_string": "x = 2"},
+            tool_context,
+        )
+        assert not result.is_error
+        assert f.read_text(encoding="utf-8") == "x = 2\n"
+        assert len(seen) == 1
+        assert seen[0]["tool_name"] == "file_edit"
+        assert seen[0]["before"].strip() == "x = 1"
+        assert seen[0]["after"].strip() == "x = 2"
+
+    @pytest.mark.asyncio
+    async def test_reject_blocks_write(self, tool: FileEditTool, tool_context: ToolContext) -> None:
+        from godspeed.tools.base import DiffReviewer
+
+        class RejectingReviewer(DiffReviewer):
+            async def review(self, *, tool_name: str, path: str, before: str, after: str) -> str:
+                return "reject"
+
+        f = tool_context.cwd / "ok.py"
+        original = "x = 1\n"
+        f.write_text(original, encoding="utf-8")
+        tool_context.diff_reviewer = RejectingReviewer()
+
+        result = await tool.execute(
+            {"file_path": "ok.py", "old_string": "x = 1", "new_string": "x = 2"},
+            tool_context,
+        )
+        assert result.is_error
+        assert "rejected by reviewer" in (result.error or "").lower()
+        assert f.read_text(encoding="utf-8") == original
+
+    @pytest.mark.asyncio
+    async def test_no_reviewer_preserves_baseline(
+        self, tool: FileEditTool, tool_context: ToolContext
+    ) -> None:
+        """diff_reviewer=None → headless / CI default → write proceeds."""
+        f = tool_context.cwd / "ok.py"
+        f.write_text("x = 1\n", encoding="utf-8")
+        assert tool_context.diff_reviewer is None
+
+        result = await tool.execute(
+            {"file_path": "ok.py", "old_string": "x = 1", "new_string": "x = 2"},
+            tool_context,
+        )
+        assert not result.is_error
+        assert f.read_text(encoding="utf-8") == "x = 2\n"
+
+    @pytest.mark.asyncio
+    async def test_unrecognized_decision_treated_as_reject(
+        self, tool: FileEditTool, tool_context: ToolContext
+    ) -> None:
+        """Forward-compatibility: any non-'accept' return value is a reject."""
+        from godspeed.tools.base import DiffReviewer
+
+        class EditingReviewer(DiffReviewer):
+            async def review(self, *, tool_name: str, path: str, before: str, after: str) -> str:
+                return "edit"  # future feature, not yet implemented
+
+        f = tool_context.cwd / "ok.py"
+        f.write_text("x = 1\n", encoding="utf-8")
+        tool_context.diff_reviewer = EditingReviewer()
+
+        result = await tool.execute(
+            {"file_path": "ok.py", "old_string": "x = 1", "new_string": "x = 2"},
+            tool_context,
+        )
+        assert result.is_error
+        assert f.read_text(encoding="utf-8") == "x = 1\n"

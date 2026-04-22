@@ -15,6 +15,7 @@ from godspeed.tui.output import (
     format_permission_denied,
     format_permission_prompt,
     format_session_summary,
+    format_status_hud,
     format_tool_call,
     format_tool_result,
     format_welcome,
@@ -431,3 +432,92 @@ class TestFormatParallelResults:
         ]
         output = _capture(format_parallel_results, results)
         assert "\u00b7" in output  # · dot separator
+
+
+class TestFormatStatusHud:
+    """Compact per-turn HUD: tokens, cost, model, turn count."""
+
+    def test_shows_tokens_and_cost(self) -> None:
+        output = _capture(
+            format_status_hud,
+            input_tokens=1234,
+            output_tokens=567,
+            cost_usd=0.0024,
+            model="nvidia_nim/moonshotai/kimi-k2.5",
+            turns=3,
+        )
+        assert "1,234 in" in output
+        assert "567 out" in output
+        assert "1,801" in output  # total
+        assert "$0.0024" in output
+        assert "3 turns" in output
+
+    def test_model_short_name(self) -> None:
+        """Provider prefix is stripped for readability."""
+        output = _capture(
+            format_status_hud,
+            input_tokens=10,
+            output_tokens=20,
+            cost_usd=0.0,
+            model="anthropic/claude-opus-4-7",
+            turns=1,
+        )
+        assert "claude-opus-4-7" in output
+        assert "anthropic/" not in output
+
+    def test_model_no_prefix_unchanged(self) -> None:
+        output = _capture(
+            format_status_hud,
+            input_tokens=0,
+            output_tokens=0,
+            cost_usd=0.0,
+            model="plain-model-name",
+            turns=1,
+        )
+        assert "plain-model-name" in output
+
+    def test_singular_turn(self) -> None:
+        output = _capture(
+            format_status_hud,
+            input_tokens=1,
+            output_tokens=1,
+            cost_usd=0.0,
+            model="m",
+            turns=1,
+        )
+        assert "1 turn " in output or output.rstrip().endswith("1 turn")
+
+    def test_budget_shown_when_set(self) -> None:
+        output = _capture(
+            format_status_hud,
+            input_tokens=100,
+            output_tokens=100,
+            cost_usd=0.05,
+            model="m",
+            turns=1,
+            budget_usd=1.00,
+        )
+        assert "$0.0500 / $1.00" in output
+
+    def test_budget_hidden_when_zero(self) -> None:
+        output = _capture(
+            format_status_hud,
+            input_tokens=100,
+            output_tokens=100,
+            cost_usd=0.05,
+            model="m",
+            turns=1,
+            budget_usd=0.0,
+        )
+        assert "/" not in output.split("$0.0500")[1].split("\n")[0]
+
+    def test_uses_dot_separator(self) -> None:
+        output = _capture(
+            format_status_hud,
+            input_tokens=0,
+            output_tokens=0,
+            cost_usd=0.0,
+            model="m",
+            turns=0,
+        )
+        assert output.count("\u00b7") >= 4  # 4+ · dots between sections

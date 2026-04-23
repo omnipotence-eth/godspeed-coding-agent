@@ -1,0 +1,27 @@
+# CODEOWNERS for Godspeed
+# These owners will be requested to review pull requests.
+# Format: https://help.github.com/articles/about-codeowners/
+
+# Default owner for all files
+* @omnipotence-eth
+
+# Security-critical paths require explicit review
+/src/godspeed/security/ @omnipotence-eth
+/src/godspeed/audit/ @omnipotence-eth
+/src/godspeed/tools/shell.py @omnipotence-eth
+/src/godspeed/tools/file_edit.py @omnipotence-eth
+/src/godspeed/tools/file_write.py @omnipotence-eth
+/src/godspeed/tools/diff_apply.py @omnipotence-eth
+
+# Permission engine changes
+/src/godspeed/security/permissions.py @omnipotence-eth
+/src/godspeed/security/dangerous.py @omnipotence-eth
+/src/godspeed/security/secrets.py @omnipotence-eth
+
+# Audit trail changes
+/src/godspeed/audit/trail.py @omnipotence-eth
+/src/godspeed/audit/redactor.py @omnipotence-eth
+
+# Core agent loop
+/src/godspeed/agent/loop.py @omnipotence-eth
+/src/godspeed/agent/conversation.py @omnipotence-eth

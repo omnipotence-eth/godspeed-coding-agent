@@ -99,3 +99,22 @@ experiments/phase0_*/
 
 # Session logs (from Windows bash) that sometimes land in the repo tree
 experiments/swebench_lite/*.log
+
+# Audit responses (compliance records, not gitignored by default)
+# docs/AUDIT_RESPONSE*.md — uncomment to ignore after archiving
+
+# Per-session Claude Code memos (kept in ~/.claude, not in repo)
+/SESSION_SUMMARY.md
+/MEMORY.md
+
+# SWE-Bench Lite experiment outputs — broad patterns catch prediction
+# variants and run-metrics files. Reports/ are kept out because they
+# are often GB-sized per-driver artifacts.
+experiments/swebench_lite/predictions_*.jsonl
+experiments/swebench_lite/run_metrics_*.jsonl
+experiments/swebench_lite/reports/
+experiments/swebench_lite/oracle_*.jsonl
+
+# Phase-A1 derived data (stats, intermediate files)
+experiments/phase_a1/data/*.json
+experiments/phase_a1/data/*.stats.json*

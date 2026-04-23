@@ -225,20 +225,23 @@ def _ensure_ollama(console: Any | None = None) -> bool:
     ollama_bin = shutil.which("ollama")
     if ollama_bin is None:
         if console is not None:
+            from godspeed.tui.safe_console import print_markup_safe
             from godspeed.tui.theme import WARNING
 
-            console.print(
+            print_markup_safe(
+                console,
                 f"[{WARNING}]  Ollama is not installed. "
                 "Install from https://ollama.com or use a cloud model: "
-                f"godspeed -m claude-sonnet-4-20250514[/{WARNING}]"
+                f"godspeed -m claude-sonnet-4-20250514[/{WARNING}]",
             )
         return False
 
     # Start ollama serve as a detached background process
     if console is not None:
+        from godspeed.tui.safe_console import print_markup_safe
         from godspeed.tui.theme import DIM
 
-        console.print(f"[{DIM}]  Starting Ollama...[/{DIM}]", end="")
+        print_markup_safe(console, f"[{DIM}]  Starting Ollama...[/{DIM}]", end="")
     try:
         subprocess.Popen(
             [ollama_bin, "serve"],
@@ -249,9 +252,13 @@ def _ensure_ollama(console: Any | None = None) -> bool:
     except OSError as exc:
         logger.warning("Failed to start Ollama: %s", exc)
         if console is not None:
+            from godspeed.tui.safe_console import escape_markup, print_markup_safe
             from godspeed.tui.theme import ERROR
 
-            console.print(f" [{ERROR}]failed: {exc}[/{ERROR}]")
+            print_markup_safe(
+                console,
+                f" [{ERROR}]failed: {escape_markup(exc)}[/{ERROR}]",
+            )
         return False
 
     # Poll until it's up
@@ -260,15 +267,20 @@ def _ensure_ollama(console: Any | None = None) -> bool:
         time.sleep(0.5)
         if _is_ollama_running():
             if console is not None:
+                from godspeed.tui.safe_console import print_markup_safe
                 from godspeed.tui.theme import SUCCESS
 
-                console.print(f" [{SUCCESS}]ready[/{SUCCESS}]")
+                print_markup_safe(console, f" [{SUCCESS}]ready[/{SUCCESS}]")
             return True
 
     if console is not None:
+        from godspeed.tui.safe_console import print_markup_safe
         from godspeed.tui.theme import WARNING
 
-        console.print(f" [{WARNING}]timed out. Ollama may still be starting.[/{WARNING}]")
+        print_markup_safe(
+            console,
+            f" [{WARNING}]timed out. Ollama may still be starting.[/{WARNING}]",
+        )
     return False
 
 
@@ -290,6 +302,7 @@ def _build_tool_registry(tool_set: str = "full") -> tuple:
     from godspeed.tools.base import RiskLevel
     from godspeed.tools.file_edit import FileEditTool
     from godspeed.tools.file_read import FileReadTool
+    from godspeed.tools.file_read_batch import FileReadBatchTool
     from godspeed.tools.file_write import FileWriteTool
     from godspeed.tools.registry import ToolRegistry
 
@@ -315,6 +328,7 @@ def _build_tool_registry(tool_set: str = "full") -> tuple:
 
     tools: list = [
         FileReadTool(),
+        FileReadBatchTool(),
         FileWriteTool(),
         FileEditTool(),
         ShellTool(),
@@ -417,6 +431,7 @@ async def _run_app(
         allow_patterns=settings.permissions.allow,
         ask_patterns=settings.permissions.ask,
         tool_risk_levels=risk_levels,
+        mode=settings.permission_mode,
     )
 
     # Audit trail
@@ -454,10 +469,14 @@ async def _run_app(
         effective_project_dir,
         settings.context.project_instructions,
     )
+    from godspeed.context.repo_summary import build_repo_summary
+
+    repo_map_summary = build_repo_summary(effective_project_dir)
     system_prompt = build_system_prompt(
         tools=registry.list_tools(),
         project_instructions=project_instructions,
         cwd=effective_project_dir,
+        repo_map_summary=repo_map_summary,
     )
 
     # Auto-start Ollama if the model needs it
@@ -476,6 +495,7 @@ async def _run_app(
         router=router,
         thinking_budget=settings.thinking_budget,
         max_cost_usd=settings.max_cost_usd,
+        prompt_caching=settings.prompt_caching,
     )
 
     # Tool context — constructed after the LLM client so tools that need an
@@ -939,6 +959,7 @@ async def _headless_run(
         allow_patterns=settings.permissions.allow,
         ask_patterns=settings.permissions.ask,
         tool_risk_levels=risk_levels,
+        mode=settings.permission_mode,
     )
 
     # Wrap with headless auto-approve proxy
@@ -970,10 +991,14 @@ async def _headless_run(
         effective_project_dir,
         settings.context.project_instructions,
     )
+    from godspeed.context.repo_summary import build_repo_summary
+
+    repo_map_summary = build_repo_summary(effective_project_dir)
     system_prompt = build_system_prompt(
         tools=registry.list_tools(),
         project_instructions=project_instructions,
         cwd=effective_project_dir,
+        repo_map_summary=repo_map_summary,
     )
 
     router = ModelRouter(routing=settings.routing) if settings.routing else None
@@ -983,6 +1008,7 @@ async def _headless_run(
         router=router,
         thinking_budget=settings.thinking_budget,
         max_cost_usd=settings.max_cost_usd,
+        prompt_caching=settings.prompt_caching,
     )
 
     # Tool context — constructed after the LLM client so tools that need an

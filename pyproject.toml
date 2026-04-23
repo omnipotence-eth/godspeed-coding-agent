@@ -83,6 +83,18 @@ mcp = [
 index = [
     "chromadb>=1.0.0,<2.0",
 ]
+speech = [
+    # Speech-to-text (STT) stack — Whisper via faster-whisper. CPU
+    # path is ~200ms/s; GPU is ~20ms/s on a modern consumer card.
+    "faster-whisper>=1.0.0,<2.0",
+    "sounddevice>=0.4,<1.0",
+    "numpy>=1.26,<3.0",
+    # Text-to-speech (TTS). Piper is the preferred high-quality local
+    # backend (ONNX-based). pyttsx3 is the cross-platform OS-native
+    # fallback that works without voice-model downloads.
+    "piper-tts>=1.2,<2.0",
+    "pyttsx3>=2.90,<3.0",
+]
 
 [project.scripts]
 godspeed = "godspeed.cli:main"

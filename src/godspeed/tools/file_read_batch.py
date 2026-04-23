@@ -75,7 +75,7 @@ class FileReadBatchTool(Tool):
             try:
                 file_path = Path(file_path_str)
                 if not file_path.is_absolute():
-                    file_path = (context.project_dir or Path.cwd()) / file_path_str
+                    file_path = (context.cwd or Path.cwd()) / file_path_str
                     file_path = file_path.resolve()
             except Exception as exc:
                 errors.append(f"[{i}] Path resolution failed: {exc}")
@@ -84,7 +84,7 @@ class FileReadBatchTool(Tool):
             # Security check
             try:
                 file_path.absolute().resolve().relative_to(
-                    (context.project_dir or Path.cwd()).absolute().resolve()
+                    (context.cwd or Path.cwd()).absolute().resolve()
                 )
             except ValueError:
                 errors.append(f"[{i}] Path outside project: {file_path_str}")

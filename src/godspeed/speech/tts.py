@@ -46,8 +46,12 @@ def _speak_piper(text: str, voice_model: Path | None) -> None:
         )
     voice = PiperVoice.load(str(voice_model))
     # Piper yields chunks of int16 samples at voice.config.sample_rate.
+    # The streaming API has moved between piper-tts versions — the
+    # older ``synthesize_stream_raw`` and the newer ``synthesize`` both
+    # yield raw int16 bytes. Probe at runtime.
+    synth = getattr(voice, "synthesize_stream_raw", None) or voice.synthesize  # type: ignore[attr-defined]
     audio_chunks: list[bytes] = []
-    for chunk in voice.synthesize_stream_raw(text):
+    for chunk in synth(text):
         audio_chunks.append(chunk)
     if not audio_chunks:
         return

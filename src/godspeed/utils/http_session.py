@@ -25,12 +25,13 @@ def _get_event_loop():
 
 
 async def _create_session() -> Any:
-    """Create a new aiohttp session with connection pooling."""
-    try:
-        import aiohttp
-    except ImportError:
-        logger.warning("aiohttp not installed; falling back to urllib")
-        return None
+    """Create a new aiohttp session with connection pooling.
+
+    aiohttp is a hard dependency in pyproject.toml (pinned for LiteLLM
+    compatibility). Import is deferred to call time so test code can
+    patch the module without incurring the import cost at package load.
+    """
+    import aiohttp
 
     # Connection pooling configuration
     connector = aiohttp.TCPConnector(
@@ -44,10 +45,12 @@ async def _create_session() -> Any:
     return session
 
 
-async def get_session() -> Any | None:
+async def get_session() -> Any:
     """Get or create the shared aiohttp session.
 
-    Returns None if aiohttp is not installed.
+    Returns an ``aiohttp.ClientSession``. ``Any`` is used as the return
+    annotation so callers don't need to import aiohttp just to type-hint
+    the variable (aiohttp carries a large import cost).
     """
     global _session, _loop
 

@@ -39,15 +39,37 @@ class TestPromptCaching:
         result = LLMClient._apply_prompt_caching("some-random-model", messages)
         assert result[0]["content"] == "System prompt"
 
-    def test_preserves_non_system_messages(self) -> None:
+    def test_preserves_non_system_messages_except_last_stable_turn(self) -> None:
+        # v3.5: the caching strategy now adds a SECOND breakpoint on
+        # the last stable turn (last assistant/tool message before the
+        # newest user input). When the last message IS the assistant's,
+        # that message gets wrapped; earlier messages and the user
+        # message pass through unchanged.
         messages = [
             {"role": "system", "content": "System"},
             {"role": "user", "content": "User input"},
             {"role": "assistant", "content": "Response"},
         ]
         result = LLMClient._apply_prompt_caching("claude-sonnet-4-20250514", messages)
+        # User message (idx 1) is unchanged — not the last stable turn.
         assert result[1] == messages[1]
-        assert result[2] == messages[2]
+        # Assistant (idx 2) IS the last stable turn — wrapped with cache_control.
+        assert isinstance(result[2]["content"], list)
+        assert result[2]["content"][0]["cache_control"] == {"type": "ephemeral"}
+
+    def test_final_user_message_untouched(self) -> None:
+        # When the caller's newest input is the last message, it must
+        # NOT be wrapped — that input changes every turn and wrapping
+        # it would invalidate the cache on every call.
+        messages = [
+            {"role": "system", "content": "System"},
+            {"role": "assistant", "content": "Earlier response"},
+            {"role": "user", "content": "Newest input"},
+        ]
+        result = LLMClient._apply_prompt_caching("claude-sonnet-4-20250514", messages)
+        assert result[2]["content"] == "Newest input"
+        # The earlier assistant turn is the last stable — it gets cached.
+        assert isinstance(result[1]["content"], list)
 
     def test_handles_already_structured_content(self) -> None:
         """System message with list content should not be double-wrapped."""

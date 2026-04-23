@@ -153,7 +153,18 @@ class TestClassifyTaskType:
 
 class TestSettingsAutoRouting:
     """The cheap_model / strong_model / architect_model shortcuts auto-fill
-    routing[<task_type>] without users having to learn the dict syntax."""
+    routing[<task_type>] without users having to learn the dict syntax.
+
+    These tests must run in isolation from any global ``~/.godspeed/settings.yaml``
+    the developer may have on their machine, or shortcuts set there leak in.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _isolate_yaml_configs(self, tmp_path, monkeypatch):
+        from godspeed import config as config_module
+
+        monkeypatch.setattr(config_module, "DEFAULT_GLOBAL_DIR", tmp_path / "global")
+        monkeypatch.setattr(config_module, "DEFAULT_PROJECT_DIR", tmp_path / "project")
 
     def test_no_shortcuts_leaves_routing_empty(self) -> None:
         s = GodspeedSettings()

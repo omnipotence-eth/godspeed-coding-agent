@@ -1,11 +1,13 @@
-"""Project instructions loader — GODSPEED.md, AGENTS.md, CLAUDE.md, .cursorrules.
+"""Project instructions loader — GODSPEED.md, AGENTS.md, CLAUDE.md, .cursorrules,
+MEMORY.md, SESSION_SUMMARY.md.
 
 Walks up the directory tree loading applicable instruction files.
 Supports the cross-agent AGENTS.md standard (Linux Foundation AAIF) and
 reads CLAUDE.md / .cursorrules for zero-friction migration from other agents.
+MEMORY.md / SESSION_SUMMARY.md provide durable and rolling session context.
 
-Priority: GODSPEED.md > AGENTS.md > CLAUDE.md > .cursorrules
-All found files are merged (parent-first, most-specific-last).
+Priority: GODSPEED.md > AGENTS.md > CLAUDE.md > .cursorrules > MEMORY.md
+> SESSION_SUMMARY.md. All found files are merged (parent-first, most-specific-last).
 """
 
 from __future__ import annotations
@@ -26,6 +28,8 @@ INSTRUCTION_FILES = (
     "AGENTS.md",
     "CLAUDE.md",
     ".cursorrules",
+    "MEMORY.md",
+    "SESSION_SUMMARY.md",
 )
 
 
@@ -81,6 +85,8 @@ def load_project_instructions(
     2. AGENTS.md (Linux Foundation standard)
     3. CLAUDE.md (Claude Code format)
     4. .cursorrules (Cursor format)
+    5. MEMORY.md (durable long-term context — preferences, decisions, facts)
+    6. SESSION_SUMMARY.md (handoff from the last session)
 
     If filename is explicitly set to something other than the default,
     only that filename is loaded (backward-compatible behavior).
@@ -147,6 +153,7 @@ def find_project_root(cwd: Path, markers: tuple[str, ...] | None = None) -> Path
             "go.mod",
             ".godspeed",
             "GODSPEED.md",
+            "MEMORY.md",
         )
 
     current = cwd.resolve()

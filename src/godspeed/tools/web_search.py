@@ -2,15 +2,15 @@
 
 Uses DuckDuckGo HTML search (no API key required) for zero-config web search.
 Falls back gracefully if the search fails.
+
+Uses aiohttp with connection pooling for faster consecutive searches.
 """
 
 from __future__ import annotations
 
 import logging
 import re
-import urllib.error
 import urllib.parse
-import urllib.request
 from typing import Any
 
 from godspeed.tools.base import RiskLevel, Tool, ToolContext, ToolResult
@@ -76,7 +76,7 @@ class WebSearchTool(Tool):
         max_results = min(max_results, 15)
 
         try:
-            results = _search_ddg(query, max_results)
+            results = await _search_ddg_async(query, max_results)
         except Exception as exc:
             logger.warning("Web search failed: %s", exc)
             return ToolResult.failure(f"Search failed: {exc}")
@@ -96,22 +96,26 @@ class WebSearchTool(Tool):
         return ToolResult.success("\n".join(lines))
 
 
-def _search_ddg(query: str, max_results: int) -> list[dict[str, str]]:
-    """Search DuckDuckGo HTML endpoint and parse results."""
+async def _search_ddg_async(query: str, max_results: int) -> list[dict[str, str]]:
+    """Search DuckDuckGo HTML endpoint using aiohttp with connection pooling.
+
+    aiohttp is a hard dependency (pinned in pyproject.toml for LiteLLM
+    compatibility), so the shared session is always available.
+    """
+    from godspeed.utils.http_session import get_session
+
+    session = await get_session()
     data = urllib.parse.urlencode({"q": query}).encode("utf-8")
-    req = urllib.request.Request(  # noqa: S310
+    async with session.post(
         _DDG_URL,
         data=data,
         headers={
             "User-Agent": "Godspeed-Agent/1.0",
             "Content-Type": "application/x-www-form-urlencoded",
         },
-        method="POST",
-    )
-
-    with urllib.request.urlopen(req, timeout=SEARCH_TIMEOUT) as resp:  # noqa: S310  # nosec B310
-        html = resp.read().decode("utf-8", errors="replace")
-
+        timeout=SEARCH_TIMEOUT,
+    ) as resp:
+        html = await resp.text(encoding="utf-8", errors="replace")
     return _parse_ddg_html(html, max_results)
 
 

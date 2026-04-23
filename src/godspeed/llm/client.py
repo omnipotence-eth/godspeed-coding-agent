@@ -118,6 +118,7 @@ class LLMClient:
         router: ModelRouter | None = None,
         thinking_budget: int = 0,
         max_cost_usd: float = 0.0,
+        prompt_caching: bool = True,
     ) -> None:
         self.model = model
         self.fallback_models = fallback_models or []
@@ -125,9 +126,16 @@ class LLMClient:
         self.router = router or ModelRouter()
         self.thinking_budget = thinking_budget
         self.max_cost_usd = max_cost_usd
+        self.prompt_caching = prompt_caching
         self.total_input_tokens = 0
         self.total_output_tokens = 0
         self.total_cost_usd: float = 0.0
+        # Cache-hit telemetry — populated per-call from the provider's
+        # cache_read_input_tokens / cache_creation_input_tokens fields
+        # (Anthropic) or its equivalent. 0 means "unknown / not
+        # applicable" rather than "zero hits".
+        self.total_cache_read_tokens = 0
+        self.total_cache_creation_tokens = 0
 
     # Ollama models known to support native tool calling
     _TOOLS_CAPABLE_OLLAMA = (
@@ -364,43 +372,129 @@ class LLMClient:
             )
         return RuntimeError(f"All models failed. Last error: {last_error}")
 
-    @staticmethod
+    # Provider substrings that accept explicit ``cache_control`` markers
+    # (Anthropic's API shape — directly, or via Bedrock / Vertex proxies).
+    # OpenAI and DeepSeek also accept them but apply caching automatically
+    # based on prefix hashing, so marking costs nothing and helps nothing
+    # there. Including the common OpenAI prefixes here keeps behavior
+    # harmlessly compatible with litellm's pass-through for models that
+    # emit the marker back as an error; any provider that errors on the
+    # marker can be added to ``_CACHING_DENYLIST``.
+    _CACHING_ALLOWLIST: tuple[str, ...] = (
+        "claude",
+        "anthropic",
+        "bedrock/anthropic",
+        "vertex_ai/claude",
+        "gpt-4o",
+        "gpt-4-turbo",
+        "gpt-4.1",
+        "o1",
+        "o3",
+        "o4",
+        "deepseek",
+    )
+    # Providers that reject or ignore ``cache_control`` noisily — skip.
+    _CACHING_DENYLIST: tuple[str, ...] = (
+        "ollama",
+        "groq",
+        "gemini",  # uses separate context-caching API shape
+        "mistral",
+    )
+
+    @classmethod
+    def _supports_cache_control(cls, model: str) -> bool:
+        """Return True when the model accepts ``cache_control`` markers."""
+        model_lower = model.lower()
+        if any(bad in model_lower for bad in cls._CACHING_DENYLIST):
+            return False
+        return any(prefix in model_lower for prefix in cls._CACHING_ALLOWLIST)
+
+    @classmethod
     def _apply_prompt_caching(
+        cls,
         model: str,
         messages: list[dict[str, Any]],
     ) -> list[dict[str, Any]]:
         """Apply prompt caching markers for supported providers.
 
-        Marks the system prompt with cache_control for Anthropic/OpenAI models,
-        giving ~50% cost reduction on repeated prefixes.
+        Strategy: two breakpoints for Anthropic-family models:
+
+        1. End of the system prompt — caches the tool descriptions,
+           project context, and any permanent instructions. First cache
+           hit on call #2.
+        2. End of the *last stable* conversation turn (the last
+           ``tool``-role message, or the last ``assistant`` message when
+           no tools were called). This caches the entire conversation
+           history so only the newest user input + new assistant
+           response are re-billed each turn.
+
+        For cache-free providers (Ollama, Groq, Gemini, Mistral) this
+        is a pure no-op. For OpenAI and DeepSeek the marker is a no-op
+        at the provider side (they cache automatically by prefix hash)
+        but harmless to include.
+
+        Anthropic allows up to 4 breakpoints; we use 2 — adding more
+        rarely increases hit rate enough to justify the complexity.
         """
-        model_lower = model.lower()
-        # Only apply for providers that support cache_control
-        supports_caching = any(
-            prefix in model_lower
-            for prefix in ("claude", "anthropic", "gpt-4o", "gpt-4-turbo", "o3")
-        )
-        if not supports_caching:
+        if not cls._supports_cache_control(model):
             return messages
 
-        cached = []
-        for msg in messages:
-            if msg.get("role") == "system" and isinstance(msg.get("content"), str):
-                # Convert string content to content block with cache_control
+        cached: list[dict[str, Any]] = []
+
+        # Find the index of the last conversation message we want to
+        # mark as a cache breakpoint. Working backwards so a model
+        # receives cache_control on the *latest* stable position — any
+        # new user input after this point will not invalidate the
+        # cached prefix.
+        last_cacheable_idx: int | None = None
+        for i in range(len(messages) - 1, -1, -1):
+            role = messages[i].get("role")
+            # Don't mark the final user message — the caller's newest
+            # input — as cached. Cache the prefix before it.
+            if role == "user" and i == len(messages) - 1:
+                continue
+            if role in {"tool", "assistant"}:
+                last_cacheable_idx = i
+                break
+
+        for idx, msg in enumerate(messages):
+            role = msg.get("role")
+            content = msg.get("content")
+
+            # Breakpoint #1: system prompt.
+            if role == "system" and isinstance(content, str):
                 cached.append(
                     {
                         "role": "system",
                         "content": [
                             {
                                 "type": "text",
-                                "text": msg["content"],
+                                "text": content,
                                 "cache_control": {"type": "ephemeral"},
                             }
                         ],
                     }
                 )
-            else:
-                cached.append(msg)
+                continue
+
+            # Breakpoint #2: last stable assistant / tool-result turn.
+            if idx == last_cacheable_idx and isinstance(content, str):
+                cached.append(
+                    {
+                        **msg,
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": content,
+                                "cache_control": {"type": "ephemeral"},
+                            }
+                        ],
+                    }
+                )
+                continue
+
+            cached.append(msg)
+
         return cached
 
     def _is_anthropic_model(self, model: str | None = None) -> bool:
@@ -422,8 +516,11 @@ class LLMClient:
         """Make a single LLM API call."""
         from godspeed.llm.cost import estimate_cost
 
-        # Apply prompt caching for supported providers
-        cached_messages = self._apply_prompt_caching(model, messages)
+        # Apply prompt caching for supported providers (opt-out via
+        # self.prompt_caching = False).
+        cached_messages = (
+            self._apply_prompt_caching(model, messages) if self.prompt_caching else messages
+        )
 
         kwargs: dict[str, Any] = {
             "model": model,
@@ -504,6 +601,20 @@ class LLMClient:
             output_tokens = response.usage.completion_tokens or 0
             self.total_input_tokens += input_tokens
             self.total_output_tokens += output_tokens
+            # Cache hit telemetry — Anthropic returns these in the
+            # usage block; LiteLLM surfaces them as-is when present.
+            # Silent when the provider doesn't populate them.
+            cache_read = getattr(response.usage, "cache_read_input_tokens", 0) or 0
+            cache_create = getattr(response.usage, "cache_creation_input_tokens", 0) or 0
+            if cache_read or cache_create:
+                self.total_cache_read_tokens += cache_read
+                self.total_cache_creation_tokens += cache_create
+                logger.debug(
+                    "Cache tokens model=%s read=%d created=%d",
+                    model,
+                    cache_read,
+                    cache_create,
+                )
 
         call_cost = estimate_cost(model, input_tokens, output_tokens)
         self.total_cost_usd += call_cost

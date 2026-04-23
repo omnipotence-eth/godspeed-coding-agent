@@ -1,4 +1,9 @@
-"""Tests for the sub-agent coordinator."""
+"""Tests for the sub-agent coordinator.
+
+v3.5: coordinator switched from a depth-counter to structural recursion
+prevention (child registry without ``spawn_agent``) plus per-spawn
+timeouts. Tests exercise the new semantics.
+"""
 
 from __future__ import annotations
 
@@ -9,7 +14,8 @@ from unittest.mock import AsyncMock
 import pytest
 
 from godspeed.agent.coordinator import (
-    MAX_SUB_AGENT_DEPTH,
+    DEFAULT_MAX_ITERATIONS,
+    DEFAULT_TIMEOUT_SECONDS,
     AgentCoordinator,
     SpawnAgentTool,
 )
@@ -40,11 +46,10 @@ def _make_tool_response(tool_name: str, arguments: dict[str, Any]) -> ChatRespon
 
 
 class TestAgentCoordinator:
-    """Test sub-agent spawning and isolation."""
+    """Sub-agent spawning, isolation, and recursion prevention."""
 
     @pytest.mark.asyncio
     async def test_spawn_returns_result(self, tool_context: ToolContext) -> None:
-        """Sub-agent runs and returns its final text."""
         registry = ToolRegistry()
         client = LLMClient(model="test")
         client.chat = AsyncMock(
@@ -62,7 +67,6 @@ class TestAgentCoordinator:
 
     @pytest.mark.asyncio
     async def test_spawn_uses_tools(self, tool_context: ToolContext) -> None:
-        """Sub-agent can use tools from the shared registry."""
         registry = ToolRegistry()
         registry.register(
             MockTool(name="grep_search", result=ToolResult.success("TODO found in main.py:42"))
@@ -88,7 +92,6 @@ class TestAgentCoordinator:
 
     @pytest.mark.asyncio
     async def test_isolated_conversation(self, tool_context: ToolContext) -> None:
-        """Each sub-agent gets its own conversation — no cross-contamination."""
         registry = ToolRegistry()
         client = LLMClient(model="test")
         client.chat = AsyncMock(return_value=_make_text_response("Done."))
@@ -99,47 +102,52 @@ class TestAgentCoordinator:
             tool_context=tool_context,
         )
 
-        # Spawn two agents — each should get independent conversations
         r1 = await coordinator.spawn("Task A")
         r2 = await coordinator.spawn("Task B")
 
         assert r1 == "Done."
         assert r2 == "Done."
-        # Each spawn = 1 call (text response), so 2 total
         assert client.chat.call_count == 2
 
-        # Verify messages are independent — check that "Task A" is NOT
-        # in the messages sent for "Task B"
+        # Each spawn starts a fresh conversation — Task A's text must
+        # NOT appear in Task B's request messages.
         second_call_messages = client.chat.call_args_list[1][1]["messages"]
         user_messages = [m for m in second_call_messages if m.get("role") == "user"]
         assert any("Task B" in m["content"] for m in user_messages)
         assert not any("Task A" in m.get("content", "") for m in user_messages)
 
     @pytest.mark.asyncio
-    async def test_depth_limit(self, tool_context: ToolContext) -> None:
-        """Depth limit prevents infinite sub-agent recursion."""
+    async def test_child_registry_excludes_spawn_agent(self, tool_context: ToolContext) -> None:
+        # The structural recursion guard: the child registry must
+        # NOT contain a spawn_agent tool, regardless of what the
+        # parent registered.
         registry = ToolRegistry()
+
+        # Fake a spawn_agent registration on the parent — coordinator
+        # should filter it out in the child.
+        class _FakeSpawn(MockTool):
+            pass
+
+        registry.register(MockTool(name="spawn_agent", result=ToolResult.success("nested")))
+        registry.register(MockTool(name="file_read", result=ToolResult.success("contents")))
+
         client = LLMClient(model="test")
+        client.chat = AsyncMock(return_value=_make_text_response("No recursion."))
 
         coordinator = AgentCoordinator(
             llm_client=client,
             tool_registry=registry,
             tool_context=tool_context,
-            max_depth=2,
         )
-
-        result = await coordinator.spawn("Task", depth=2)
-        assert "maximum" in result.lower() or "depth" in result.lower()
-        # LLM should NOT have been called
-        assert not hasattr(client, "chat") or not getattr(client.chat, "called", False)
+        child_reg = coordinator._build_child_registry()
+        assert child_reg.get("spawn_agent") is None
+        assert child_reg.get("file_read") is not None
 
     @pytest.mark.asyncio
     async def test_iteration_limit_respected(self, tool_context: ToolContext) -> None:
-        """Sub-agent respects its iteration limit."""
         registry = ToolRegistry()
         registry.register(MockTool(name="shell", result=ToolResult.success("ok")))
 
-        # Return tool calls forever — the iteration limit should stop it
         client = LLMClient(model="test")
         client.chat = AsyncMock(return_value=_make_tool_response("shell", {"command": "echo loop"}))
 
@@ -147,17 +155,35 @@ class TestAgentCoordinator:
             llm_client=client,
             tool_registry=registry,
             tool_context=tool_context,
-            iteration_limit=3,
+            default_max_iterations=3,
         )
 
         result = await coordinator.spawn("Loop forever")
         assert "maximum iterations" in result.lower()
-        # Should have been called exactly 3 times (iteration limit)
         assert client.chat.call_count == 3
 
     @pytest.mark.asyncio
+    async def test_per_spawn_max_iterations_override(self, tool_context: ToolContext) -> None:
+        # The per-call max_iterations argument should clamp below the
+        # coordinator default when passed explicitly.
+        registry = ToolRegistry()
+        registry.register(MockTool(name="shell", result=ToolResult.success("ok")))
+
+        client = LLMClient(model="test")
+        client.chat = AsyncMock(return_value=_make_tool_response("shell", {"command": "echo"}))
+
+        coordinator = AgentCoordinator(
+            llm_client=client,
+            tool_registry=registry,
+            tool_context=tool_context,
+            default_max_iterations=DEFAULT_MAX_ITERATIONS,
+        )
+
+        await coordinator.spawn("Loop", max_iterations=2)
+        assert client.chat.call_count == 2
+
+    @pytest.mark.asyncio
     async def test_failure_doesnt_crash(self, tool_context: ToolContext) -> None:
-        """Sub-agent failure returns error string, doesn't crash parent."""
         registry = ToolRegistry()
         client = LLMClient(model="test")
         client.chat = AsyncMock(side_effect=RuntimeError("LLM exploded"))
@@ -169,12 +195,12 @@ class TestAgentCoordinator:
         )
 
         result = await coordinator.spawn("Risky task")
-        # Should return error message, not raise
-        assert "error" in result.lower() or "Error" in result
+        # The failure is surfaced as an error string, never as an
+        # exception to the parent.
+        assert "error" in result.lower()
 
     @pytest.mark.asyncio
     async def test_spawn_parallel(self, tool_context: ToolContext) -> None:
-        """Parallel spawning runs tasks concurrently."""
         registry = ToolRegistry()
         client = LLMClient(model="test")
         client.chat = AsyncMock(return_value=_make_text_response("Parallel task done."))
@@ -189,34 +215,20 @@ class TestAgentCoordinator:
         assert len(results) == 3
         assert all("done" in r.lower() for r in results)
 
-    @pytest.mark.asyncio
-    async def test_spawn_parallel_depth_limit(self, tool_context: ToolContext) -> None:
-        """Parallel spawn at max depth returns error for all tasks."""
-        registry = ToolRegistry()
-        client = LLMClient(model="test")
-
-        coordinator = AgentCoordinator(
-            llm_client=client,
-            tool_registry=registry,
-            tool_context=tool_context,
-            max_depth=1,
-        )
-
-        results = await coordinator.spawn_parallel(["A", "B"], depth=1)
-        assert len(results) == 2
-        assert all("depth" in r.lower() for r in results)
-
 
 class TestSpawnAgentTool:
-    """Test the SpawnAgentTool wrapper."""
+    """Tool adapter for LLM-issued spawns."""
 
     def test_metadata(self) -> None:
         coordinator = AsyncMock()
         tool = SpawnAgentTool(coordinator)
         assert tool.name == "spawn_agent"
+        # HIGH so the user sees a permission prompt for each spawn.
         assert tool.risk_level == "high"
         schema = tool.get_schema()
         assert "task" in schema["properties"]
+        assert "max_iterations" in schema["properties"]
+        assert "timeout" in schema["properties"]
         assert schema["required"] == ["task"]
 
     @pytest.mark.asyncio
@@ -242,8 +254,28 @@ class TestSpawnAgentTool:
         tool = SpawnAgentTool(coordinator)
         result = await tool.execute({}, tool_context)
         assert result.is_error
-        assert "required" in result.error.lower()
+        assert result.error is not None
+        assert "non-empty" in result.error.lower() or "required" in result.error.lower()
 
     @pytest.mark.asyncio
-    async def test_default_max_depth(self) -> None:
-        assert MAX_SUB_AGENT_DEPTH == 3
+    async def test_execute_forwards_override_args(self, tool_context: ToolContext) -> None:
+        coordinator = AsyncMock()
+        coordinator.spawn = AsyncMock(return_value="ok")
+        tool = SpawnAgentTool(coordinator)
+
+        await tool.execute(
+            {"task": "do X", "max_iterations": 10, "timeout": 60},
+            tool_context,
+        )
+        # Coordinator receives the override values by keyword.
+        coordinator.spawn.assert_awaited_once()
+        call = coordinator.spawn.await_args
+        assert call.args == ("do X",)
+        assert call.kwargs == {"max_iterations": 10, "timeout": 60}
+
+
+def test_default_constants() -> None:
+    # Pin the defaults so they can't silently drift — these show up
+    # in the tool schema description and the docs.
+    assert DEFAULT_MAX_ITERATIONS == 25
+    assert DEFAULT_TIMEOUT_SECONDS == 300

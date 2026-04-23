@@ -67,6 +67,7 @@ class PermissionEngine:
         allow_patterns: list[str] | None = None,
         ask_patterns: list[str] | None = None,
         tool_risk_levels: dict[str, RiskLevel] | None = None,
+        mode: str = "normal",
     ) -> None:
         self._deny_rules = parse_rules(deny_patterns or [], RuleAction.DENY)
         self._allow_rules = parse_rules(allow_patterns or [], RuleAction.ALLOW)
@@ -76,6 +77,10 @@ class PermissionEngine:
         self._grant_ttl: float = 3600.0  # 1 hour default
         self._grants_lock = threading.Lock()
         self.plan_mode: bool = False
+        # "normal" (default), "strict" (treat ASK as DENY), or "yolo"
+        # (auto-approve anything that isn't denied by the hard floor:
+        # deny rules + dangerous-command detection still run first).
+        self.mode: str = mode
 
     def evaluate(self, tool_call: ToolCall) -> PermissionDecision:
         """Evaluate a tool call against all rules.
@@ -113,23 +118,35 @@ class PermissionEngine:
                         f"Dangerous command detected: {', '.join(dangers)}",
                     )
 
-        # 3. Session grants (user already approved this pattern)
+        # 3. YOLO mode — auto-approve after the hard floor (deny + dangerous)
+        #    has cleared. Skips session/allow/ask/risk-default entirely.
+        if self.mode == "yolo":
+            return PermissionDecision(ALLOW, "yolo mode (hard floor enforced)")
+
+        # 4. Session grants (user already approved this pattern)
         if self._check_session_grant(formatted):
             return PermissionDecision(ALLOW, "Session grant (time-limited)")
 
-        # 4. Allow rules
+        # 5. Allow rules
         for rule in self._allow_rules:
             if rule.matches(formatted):
                 return PermissionDecision(ALLOW, f"Matched allow rule: {rule.pattern}")
 
-        # 5. Ask rules
+        # 6. Ask rules
         for rule in self._ask_rules:
             if rule.matches(formatted):
+                if self.mode == "strict":
+                    return PermissionDecision(
+                        DENY, f"strict mode — ask rule denied: {rule.pattern}"
+                    )
                 return PermissionDecision(ASK, f"Matched ask rule: {rule.pattern}")
 
-        # 6. Default based on risk level
+        # 7. Default based on risk level
         risk = self._tool_risk_levels.get(tool_call.tool_name, RiskLevel.HIGH)
-        return self._default_for_risk(risk)
+        decision = self._default_for_risk(risk)
+        if self.mode == "strict" and decision == ASK:
+            return PermissionDecision(DENY, f"strict mode — default ASK denied ({decision.reason})")
+        return decision
 
     def add_rule(self, pattern: str, action: str) -> None:
         """Add a pattern to the in-memory rule list at runtime.

@@ -153,6 +153,103 @@ class TestLLMClientHelpers:
         result = LLMClient._apply_prompt_caching("ollama/qwen3", messages)
         assert result == messages
 
+    def test_apply_prompt_caching_marks_last_stable_turn(self) -> None:
+        # System + user + assistant + tool + user — breakpoint should
+        # land on the ``tool`` (last stable turn before the final user
+        # message), in addition to the system prompt.
+        messages = [
+            {"role": "system", "content": "You are helpful."},
+            {"role": "user", "content": "list files"},
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [{"id": "1", "function": {"name": "ls"}}],
+            },
+            {"role": "tool", "tool_call_id": "1", "content": "file1.py file2.py"},
+            {"role": "user", "content": "now read file1.py"},
+        ]
+        result = LLMClient._apply_prompt_caching("claude-opus-4-7", messages)
+
+        # System prompt remains cached.
+        assert result[0]["content"][0]["cache_control"] == {"type": "ephemeral"}
+        # Last user message untouched (string content) — that's the new input.
+        assert result[4]["content"] == "now read file1.py"
+        assert not isinstance(result[4]["content"], list)
+        # Tool result (idx 3) is wrapped with cache_control.
+        assert isinstance(result[3]["content"], list)
+        assert result[3]["content"][0]["cache_control"] == {"type": "ephemeral"}
+
+    def test_apply_prompt_caching_denylist_skipped(self) -> None:
+        # Gemini has a different caching API; we should never emit
+        # cache_control for it.
+        messages = [{"role": "system", "content": "helpful"}]
+        result = LLMClient._apply_prompt_caching("gemini/gemini-2.0-flash", messages)
+        assert result == messages
+
+    def test_apply_prompt_caching_bedrock_claude(self) -> None:
+        # Anthropic models served via Bedrock share the same API shape.
+        messages = [{"role": "system", "content": "helpful"}]
+        result = LLMClient._apply_prompt_caching(
+            "bedrock/anthropic.claude-3-5-sonnet-20240620-v1:0", messages
+        )
+        assert result[0]["content"][0]["cache_control"] == {"type": "ephemeral"}
+
+    def test_prompt_caching_flag_off_bypasses_apply(self) -> None:
+        # When the flag is off we expect _call to short-circuit the
+        # caching wrapper — the messages LiteLLM sees match what we passed.
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        client = LLMClient(model="claude-sonnet-4", prompt_caching=False)
+        mock_resp = MagicMock()
+        mock_resp.choices = [MagicMock()]
+        mock_resp.choices[0].message = MagicMock(content="ok", tool_calls=None)
+        mock_resp.choices[0].finish_reason = "stop"
+        mock_resp.usage = MagicMock(prompt_tokens=10, completion_tokens=5)
+
+        with patch("godspeed.llm.client._get_litellm") as mock_litellm:
+            mock_litellm.return_value.acompletion = AsyncMock(return_value=mock_resp)
+            messages = [{"role": "system", "content": "You are helpful."}]
+            import asyncio
+
+            asyncio.run(client._call("claude-sonnet-4", messages, None))
+
+        # Inspect what litellm was called with — messages should be
+        # the exact plain-string form, no cache_control injection.
+        sent_kwargs = mock_litellm.return_value.acompletion.call_args.kwargs
+        assert sent_kwargs["messages"] == messages
+
+    def test_cache_hit_telemetry_recorded(self) -> None:
+        # LiteLLM surfaces cache_read_input_tokens on usage when
+        # Anthropic reports one — the client must accumulate it so
+        # /stats can report the savings.
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        client = LLMClient(model="claude-sonnet-4")
+        mock_resp = MagicMock()
+        mock_resp.choices = [MagicMock()]
+        mock_resp.choices[0].message = MagicMock(content="ok", tool_calls=None)
+        mock_resp.choices[0].finish_reason = "stop"
+        mock_resp.usage = MagicMock(
+            prompt_tokens=1000,
+            completion_tokens=50,
+            cache_read_input_tokens=800,
+            cache_creation_input_tokens=0,
+        )
+
+        with patch("godspeed.llm.client._get_litellm") as mock_litellm:
+            mock_litellm.return_value.acompletion = AsyncMock(return_value=mock_resp)
+            import asyncio
+
+            asyncio.run(
+                client._call(
+                    "claude-sonnet-4",
+                    [{"role": "system", "content": "sys"}],
+                    None,
+                )
+            )
+        assert client.total_cache_read_tokens == 800
+        assert client.total_cache_creation_tokens == 0
+
 
 # ---------------------------------------------------------------------------
 # Test: LLMClient.chat (mocked LiteLLM)

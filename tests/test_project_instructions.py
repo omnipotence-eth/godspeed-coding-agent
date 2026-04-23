@@ -38,6 +38,18 @@ class TestLoadProjectInstructions:
         assert result is not None
         assert "cursor rules here" in result
 
+    def test_loads_memory_md(self, tmp_path: Path) -> None:
+        (tmp_path / "MEMORY.md").write_text("long-term memory", encoding="utf-8")
+        result = load_project_instructions(tmp_path)
+        assert result is not None
+        assert "long-term memory" in result
+
+    def test_loads_session_summary_md(self, tmp_path: Path) -> None:
+        (tmp_path / "SESSION_SUMMARY.md").write_text("last session note", encoding="utf-8")
+        result = load_project_instructions(tmp_path)
+        assert result is not None
+        assert "last session note" in result
+
     def test_merges_multiple_files(self, tmp_path: Path) -> None:
         (tmp_path / "GODSPEED.md").write_text("Godspeed rules", encoding="utf-8")
         (tmp_path / "AGENTS.md").write_text("Agent rules", encoding="utf-8")
@@ -109,6 +121,12 @@ class TestInstructionFiles:
 
     def test_cursorrules_included(self) -> None:
         assert ".cursorrules" in INSTRUCTION_FILES
+
+    def test_memory_md_included(self) -> None:
+        assert "MEMORY.md" in INSTRUCTION_FILES
+
+    def test_session_summary_md_included(self) -> None:
+        assert "SESSION_SUMMARY.md" in INSTRUCTION_FILES
 
 
 class TestLoadSingleFile:

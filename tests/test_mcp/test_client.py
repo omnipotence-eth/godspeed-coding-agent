@@ -78,5 +78,8 @@ class TestMCPClient:
         """Disconnect clears connections without error."""
         import asyncio
 
+        # asyncio.run creates + tears down a fresh loop; avoids the
+        # cross-test loop-state bleed caused by get_event_loop in
+        # Python 3.12+.
         client = MCPClient()
-        asyncio.get_event_loop().run_until_complete(client.disconnect_all())
+        asyncio.run(client.disconnect_all())

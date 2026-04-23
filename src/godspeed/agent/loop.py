@@ -145,6 +145,13 @@ async def agent_loop(
         # Cancel check #2: may have been set while we were paused.
         _check_cancel(cancel_event)
 
+        # Clean up speculative cache from previous iteration (memory leak prevention)
+        # Any pending tasks from the last iteration are no longer needed
+        if speculative_cache:
+            for task in speculative_cache.values():
+                task.cancel()
+            speculative_cache.clear()
+
         logger.debug("Agent loop iteration=%d tokens=%d", iteration, conversation.token_count)
 
         # Check if we need to compact

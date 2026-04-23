@@ -1,4 +1,11 @@
-"""Tests for file write tool."""
+"""Tests for file write tool.
+
+Uses ``asyncio.run(...)`` instead of ``asyncio.get_event_loop().run_until_complete(...)``
+— the latter is deprecated in Python 3.12+ and bleeds event-loop
+state between tests, making suite-order-dependent failures appear in
+unrelated tests. ``asyncio.run`` creates + tears down a fresh loop
+per call, which is what unit tests actually want.
+"""
 
 from __future__ import annotations
 
@@ -24,7 +31,7 @@ class TestFileWriteTool:
 
     def test_write_new_file(self, tmp_path: Path) -> None:
         tool = FileWriteTool()
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             tool.execute({"file_path": "hello.txt", "content": "Hello, world!"}, _ctx(tmp_path))
         )
         assert result.success
@@ -32,7 +39,7 @@ class TestFileWriteTool:
 
     def test_creates_parent_dirs(self, tmp_path: Path) -> None:
         tool = FileWriteTool()
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             tool.execute(
                 {"file_path": "a/b/c/deep.txt", "content": "nested"},
                 _ctx(tmp_path),
@@ -44,7 +51,7 @@ class TestFileWriteTool:
     def test_overwrite_existing(self, tmp_path: Path) -> None:
         (tmp_path / "existing.txt").write_text("old content")
         tool = FileWriteTool()
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             tool.execute(
                 {"file_path": "existing.txt", "content": "new content"},
                 _ctx(tmp_path),
@@ -55,15 +62,13 @@ class TestFileWriteTool:
 
     def test_empty_path_fails(self, tmp_path: Path) -> None:
         tool = FileWriteTool()
-        result = asyncio.get_event_loop().run_until_complete(
-            tool.execute({"file_path": "", "content": "x"}, _ctx(tmp_path))
-        )
+        result = asyncio.run(tool.execute({"file_path": "", "content": "x"}, _ctx(tmp_path)))
         assert result.is_error
         assert "non-empty string" in result.error.lower()
 
     def test_empty_content_writes_empty(self, tmp_path: Path) -> None:
         tool = FileWriteTool()
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             tool.execute({"file_path": "empty.txt", "content": ""}, _ctx(tmp_path))
         )
         assert result.success
@@ -71,7 +76,7 @@ class TestFileWriteTool:
 
     def test_reports_bytes_written(self, tmp_path: Path) -> None:
         tool = FileWriteTool()
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             tool.execute({"file_path": "size.txt", "content": "12345"}, _ctx(tmp_path))
         )
         assert "5 bytes" in result.output

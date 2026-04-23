@@ -188,6 +188,12 @@ class GodspeedSettings(BaseSettings):
     # Cost budget — hard limit on session spend (0 = unlimited)
     max_cost_usd: float = 0.0
 
+    # Prompt caching — mark cacheable prefixes for Anthropic-family
+    # providers (up to ~90% input-token cost reduction on repeat turns).
+    # OpenAI / DeepSeek cache automatically regardless of this setting.
+    # Disable only if a specific provider errors on ``cache_control``.
+    prompt_caching: bool = True
+
     # Architect mode — two-model pipeline (plan then execute)
     architect_model: str = ""  # model for planning phase; empty = use main model
 
@@ -232,6 +238,15 @@ class GodspeedSettings(BaseSettings):
         env_nested_delimiter="__",
         extra="ignore",
     )
+
+    @field_validator("permission_mode")
+    @classmethod
+    def validate_permission_mode(cls, v: str) -> str:
+        allowed = {"strict", "normal", "yolo"}
+        if v not in allowed:
+            msg = f"permission_mode must be one of {sorted(allowed)}, got {v!r}"
+            raise ValueError(msg)
+        return v
 
     @field_validator("compaction_threshold")
     @classmethod

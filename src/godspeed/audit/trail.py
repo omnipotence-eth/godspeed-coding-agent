@@ -36,15 +36,21 @@ class AuditTrail:
     the hash chain (_sequence and _prev_hash) from concurrent mutations.
 
     One file per session: {session_id}.audit.jsonl
+
+    Supports async batched writes for high-throughput scenarios.
+    Batch writes are queued and flushed periodically or on shutdown.
     """
 
-    def __init__(self, log_dir: Path, session_id: str) -> None:
+    def __init__(self, log_dir: Path, session_id: str, batch_size: int = 0) -> None:
         self._log_dir = log_dir
         self._session_id = session_id
         self._prev_hash = ""
         self._record_count = 0
         self._sequence = 0
         self._lock = threading.Lock()
+        self._batch_size = batch_size
+        self._batch_queue: list[AuditRecord] = []
+        self._batch_lock = threading.Lock()
 
         # Ensure log directory exists
         self._log_dir.mkdir(parents=True, exist_ok=True)
@@ -57,6 +63,84 @@ class AuditTrail:
     @property
     def record_count(self) -> int:
         return self._record_count
+
+    async def record_async(
+        self,
+        event_type: AuditEventType | str,
+        detail: dict | None = None,
+        outcome: str = "success",
+    ) -> AuditRecord:
+        """Async wrapper for record() — queues for batch write if batch_size > 0.
+
+        When batch_size is set, records are queued and flushed periodically.
+        Otherwise, falls back to synchronous write.
+        """
+        if self._batch_size > 0:
+            # Async batch mode
+            safe_detail = redact_audit_detail(detail or {})
+            event = AuditRecord(
+                session_id=self._session_id,
+                sequence=self._sequence,
+                action_type=AuditEventType(event_type)
+                if isinstance(event_type, str)
+                else event_type,
+                action_detail=safe_detail,
+                outcome=outcome,
+                prev_hash=self._prev_hash,
+            )
+            record_json = event.model_dump_json(exclude={"record_hash"})
+            event.record_hash = hashlib.sha256(record_json.encode()).hexdigest()
+
+            with self._batch_lock:
+                self._batch_queue.append(event)
+                if len(self._batch_queue) >= self._batch_size:
+                    await self._flush_batch()
+
+            return event
+        else:
+            # Synchronous mode
+            return self.record(event_type, detail, outcome)
+
+    async def _flush_batch(self) -> None:
+        """Flush the current batch queue to disk."""
+        with self._lock:
+            with self._batch_lock:
+                batch_to_flush = self._batch_queue.copy()
+                self._batch_queue.clear()
+
+            if not batch_to_flush:
+                return
+
+            try:
+                lines = ""
+                for event in batch_to_flush:
+                    lines += event.model_dump_json() + "\n"
+                    self._prev_hash = event.record_hash
+                    self._sequence += 1
+
+                with open(self._log_path, "a", encoding="utf-8") as f:
+                    f.write(lines)
+                    f.flush()
+                    os.fsync(f.fileno())
+
+                self._record_count += len(batch_to_flush)
+                logger.debug(
+                    "Audit batch flushed count=%d total=%d",
+                    len(batch_to_flush),
+                    self._record_count,
+                )
+            except OSError as exc:
+                logger.error(
+                    "Audit batch write failed path=%s error=%s",
+                    self._log_path,
+                    exc,
+                )
+                raise AuditWriteError(f"audit batch write failed: {exc}") from exc
+
+    async def flush_pending(self) -> None:
+        """Flush any pending batched records to disk."""
+        if self._batch_size > 0 and self._batch_queue:
+            await self._flush_batch()
 
     def record(
         self,

@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from io import StringIO
 from unittest.mock import MagicMock, patch
 
-from godspeed.tui.app import _TOOL_LABELS, _ThinkingSpinner
+from rich.console import Console
+
+from godspeed.tui.app import _TOOL_LABELS, _on_assistant_chunk, _ThinkingSpinner
 
 
 class TestThinkingSpinner:
@@ -113,3 +116,15 @@ class TestToolLabels:
         for label in _TOOL_LABELS.values():
             assert label[0].isupper()
             assert len(label) > 2
+
+
+class TestAssistantStreamCallback:
+    """Streaming assistant output must not parse model text as Rich markup."""
+
+    def test_chunk_does_not_raise_on_bracket_heavy_text(self) -> None:
+        buf = StringIO()
+        fake = Console(file=buf, width=120, force_terminal=True, legacy_windows=False)
+        sneaky = "[/BOLD_WARNING] error-style text [bold]x[/bold] and [incomplete"
+        with patch("godspeed.tui.app.console", fake):
+            _on_assistant_chunk(sneaky)
+        assert sneaky in buf.getvalue()

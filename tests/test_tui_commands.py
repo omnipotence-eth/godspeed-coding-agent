@@ -231,8 +231,49 @@ class TestPauseResumeCommands:
         assert result is not None
         assert result.handled
 
-    def test_pause_without_event(self, commands: Commands) -> None:
-        """Commands without pause_event should handle gracefully."""
-        result = commands.dispatch("/pause")
+
+def test_pause_without_event(commands: Commands) -> None:
+    """Commands without pause_event should handle gracefully."""
+    result = commands.dispatch("/pause")
+    assert result is not None
+    assert result.handled
+
+
+class TestModelCommand:
+    """Test /model command for switching models."""
+
+    def test_model_shows_current(self, commands: Commands) -> None:
+        """Test /model without args shows current model."""
+        result = commands.dispatch("/model")
         assert result is not None
         assert result.handled
+
+    def test_model_switches_valid(self, commands: Commands) -> None:
+        """Test /model with valid provider-prefixed model."""
+        result = commands.dispatch("/model ollama/qwen3")
+        assert result is not None
+        assert result.handled
+        assert commands._llm_client.model == "ollama/qwen3"
+
+    def test_model_rejects_no_slash(self, commands: Commands) -> None:
+        """Test /model rejects model names without provider prefix."""
+        result = commands.dispatch("/model qwen 3.5")
+        assert result is not None
+        assert result.handled
+        # Model should NOT have changed
+        assert commands._llm_client.model == "test-model"
+
+    def test_model_rejects_bare_name(self, commands: Commands) -> None:
+        """Test /model rejects bare model names."""
+        result = commands.dispatch("/model claude")
+        assert result is not None
+        assert result.handled
+        # Model should NOT have changed
+        assert commands._llm_client.model == "test-model"
+
+    def test_model_accepts_complex_path(self, commands: Commands) -> None:
+        """Test /model accepts complex provider paths."""
+        result = commands.dispatch("/model nvidia_nim/qwen/qwen3.5-397b-a17b")
+        assert result is not None
+        assert result.handled
+        assert commands._llm_client.model == "nvidia_nim/qwen/qwen3.5-397b-a17b"

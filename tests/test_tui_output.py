@@ -521,3 +521,37 @@ class TestFormatStatusHud:
             turns=0,
         )
         assert output.count("\u00b7") >= 4  # 4+ · dots between sections
+
+
+class TestDisplayRobustness:
+    """TUI must not raise when tool/model text contains Rich-like brackets."""
+
+    def test_format_info_invalid_markup_does_not_raise(self) -> None:
+        from godspeed.tui import output as mod
+        from godspeed.tui.output import format_info
+
+        buf = StringIO()
+        mod.console = Console(file=buf, force_terminal=True, width=80)
+        try:
+            format_info("x[/DIM] unbalanced")
+        finally:
+            from godspeed.tui.output import console as real_console
+
+            mod.console = real_console
+        out = _ANSI_RE.sub("", buf.getvalue())
+        assert "x" in out
+
+    def test_format_error_malicious_message_does_not_raise(self) -> None:
+        from godspeed.tui import output as mod
+        from godspeed.tui.output import format_error
+
+        buf = StringIO()
+        mod.console = Console(file=buf, force_terminal=True, width=80)
+        try:
+            format_error("oops [bold not closed")
+        finally:
+            from godspeed.tui.output import console as real_console
+
+            mod.console = real_console
+        out = _ANSI_RE.sub("", buf.getvalue())
+        assert "oops" in out

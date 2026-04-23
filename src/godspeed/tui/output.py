@@ -12,10 +12,12 @@ from typing import Any
 
 from rich.console import Console
 from rich.markdown import Markdown
+from rich.markup import escape
 from rich.panel import Panel
 from rich.syntax import Syntax
 from rich.table import Table
 
+from godspeed.tui import safe_console as _tsc
 from godspeed.tui.theme import (
     BOLD_ERROR,
     BOLD_PRIMARY,
@@ -44,11 +46,28 @@ from godspeed.tui.theme import (
     WARNING,
     brand,
     styled,
+    styled_escaped,
 )
 
 logger = logging.getLogger(__name__)
 
 console = Console()
+
+
+def escape_markup(text: object) -> str:
+    """Escape *text* for embedding in Rich markup."""
+    return _tsc.escape_markup(text)
+
+
+def print_markup_safe(line: str, *, highlight: bool = False, end: str = "\n") -> None:
+    """Print a markup line using the shared TUI console; never raise ``MarkupError``."""
+    _tsc.print_markup_safe(console, line, highlight=highlight, end=end)
+
+
+def print_plain_safe(*objects: Any, sep: str = " ", end: str = "\n", **kwargs: Any) -> None:
+    """Print without interpreting ``[...]`` as Rich markup (model/shell/plain output)."""
+    _tsc.print_plain_safe(console, *objects, sep=sep, end=end, **kwargs)
+
 
 # Max lines for inline tool result display
 _RESULT_MAX_LINES = 10
@@ -63,11 +82,16 @@ def _rule() -> str:
     return styled(RULE_CHAR * _RULE_WIDTH, MUTED)
 
 
+def _safe_print_markup(line: str) -> None:
+    """Print a line that may include Rich markup; never raise on unbalanced or hostile input."""
+    print_markup_safe(line, highlight=False)
+
+
 def _gutter_lines(text: str) -> None:
     """Print text with a left gutter border on each line."""
     gutter = styled(GUTTER, GUTTER_STYLE)
     for line in text.splitlines():
-        console.print(f"    {gutter} {line}")
+        print_markup_safe(f"    {gutter} {escape(line)}")
 
 
 # =============================================================================
@@ -77,22 +101,24 @@ def _gutter_lines(text: str) -> None:
 
 def format_info(message: str) -> None:
     """Display an info message with ● indicator."""
-    console.print(f"  {styled(MARKER_INFO, SECONDARY)} {styled(message, DIM)}")
+    _safe_print_markup(f"  {styled(MARKER_INFO, SECONDARY)} {styled(message, DIM)}")
 
 
 def format_success(message: str) -> None:
     """Display a success message with ✓ indicator."""
-    console.print(f"  {styled(MARKER_SUCCESS, SUCCESS)} {message}")
+    _safe_print_markup(f"  {styled(MARKER_SUCCESS, SUCCESS)} {message}")
 
 
 def format_warning(message: str) -> None:
     """Display a warning message with ⚠ indicator."""
-    console.print(f"  {styled(MARKER_WARNING, WARNING)} {message}")
+    _safe_print_markup(f"  {styled(MARKER_WARNING, WARNING)} {message}")
 
 
 def format_error(message: str) -> None:
     """Display an error message with ✗ indicator."""
-    console.print(f"  {styled(MARKER_ERROR, ERROR)} {styled(f'Error: {message}', BOLD_ERROR)}")
+    _safe_print_markup(
+        f"  {styled(MARKER_ERROR, ERROR)} {styled_escaped('Error: ' + message, BOLD_ERROR)}"
+    )
 
 
 # =============================================================================
@@ -110,7 +136,7 @@ def format_thinking(text: str) -> None:
         display_text += f"\n... ({len(text) - 2000} chars truncated)"
 
     panel = Panel(
-        styled(display_text, DIM),
+        styled_escaped(display_text, DIM),
         title=styled("Thinking", MUTED),
         border_style=MUTED,
         expand=False,
@@ -131,31 +157,31 @@ def format_tool_call(name: str, args: dict[str, Any]) -> None:
 
     # Simple single-arg tools: compact inline
     if name in ("file_read", "glob_search", "repo_map") and args.get("file_path"):
-        console.print(f"  {marker} {tool}  {args['file_path']}")
+        print_markup_safe(f"  {marker} {tool}  {escape(str(args['file_path']))}")
         return
 
     if name == "grep_search" and args.get("pattern"):
         path = args.get("path", "")
-        suffix = f"  {path}" if path else ""
-        console.print(f"  {marker} {tool}  {styled(args['pattern'], DIM)}{suffix}")
+        suffix = f"  {escape(path)}" if path else ""
+        print_markup_safe(f"  {marker} {tool}  {styled_escaped(str(args['pattern']), DIM)}{suffix}")
         return
 
     if name == "git" and args.get("action"):
-        action = args["action"]
+        action = str(args["action"])
         extra = args.get("message", args.get("branch", ""))
-        suffix = f"  {extra}" if extra else ""
-        console.print(f"  {marker} {tool}  {action}{suffix}")
+        suffix = f"  {escape(str(extra))}" if extra else ""
+        print_markup_safe(f"  {marker} {tool}  {escape(action)}{suffix}")
         return
 
     # Shell: show command with $ prefix and gutter
     if name == "shell" and args.get("command"):
-        console.print(f"  {marker} {tool}")
+        print_markup_safe(f"  {marker} {tool}")
         _gutter_lines(f"$ {args['command']}")
         return
 
     # File edit: show compact diff with gutter
     if name == "file_edit" and args.get("file_path"):
-        console.print(f"  {marker} {tool}  {args['file_path']}")
+        print_markup_safe(f"  {marker} {tool}  {escape(str(args['file_path']))}")
         if args.get("old_string") and args.get("new_string"):
             import difflib
 
@@ -174,7 +200,7 @@ def format_tool_call(name: str, args: dict[str, Any]) -> None:
         content = args.get("content", "")
         line_count = len(content.splitlines())
         count_label = styled(f"({line_count} lines)", DIM)
-        console.print(f"  {marker} {tool}  {args['file_path']}  {count_label}")
+        print_markup_safe(f"  {marker} {tool}  {escape(str(args['file_path']))}  {count_label}")
         return
 
     # Default: JSON args with gutter
@@ -183,7 +209,7 @@ def format_tool_call(name: str, args: dict[str, Any]) -> None:
     except (TypeError, ValueError):
         args_text = str(args)
 
-    console.print(f"  {marker} {tool}")
+    print_markup_safe(f"  {marker} {tool}")
     _gutter_lines(args_text)
 
 
@@ -191,7 +217,7 @@ def format_tool_result(name: str, result: str, is_error: bool = False) -> None:
     """Display a tool result — compact for success, expanded for errors."""
     if is_error:
         marker = styled(MARKER_ERROR, ERROR)
-        tool = styled(f"{name}", BOLD_ERROR)
+        tool = styled_escaped(f"{name}", BOLD_ERROR)
 
         # Show full error output
         display = result
@@ -202,16 +228,19 @@ def format_tool_result(name: str, result: str, is_error: bool = False) -> None:
         lines = display.splitlines()
         if len(lines) <= 3:
             # Short error inline
-            console.print(f"  {marker} {tool}  {lines[0] if lines else ''}")
+            first = lines[0] if lines else ""
+            print_markup_safe(f"  {marker} {tool}  {escape(first)}")
             for line in lines[1:]:
-                console.print(f"    {line}")
+                print_markup_safe(f"    {escape(line)}")
         else:
-            console.print(f"  {marker} {tool}")
+            print_markup_safe(f"  {marker} {tool}")
             # Indent error output
             for line in lines[:20]:
-                console.print(f"    {styled(line, DIM)}")
+                print_markup_safe(f"    {styled_escaped(line, DIM)}")
             if len(lines) > 20:
-                console.print(f"    {styled(f'... ({len(lines) - 20} more lines)', DIM)}")
+                print_markup_safe(
+                    f"    {styled_escaped(f'... ({len(lines) - 20} more lines)', DIM)}"
+                )
     else:
         marker = styled(MARKER_SUCCESS, SUCCESS)
         tool = styled(name, MUTED)
@@ -221,17 +250,17 @@ def format_tool_result(name: str, result: str, is_error: bool = False) -> None:
         line_count = len(lines)
 
         if not result.strip():
-            console.print(f"  {marker} {tool}")
+            print_markup_safe(f"  {marker} {tool}")
             return
 
         # Short results: show inline
         if line_count <= _RESULT_MAX_LINES and len(result) <= 500:
-            console.print(f"  {marker} {tool}")
+            print_markup_safe(f"  {marker} {tool}")
             for line in lines:
-                console.print(f"    {styled(line, DIM)}")
+                print_markup_safe(f"    {styled_escaped(line, DIM)}")
         else:
             # Long results: show summary
-            console.print(f"  {marker} {tool}  {styled(f'({line_count} lines)', DIM)}")
+            print_markup_safe(f"  {marker} {tool}  {styled(f'({line_count} lines)', DIM)}")
 
 
 # =============================================================================
@@ -254,7 +283,7 @@ def _tool_brief(name: str, args: dict[str, Any]) -> str:
     if primary and len(primary) > _PARALLEL_ARG_MAX:
         primary = "..." + primary[-(_PARALLEL_ARG_MAX - 3) :]
     if primary:
-        return f"{name} {styled(primary, DIM)}"
+        return f"{name} {styled_escaped(str(primary), DIM)}"
     return name
 
 
@@ -267,11 +296,11 @@ def format_parallel_tool_calls(calls: list[tuple[str, dict[str, Any]]]) -> None:
     count = len(calls)
     marker = styled(MARKER_PARALLEL, SECONDARY)
     header = styled(f"Running {count} tools in parallel", BOLD_PRIMARY)
-    console.print(f"\n  {marker} {header}")
+    print_markup_safe(f"\n  {marker} {header}")
 
     for name, args in calls:
         brief = _tool_brief(name, args)
-        console.print(f"    {styled(MARKER_TOOL, MUTED)} {brief}")
+        print_markup_safe(f"    {styled(MARKER_TOOL, MUTED)} {brief}")
 
     console.print()
 
@@ -287,28 +316,35 @@ def format_parallel_results(results: list[tuple[str, str, bool]]) -> None:
 
     # Compact success summary
     if successes:
-        names = [styled(n, MUTED) for n, _ in successes]
+        names = [styled_escaped(n, MUTED) for n, _ in successes]
         label = f" {SEPARATOR_DOT} ".join(names)
-        console.print(f"  {styled(MARKER_SUCCESS, SUCCESS)} {label}")
+        print_markup_safe(f"  {styled(MARKER_SUCCESS, SUCCESS)} {label}")
 
     # Expanded error display
     for name, output in errors:
         marker = styled(MARKER_ERROR, ERROR)
-        tool = styled(name, BOLD_ERROR)
+        tool = styled_escaped(name, BOLD_ERROR)
         preview = output.splitlines()[0] if output.strip() else "(no output)"
         if len(preview) > 120:
             preview = preview[:117] + "..."
-        console.print(f"  {marker} {tool}  {preview}")
+        print_markup_safe(f"  {marker} {tool}  {escape(preview)}")
 
     console.print()
 
 
 def format_assistant_text(text: str) -> None:
-    """Render assistant text as Rich Markdown."""
+    """Render assistant text as Rich Markdown.
+
+    If Markdown is malformed, fall back to escaped plain text so a bad
+    model response cannot break the TUI.
+    """
     if not text.strip():
         return
-    md = Markdown(text)
-    console.print(md)
+    try:
+        console.print(Markdown(text))
+    except Exception as exc:
+        logger.debug("Assistant Markdown render failed: %s", exc, exc_info=True)
+        print_plain_safe(escape(text))
 
 
 def format_permission_prompt(
@@ -329,13 +365,13 @@ def format_permission_prompt(
     # Warning marker header
     warn_icon = styled(MARKER_WARNING, WARNING)
     warn_text = styled("Permission required", BOLD_WARNING)
-    console.print(f"  {warn_icon}  {warn_text}")
+    print_markup_safe(f"  {warn_icon}  {warn_text}")
     console.print()
 
     args = arguments or {}
 
     # Tool name and primary arg
-    console.print(f"    {styled(tool_name, BOLD_PRIMARY)}", end="")
+    print_markup_safe(f"    {styled_escaped(str(tool_name), BOLD_PRIMARY)}", end="")
 
     if tool_name == "file_edit" and args.get("old_string") and args.get("new_string"):
         import difflib
@@ -351,7 +387,7 @@ def format_permission_prompt(
         removed = sum(1 for line in difflib.ndiff(old_lines, new_lines) if line.startswith("- "))
         stats = f"+{added} -{removed} lines"
 
-        console.print(f"  {file_path}  {styled(stats, DIM)}")
+        print_markup_safe(f"  {escape(str(file_path))}  {styled(stats, DIM)}")
 
         # Unified diff
         diff_output = list(
@@ -368,7 +404,7 @@ def format_permission_prompt(
         diff_text = "\n".join(diff_content[:30])
         console.print(Syntax(diff_text, "diff", theme=SYNTAX_THEME, word_wrap=True))
         if len(diff_content) > 30:
-            console.print(f"    {styled(f'... ({len(diff_content) - 30} more lines)', DIM)}")
+            print_markup_safe(f"    {styled(f'... ({len(diff_content) - 30} more lines)', DIM)}")
 
     elif tool_name == "file_write" and args.get("content"):
         from pathlib import Path
@@ -385,7 +421,9 @@ def format_permission_prompt(
         else:
             action = "create"
         action_style = WARNING if action == "overwrite" else MUTED
-        console.print(f"  {file_path}  {styled(f'({action}, {line_count} lines)', action_style)}")
+        print_markup_safe(
+            f"  {escape(str(file_path))}  {styled(f'({action}, {line_count} lines)', action_style)}"
+        )
 
         preview = "\n".join(all_lines[:15])
         ext = file_path.rsplit(".", 1)[-1] if "." in file_path else "text"
@@ -393,7 +431,7 @@ def format_permission_prompt(
         lexer = lexer_map.get(ext, ext)
         console.print(Syntax(preview, lexer, theme=SYNTAX_THEME, word_wrap=True))
         if len(all_lines) > 15:
-            console.print(f"    {styled(f'... ({len(all_lines) - 15} more lines)', DIM)}")
+            print_markup_safe(f"    {styled(f'... ({len(all_lines) - 15} more lines)', DIM)}")
 
     elif tool_name == "shell" and args.get("command"):
         console.print()
@@ -401,18 +439,18 @@ def format_permission_prompt(
         console.print(Syntax(cmd, "bash", theme=SYNTAX_THEME, word_wrap=True))
 
     elif args.get("file_path"):
-        console.print(f"  {args['file_path']}")
+        print_markup_safe(f"  {escape(str(args['file_path']))}")
 
     elif args.get("pattern"):
-        console.print(f"  {styled(args['pattern'], DIM)}")
+        print_markup_safe(f"  {styled_escaped(str(args['pattern']), DIM)}")
 
     else:
         console.print()
 
     # Prompt line
     console.print()
-    console.print(f"    {styled(reason, DIM)}")
-    console.print(
+    print_markup_safe(f"    {styled_escaped(str(reason), DIM)}")
+    print_markup_safe(
         f"    {styled('Allow?', WARNING)}"
         f" {styled(f'(y)es {SEPARATOR_DOT} (n)o {SEPARATOR_DOT} (a)lways this session', DIM)}"
     )
@@ -422,7 +460,10 @@ def format_permission_prompt(
 def format_permission_denied(tool_name: str, reason: str) -> None:
     """Display a permission denied notice."""
     marker = styled(MARKER_ERROR, ERROR)
-    console.print(f"  {marker} {styled('Blocked:', BOLD_ERROR)} {tool_name} -- {reason}")
+    print_markup_safe(
+        f"  {marker} {styled('Blocked:', BOLD_ERROR)} "
+        f"{escape(str(tool_name))} -- {escape(str(reason))}"
+    )
 
 
 def format_status_hud(
@@ -456,12 +497,14 @@ def format_status_hud(
 
     # Short model label — drop provider prefix for readability when present
     model_short = model.split("/", 1)[-1] if "/" in model else model
-    model_text = styled(model_short, MUTED)
+    model_text = styled_escaped(str(model_short), MUTED)
 
     turns_text = styled(f"{turns} turn{'s' if turns != 1 else ''}", DIM)
     sep = styled(SEPARATOR_DOT, MUTED)
 
-    console.print(f"  {sep} {tokens_text} {sep} {cost_text} {sep} {model_text} {sep} {turns_text}")
+    print_markup_safe(
+        f"  {sep} {tokens_text} {sep} {cost_text} {sep} {model_text} {sep} {turns_text}"
+    )
 
 
 def format_diff_review_prompt(
@@ -485,9 +528,9 @@ def format_diff_review_prompt(
     console.print()
     marker = styled(MARKER_WARNING, WARNING)
     header = styled("Review proposed edit", BOLD_WARNING)
-    console.print(f"  {marker}  {header}")
+    print_markup_safe(f"  {marker}  {header}")
     console.print()
-    console.print(f"    {styled(tool_name, BOLD_PRIMARY)}  {path}")
+    print_markup_safe(f"    {styled_escaped(str(tool_name), BOLD_PRIMARY)}  {escape(str(path))}")
 
     # For diff_apply: "before" is empty, "after" is the raw unified diff text.
     if (not before and after.startswith("diff --git")) or after.startswith("---"):
@@ -499,7 +542,7 @@ def format_diff_review_prompt(
         removed = sum(
             1 for line in difflib.ndiff(before_lines, after_lines) if line.startswith("- ")
         )
-        console.print(f"    {styled(f'+{added} -{removed} lines', DIM)}")
+        print_markup_safe(f"    {styled(f'+{added} -{removed} lines', DIM)}")
         diff_lines = list(
             difflib.unified_diff(
                 before_lines,
@@ -516,7 +559,9 @@ def format_diff_review_prompt(
             diff_text += f"\n... ({len(diff_content) - 80} more lines)"
 
     console.print(Syntax(diff_text, "diff", theme=SYNTAX_THEME, word_wrap=True))
-    console.print(f"    {styled('Apply?', WARNING)} {styled(f'(y)es {SEPARATOR_DOT} (n)o', DIM)}")
+    print_markup_safe(
+        f"    {styled('Apply?', WARNING)} {styled(f'(y)es {SEPARATOR_DOT} (n)o', DIM)}"
+    )
 
 
 def format_stats(
@@ -562,21 +607,21 @@ def format_welcome(
     # Decorated branded header
     dec = styled(f"{DECORATOR}{DECORATOR}{DECORATOR}", MUTED)
     header = f"  {dec} {PROMPT_ICON} {brand(__version__)} {dec}"
-    console.print(header)
-    console.print(f"  {styled(BRAND_TAGLINE, DIM)}")
+    print_markup_safe(header)
+    print_markup_safe(f"  {styled(BRAND_TAGLINE, DIM)}")
     console.print()
 
     # Thin rule separator
-    console.print(f"  {_rule()}")
+    print_markup_safe(f"  {_rule()}")
 
     # Key info — aligned, clean
     audit_status = styled("enabled", SUCCESS) if audit_enabled else styled("disabled", ERROR)
-    console.print(f"  {styled('Model', MUTED)}    {model}")
-    console.print(f"  {styled('Project', MUTED)}  {project_dir}")
-    console.print(f"  {styled('Audit', MUTED)}    {audit_status}")
+    print_markup_safe(f"  {styled('Model', MUTED)}    {escape(str(model))}")
+    print_markup_safe(f"  {styled('Project', MUTED)}  {escape(str(project_dir))}")
+    print_markup_safe(f"  {styled('Audit', MUTED)}    {audit_status}")
 
     # Hint line
-    console.print(
+    print_markup_safe(
         f"\n  {styled(f'Type /help for commands {SEPARATOR_DOT} /plan for read-only mode', DIM)}\n"
     )
 
@@ -592,28 +637,28 @@ def format_session_summary(
 ) -> None:
     """Display session summary on quit — clean, compact."""
     console.print()
-    console.print(f"  {_rule()}")
-    console.print(f"  {styled('Session complete', DIM)}")
+    print_markup_safe(f"  {_rule()}")
+    print_markup_safe(f"  {styled('Session complete', DIM)}")
     console.print()
 
     # Duration
     minutes = int(duration_secs // 60)
     seconds = int(duration_secs % 60)
     dur = f"{minutes}m {seconds}s" if minutes > 0 else f"{seconds}s"
-    console.print(f"    {styled('Duration', MUTED)}  {dur}")
+    print_markup_safe(f"    {styled('Duration', MUTED)}  {dur}")
 
     # Tokens
     total = input_tokens + output_tokens
-    console.print(
+    print_markup_safe(
         f"    {styled('Tokens', MUTED)}    {total:,}"
         f"  {styled(f'(in: {input_tokens:,} {SEPARATOR_DOT} out: {output_tokens:,})', DIM)}"
     )
 
     # Cost
     if cost is not None and cost > 0:
-        console.print(f"    {styled('Cost', MUTED)}      ${cost:.4f}")
+        print_markup_safe(f"    {styled('Cost', MUTED)}      ${cost:.4f}")
     elif cost is not None:
-        console.print(f"    {styled('Cost', MUTED)}      {styled('free', SUCCESS)}")
+        print_markup_safe(f"    {styled('Cost', MUTED)}      {styled('free', SUCCESS)}")
 
     # Tool summary
     if tool_calls > 0:
@@ -624,10 +669,10 @@ def format_session_summary(
         if tool_denied > 0:
             parts.append(f"{tool_denied} denied")
         summary = f" {SEPARATOR_DOT} ".join(parts)
-        console.print(
+        print_markup_safe(
             f"    {styled('Tools', MUTED)}     {tool_calls} calls  {styled(f'({summary})', DIM)}"
         )
 
     # Branded sign-off with decorative slashes
     dec = styled(f"{DECORATOR}{DECORATOR}{DECORATOR}", MUTED)
-    console.print(f"\n  {dec} {PROMPT_ICON} {styled('Godspeed', BOLD_PRIMARY)} {dec}\n")
+    print_markup_safe(f"\n  {dec} {PROMPT_ICON} {styled('Godspeed', BOLD_PRIMARY)} {dec}\n")

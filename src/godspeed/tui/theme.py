@@ -102,6 +102,17 @@ def styled(text: str, style: str) -> str:
     return f"[{style}]{text}[/{style}]"
 
 
+def styled_escaped(text: str, style: str) -> str:
+    """Like :func:`styled`, but escape *text* for safe Rich markup.
+
+    For values from the filesystem, shell, or model output (tool paths,
+    grep hits, model names). Use :func:`styled` for static UI labels.
+    """
+    from rich.markup import escape
+
+    return f"[{style}]{escape(text)}[/{style}]"
+
+
 def brand(version: str = "") -> str:
     """Return the branded product name with optional version."""
     name = styled("Godspeed", BOLD_PRIMARY)

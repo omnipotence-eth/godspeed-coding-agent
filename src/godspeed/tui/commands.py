@@ -11,11 +11,13 @@ from typing import Any, ClassVar
 from godspeed.config import append_permission_rule
 from godspeed.tui.output import (
     console,
+    escape_markup,
     format_error,
     format_info,
     format_stats,
     format_success,
     format_warning,
+    print_markup_safe,
 )
 from godspeed.tui.theme import (
     BOLD_PRIMARY,
@@ -98,6 +100,8 @@ class Commands:
         self._handlers["/audit"] = self._cmd_audit
         self._handlers["/permissions"] = self._cmd_permissions
         self._handlers["/remember"] = self._cmd_remember
+        self._handlers["/listen"] = self._cmd_listen
+        self._handlers["/speak"] = self._cmd_speak
         self._handlers["/extend"] = self._cmd_extend
         self._handlers["/context"] = self._cmd_context
         self._handlers["/plan"] = self._cmd_plan
@@ -151,8 +155,8 @@ class Commands:
         """Show available commands — grouped by category."""
         rule = styled(RULE_CHAR * 40, MUTED)
         console.print()
-        console.print(f"  {styled('Commands', BOLD_PRIMARY)}")
-        console.print(f"  {rule}")
+        print_markup_safe(f"  {styled('Commands', BOLD_PRIMARY)}")
+        print_markup_safe(f"  {rule}")
 
         groups: list[tuple[str, list[tuple[str, str]]]] = [
             (
@@ -199,13 +203,20 @@ class Commands:
                     ("/undo", "Undo last git commit"),
                 ],
             ),
+            (
+                "Speech (optional [speech] extra)",
+                [
+                    ("/listen [secs]", "Record from mic + transcribe + inject (default 8s)"),
+                    ("/speak on|off", "Toggle TTS readback of agent responses"),
+                ],
+            ),
         ]
 
         for group_name, cmds in groups:
             console.print()
-            console.print(f"  {styled(group_name, MUTED)}")
+            print_markup_safe(f"  {styled(group_name, MUTED)}")
             for cmd_name, desc in cmds:
-                console.print(f"    {styled(cmd_name, BOLD_PRIMARY):28s} {styled(desc, DIM)}")
+                print_markup_safe(f"    {styled(cmd_name, BOLD_PRIMARY):28s} {styled(desc, DIM)}")
 
         console.print()
         return CommandResult(handled=True)
@@ -213,19 +224,32 @@ class Commands:
     def _cmd_model(self, args: str = "") -> CommandResult:
         """Show or switch the active model."""
         if args.strip():
+            new_model_candidate = args.strip()
+            # Validate: LiteLLM requires provider-prefixed model names
+            # (e.g., ollama/qwen3, nvidia_nim/qwen/..., anthropic/claude-3-5-sonnet)
+            # Common providers: ollama, nvidia_nim, anthropic, openai, gemini, deepseek, etc.
+            if "/" not in new_model_candidate:
+                format_error(
+                    f"Invalid model name: {new_model_candidate!r}\n"
+                    "LiteLLM requires a provider-prefixed model name\n"
+                    "(e.g., ollama/qwen3, nvidia_nim/qwen/..., anthropic/claude-3-5-sonnet).\n"
+                    "Use /model to see the current model."
+                )
+                return CommandResult(handled=True)
+
             old_model = self._llm_client.model
-            self._llm_client.model = args.strip()
+            self._llm_client.model = new_model_candidate
             new_model = self._llm_client.model
             format_success(
-                f"Model switched: [{MUTED}]{old_model}[/{MUTED}]"
-                f" -> [{BOLD_PRIMARY}]{new_model}[/{BOLD_PRIMARY}]"
+                f"Model switched: [{MUTED}]{escape_markup(old_model)}[/{MUTED}]"
+                f" -> [{BOLD_PRIMARY}]{escape_markup(new_model)}[/{BOLD_PRIMARY}]"
             )
         else:
             model = self._llm_client.model
-            format_info(f"Active model: [{BOLD_PRIMARY}]{model}[/{BOLD_PRIMARY}]")
+            format_info(f"Active model: [{BOLD_PRIMARY}]{escape_markup(model)}[/{BOLD_PRIMARY}]")
             if self._llm_client.fallback_models:
                 fallbacks = ", ".join(self._llm_client.fallback_models)
-                console.print(f"    [{DIM}]Fallbacks: {fallbacks}[/{DIM}]")
+                print_markup_safe(f" [{DIM}]Fallbacks: {escape_markup(fallbacks)}[/{DIM}]")
         return CommandResult(handled=True)
 
     def _cmd_clear(self, _args: str = "") -> CommandResult:
@@ -427,6 +451,101 @@ class Commands:
         )
         return CommandResult(handled=True)
 
+    # Session-scoped TTS flag — when True, the TUI reads each final
+    # agent response aloud after rendering it. Toggle with /speak.
+    speak_enabled: bool = False
+
+    def _cmd_listen(self, args: str = "") -> CommandResult:
+        """Record from the default mic and inject the transcription as a user message.
+
+        Usage:
+            /listen             # records 8 seconds (default)
+            /listen 12          # records 12 seconds
+
+        Blocks for the full duration — treat as a push-to-talk gate.
+        Requires the ``[speech]`` optional extra to be installed.
+        """
+        from godspeed.speech.availability import is_available, missing_extras_message
+
+        if not is_available():
+            format_info(missing_extras_message())
+            return CommandResult(handled=True)
+
+        duration = 8.0
+        arg = args.strip()
+        if arg:
+            try:
+                duration = float(arg)
+            except ValueError:
+                format_error(f"Invalid duration {arg!r} — expected seconds, e.g. /listen 10")
+                return CommandResult(handled=True)
+            if duration <= 0 or duration > 120:
+                format_error("Duration must be between 0 and 120 seconds.")
+                return CommandResult(handled=True)
+
+        from godspeed.speech.stt import record_and_transcribe
+
+        format_info(f"Recording {duration:.0f}s from default mic — speak now.")
+        try:
+            transcript = record_and_transcribe(duration_seconds=duration)
+        except Exception as exc:
+            # Audio device / model-download errors shouldn't crash the TUI.
+            format_error(f"Speech recognition failed: {exc}")
+            return CommandResult(handled=True)
+
+        if not transcript:
+            format_warning("No speech detected — try again with /listen.")
+            return CommandResult(handled=True)
+
+        format_success(f"Heard: {transcript!r}")
+        self._conversation.add_user_message(transcript)
+        # handled=False lets the TUI run agent_loop with the injected message.
+        return CommandResult(handled=False)
+
+    def _cmd_speak(self, args: str = "") -> CommandResult:
+        """Toggle TTS readback of agent responses.
+
+        Usage:
+            /speak on          # enable
+            /speak off         # disable
+            /speak             # show current state
+            /speak "test text" # speak the literal text without toggling
+
+        Requires the ``[speech]`` optional extra.
+        """
+        from godspeed.speech.availability import is_available, missing_extras_message
+
+        arg = args.strip()
+
+        # ``/speak "..."`` form — speak the literal text without toggling.
+        if arg and (arg.startswith('"') or arg not in {"on", "off"}):
+            if not is_available():
+                format_info(missing_extras_message())
+                return CommandResult(handled=True)
+            from godspeed.speech.tts import speak
+
+            try:
+                speak(arg.strip('"'))
+            except Exception as exc:
+                format_error(f"TTS failed: {exc}")
+            return CommandResult(handled=True)
+
+        if arg == "on":
+            if not is_available():
+                format_info(missing_extras_message())
+                return CommandResult(handled=True)
+            self.speak_enabled = True
+            format_success("TTS readback: ON — agent responses will be spoken.")
+        elif arg == "off":
+            self.speak_enabled = False
+            format_success("TTS readback: OFF.")
+        else:
+            state = "ON" if self.speak_enabled else "OFF"
+            format_info(
+                f'TTS readback is {state}. Use /speak on | /speak off | /speak "any text" to test.'
+            )
+        return CommandResult(handled=True)
+
     def _cmd_plan(self, _args: str = "") -> CommandResult:
         """Toggle plan mode — read-only, explore and plan only."""
         if self._permission_engine is None:
@@ -594,9 +713,9 @@ class Commands:
                     f"Cost: [{BOLD_PRIMARY}]{spent_str}[/{BOLD_PRIMARY}]"
                     f" [{DIM}](no budget limit)[/{DIM}]"
                 )
-            console.print(
+            print_markup_safe(
                 f"    [{DIM}]{input_tokens:,} input + {output_tokens:,} output tokens"
-                f" ({model})[/{DIM}]"
+                f" ({escape_markup(model)})[/{DIM}]"
             )
             return CommandResult(handled=True)
 
@@ -742,9 +861,9 @@ class Commands:
         else:
             color = CTX_CRITICAL
 
-        console.print(f"  [{color}]tokens: {tokens:,} / {max_tokens:,} ({pct:.0f}%)[/{color}]")
+        print_markup_safe(f"  [{color}]tokens: {tokens:,} / {max_tokens:,} ({pct:.0f}%)[/{color}]")
         msg_count = len(self._conversation.messages)
-        console.print(f"  [{DIM}]messages: {msg_count}[/{DIM}]")
+        print_markup_safe(f"  [{DIM}]messages: {msg_count}[/{DIM}]")
         return CommandResult(handled=True)
 
     def _cmd_checkpoint(self, args: str = "") -> CommandResult:
@@ -903,12 +1022,12 @@ class Commands:
 
         for t in tasks:
             if t.status == "completed":
-                status_style = f"[{SUCCESS}]{t.status}[/{SUCCESS}]"
+                status_style = f"[{SUCCESS}]{escape_markup(t.status)}[/{SUCCESS}]"
             elif t.status == "in_progress":
-                status_style = f"[{WARNING}]{t.status}[/{WARNING}]"
+                status_style = f"[{WARNING}]{escape_markup(t.status)}[/{WARNING}]"
             else:
-                status_style = f"[{MUTED}]{t.status}[/{MUTED}]"
-            table.add_row(str(t.id), t.title, status_style)
+                status_style = f"[{MUTED}]{escape_markup(t.status)}[/{MUTED}]"
+            table.add_row(str(t.id), escape_markup(t.title), status_style)
 
         console.print(table)
         return CommandResult()
@@ -917,7 +1036,7 @@ class Commands:
         """Rebuild the codebase search index."""
         if self._codebase_index is None:
             format_info("Codebase index not available.")
-            console.print(f"  [{DIM}]Install with: pip install godspeed[index][/{DIM}]")
+            print_markup_safe(f"  [{DIM}]Install with: pip install godspeed[index][/{DIM}]")
             return CommandResult()
 
         if not self._codebase_index.is_available:

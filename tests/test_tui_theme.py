@@ -40,6 +40,7 @@ from godspeed.tui.theme import (
     brand,
     icon_prompt,
     styled,
+    styled_escaped,
 )
 
 
@@ -176,6 +177,22 @@ class TestStyled:
     def test_nested_style(self) -> None:
         result = styled("test", BOLD_PRIMARY)
         assert f"[{BOLD_PRIMARY}]test[/{BOLD_PRIMARY}]" == result
+
+
+class TestStyledEscaped:
+    """Test styled_escaped for untrusted text."""
+
+    def test_escapes_brackets(self) -> None:
+        result = styled_escaped("a[/BOLD]b", DIM)
+        assert r"\[" in result
+        assert "a" in result
+        assert "b" in result
+
+    def test_plain_unchanged_shape(self) -> None:
+        result = styled_escaped("hello", "dim")
+        assert result.startswith("[dim]")
+        assert "hello" in result
+        assert result.endswith("[/dim]")
 
 
 class TestBrand:

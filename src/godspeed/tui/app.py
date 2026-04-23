@@ -24,6 +24,7 @@ from godspeed.tui.commands import Commands
 from godspeed.tui.completions import GodspeedCompleter
 from godspeed.tui.output import (
     console,
+    escape_markup,
     format_assistant_text,
     format_diff_review_prompt,
     format_error,
@@ -37,6 +38,7 @@ from godspeed.tui.output import (
     format_tool_call,
     format_tool_result,
     format_welcome,
+    print_markup_safe,
 )
 from godspeed.tui.theme import BOLD_WARNING, DIM, ERROR, MUTED, icon_prompt
 
@@ -184,8 +186,8 @@ class TUIApp:
             )
         except Exception as exc:
             # prompt-toolkit fails in non-TTY contexts (piped input, CI, etc.)
-            console.print(
-                f"\n[{ERROR}]  Cannot create interactive session: {exc}[/{ERROR}]\n"
+            print_markup_safe(
+                f"\n[{ERROR}]  Cannot create interactive session: {escape_markup(exc)}[/{ERROR}]\n"
                 f"  [{DIM}]Godspeed requires a real terminal. Run it directly in your"
                 f" terminal, not through a pipe or non-interactive shell.[/{DIM}]"
             )
@@ -200,7 +202,7 @@ class TUIApp:
                     ),
                 )
             except KeyboardInterrupt:
-                console.print(f"\n  [{DIM}]Interrupted. Type /quit to exit.[/{DIM}]")
+                print_markup_safe(f"\n  [{DIM}]Interrupted. Type /quit to exit.[/{DIM}]")
                 continue
             except EOFError:
                 break
@@ -349,12 +351,14 @@ class TUIApp:
                 )
                 console.print()  # End streaming output with newline
             except AgentCancelledError:
-                console.print(f"\n  [{DIM}]Agent cancelled. Send another prompt or /quit.[/{DIM}]")
+                print_markup_safe(
+                    f"\n  [{DIM}]Agent cancelled. Send another prompt or /quit.[/{DIM}]"
+                )
             except KeyboardInterrupt:
                 # Hard interrupt: user pressed Ctrl+C twice (or the loop-level
                 # signal handler wasn't installed on this platform). Treat
                 # same as cancel for display, but surface the distinct reason.
-                console.print(f"\n  [{DIM}]Agent interrupted.[/{DIM}]")
+                print_markup_safe(f"\n  [{DIM}]Agent interrupted.[/{DIM}]")
             except Exception as exc:
                 logger.error("Agent loop error: %s", exc, exc_info=True)
                 format_error(f"Agent error: {exc}")
@@ -482,8 +486,13 @@ class _ThinkingSpinner:
 
 
 def _on_assistant_chunk(text: str) -> None:
-    """Callback: display streaming text chunk as it arrives."""
-    console.print(text, end="")
+    """Callback: display streaming text chunk as it arrives.
+
+    Use ``markup=False`` so model output (code, brackets, accidental ``[tag]``)
+    is not parsed as Rich markup — invalid or partial ``[...]`` would raise
+    :class:`rich.errors.MarkupError` and kill the agent loop.
+    """
+    console.print(text, end="", markup=False, highlight=False)
 
 
 def _on_assistant_text(text: str) -> None:
@@ -547,11 +556,11 @@ class _InteractivePermissionProxy:
 
         from godspeed.tui.theme import ACCENT, SUCCESS
 
-        console.print(
-            f"\n  [{ACCENT}]You've approved [{SUCCESS}]{pattern}"
+        print_markup_safe(
+            f"\n  [{ACCENT}]You've approved [{SUCCESS}]{escape_markup(pattern)}"
             f"[/{SUCCESS}] multiple times.[/{ACCENT}]"
         )
-        console.print(f"  [{ACCENT}]Add to permanent allow rules? (y/n)[/{ACCENT}]")
+        print_markup_safe(f"  [{ACCENT}]Add to permanent allow rules? (y/n)[/{ACCENT}]")
         try:
             answer = console.input(f"[{BOLD_WARNING}]  > [/{BOLD_WARNING}]").strip().lower()
         except (KeyboardInterrupt, EOFError):
@@ -564,11 +573,11 @@ class _InteractivePermissionProxy:
             if success:
                 # Also update engine in-memory
                 self._engine.allow_rules.append(pattern)
-                console.print(f"  [{SUCCESS}]Added to allow rules.[/{SUCCESS}]")
+                print_markup_safe(f"  [{SUCCESS}]Added to allow rules.[/{SUCCESS}]")
             else:
                 from godspeed.tui.theme import WARNING
 
-                console.print(
+                print_markup_safe(
                     f"  [{WARNING}]Could not persist rule. Added for this session only.[/{WARNING}]"
                 )
                 self._engine.grant_session_permission(pattern)

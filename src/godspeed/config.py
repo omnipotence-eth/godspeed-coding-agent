@@ -147,7 +147,9 @@ class GodspeedSettings(BaseSettings):
     global_dir: Path = DEFAULT_GLOBAL_DIR
 
     # Security
-    permission_mode: str = "normal"  # "strict" | "normal" | "yolo"
+    # "strict" | "normal" | "auto" | "yolo" | "unsafe"
+    # See godspeed.security.permissions.PermissionEngine for semantics.
+    permission_mode: str = "normal"
 
     # Context
     max_context_tokens: int = 100_000
@@ -242,7 +244,7 @@ class GodspeedSettings(BaseSettings):
     @field_validator("permission_mode")
     @classmethod
     def validate_permission_mode(cls, v: str) -> str:
-        allowed = {"strict", "normal", "yolo"}
+        allowed = {"strict", "normal", "auto", "yolo", "unsafe"}
         if v not in allowed:
             msg = f"permission_mode must be one of {sorted(allowed)}, got {v!r}"
             raise ValueError(msg)

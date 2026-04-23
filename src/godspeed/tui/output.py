@@ -473,19 +473,36 @@ def format_status_hud(
     model: str,
     turns: int,
     budget_usd: float = 0.0,
+    cache_read_tokens: int = 0,
+    cache_creation_tokens: int = 0,
 ) -> None:
     """Print a compact one-line session HUD after each completed turn.
 
     Example rendering:
-        · 1,234 in + 567 out · $0.0024 · qwen3.5-397b · 3 turns
+        · 1,234 in + 567 out (1,801) · 85% cached · $0.0024 · claude-opus-4-7 · 3 turns
 
     When ``budget_usd`` > 0, the cost is shown as ``$X / $Y`` with a red
-    tint if we're within 20% of the hard limit. Callers pass the
-    already-known LLMClient totals so this function stays pure — no
-    coupling to session/app state.
+    tint if we're within 20% of the hard limit.
+
+    When ``cache_read_tokens > 0`` (Anthropic-family providers with prompt
+    caching enabled), the cache-hit ratio is inlined between tokens and
+    cost so users can see real caching ROI after each turn. Callers pass
+    the already-known ``LLMClient`` totals so this function stays pure.
     """
     total_tokens = input_tokens + output_tokens
     tokens_text = styled(f"{input_tokens:,} in + {output_tokens:,} out ({total_tokens:,})", DIM)
+
+    # Cache summary — only render when the provider reported cache hits,
+    # otherwise it's just noise. Ratio is against total input tokens which
+    # already include the cached prefix (per Anthropic accounting).
+    cache_text: str | None = None
+    if cache_read_tokens > 0 and input_tokens > 0:
+        pct = int(100 * cache_read_tokens / input_tokens)
+        cache_text = styled(f"{pct}% cached", DIM)
+    elif cache_creation_tokens > 0:
+        # First-turn cache write — no reads yet, but show the write so
+        # the user knows future turns will amortize.
+        cache_text = styled(f"{cache_creation_tokens:,} cached", DIM)
 
     if budget_usd > 0:
         remaining = max(0.0, budget_usd - cost_usd)
@@ -502,9 +519,11 @@ def format_status_hud(
     turns_text = styled(f"{turns} turn{'s' if turns != 1 else ''}", DIM)
     sep = styled(SEPARATOR_DOT, MUTED)
 
-    print_markup_safe(
-        f"  {sep} {tokens_text} {sep} {cost_text} {sep} {model_text} {sep} {turns_text}"
-    )
+    fields: list[str] = [tokens_text]
+    if cache_text is not None:
+        fields.append(cache_text)
+    fields.extend([cost_text, model_text, turns_text])
+    print_markup_safe(f"  {sep} " + f" {sep} ".join(fields))
 
 
 def format_diff_review_prompt(

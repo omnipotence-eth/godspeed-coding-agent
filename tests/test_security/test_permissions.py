@@ -334,3 +334,79 @@ class TestStrictMode:
         engine = PermissionEngine(allow_patterns=["Bash(git status)"], mode="strict")
         tc = ToolCall(tool_name="Bash", arguments={"command": "git status"})
         assert engine.evaluate(tc) == ALLOW
+
+
+class TestAutoMode:
+    """Auto mode — productivity tier: auto-allow READ_ONLY + LOW, prompt HIGH/DESTRUCTIVE."""
+
+    def test_auto_allows_read_only(self) -> None:
+        engine = PermissionEngine(
+            tool_risk_levels={"FileRead": RiskLevel.READ_ONLY},
+            mode="auto",
+        )
+        tc = ToolCall(tool_name="FileRead", arguments={"file_path": "a.txt"})
+        decision = engine.evaluate(tc)
+        assert decision == ALLOW
+        assert "auto mode" in decision.reason
+
+    def test_auto_allows_low_risk(self) -> None:
+        engine = PermissionEngine(
+            tool_risk_levels={"WebSearch": RiskLevel.LOW},
+            mode="auto",
+        )
+        tc = ToolCall(tool_name="WebSearch", arguments={"query": "python asyncio"})
+        assert engine.evaluate(tc) == ALLOW
+
+    def test_auto_still_asks_on_high_risk(self) -> None:
+        engine = PermissionEngine(
+            tool_risk_levels={"Bash": RiskLevel.HIGH},
+            mode="auto",
+        )
+        tc = ToolCall(tool_name="Bash", arguments={"command": "ls"})
+        # HIGH falls through to risk-level default (ASK)
+        assert engine.evaluate(tc) == ASK
+
+    def test_auto_still_blocks_deny_rules(self) -> None:
+        engine = PermissionEngine(
+            deny_patterns=["FileRead(.env)"],
+            tool_risk_levels={"FileRead": RiskLevel.READ_ONLY},
+            mode="auto",
+        )
+        tc = ToolCall(tool_name="FileRead", arguments={"file_path": ".env"})
+        assert engine.evaluate(tc) == DENY
+
+    def test_auto_still_blocks_dangerous_commands(self) -> None:
+        # Dangerous regex runs before the auto-allow branch.
+        engine = PermissionEngine(
+            tool_risk_levels={"Bash": RiskLevel.LOW},
+            mode="auto",
+        )
+        tc = ToolCall(tool_name="Bash", arguments={"command": "rm -rf /"})
+        assert engine.evaluate(tc) == DENY
+
+
+class TestUnsafeMode:
+    """Unsafe mode — Claude-Code --dangerously-skip-permissions equivalent."""
+
+    def test_unsafe_allows_dangerous_commands(self) -> None:
+        engine = PermissionEngine(mode="unsafe")
+        tc = ToolCall(tool_name="Bash", arguments={"command": "rm -rf /"})
+        decision = engine.evaluate(tc)
+        assert decision == ALLOW
+        assert "unsafe" in decision.reason
+
+    def test_unsafe_ignores_deny_rules(self) -> None:
+        # Proof of the "disposable sandbox only" semantics: even deny
+        # rules are bypassed. The audit trail still records the call.
+        engine = PermissionEngine(deny_patterns=["FileRead(.env)"], mode="unsafe")
+        tc = ToolCall(tool_name="FileRead", arguments={"file_path": ".env"})
+        assert engine.evaluate(tc) == ALLOW
+
+    def test_unsafe_ignores_plan_mode(self) -> None:
+        engine = PermissionEngine(
+            tool_risk_levels={"Bash": RiskLevel.HIGH},
+            mode="unsafe",
+        )
+        engine.plan_mode = True
+        tc = ToolCall(tool_name="Bash", arguments={"command": "anything"})
+        assert engine.evaluate(tc) == ALLOW

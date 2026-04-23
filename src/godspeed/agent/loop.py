@@ -177,6 +177,7 @@ async def agent_loop(
                     speculative_cache=speculative_cache,
                     cancel_event=cancel_event,
                     task_type=task_type,
+                    on_thinking=on_thinking,
                 )
             else:
                 response = await llm_client.chat(
@@ -904,6 +905,7 @@ async def _streaming_call(
     speculative_cache: dict[str, asyncio.Task[ToolResult]] | None = None,
     cancel_event: asyncio.Event | None = None,
     task_type: str | None = None,
+    on_thinking: OnThinking | None = None,
 ) -> ChatResponse:
     """Make a streaming LLM call, invoking on_chunk for each text delta.
 
@@ -923,6 +925,13 @@ async def _streaming_call(
     stream = llm_client.stream_chat(messages=messages, tools=tools, task_type=task_type)
     try:
         async for chunk in stream:
+            # Thinking deltas stream interleaved with content on Anthropic
+            # extended-thinking responses. Surface them to the caller so the
+            # live HUD can tally 🧠 tokens, and the TUI can render the
+            # pre-answer reasoning panel as it arrives.
+            if chunk.thinking and on_thinking is not None:
+                on_thinking(chunk.thinking)
+
             if chunk.finish_reason is None and chunk.content:
                 # Intermediate chunk — stream text to caller first, THEN
                 # check cancel. This way the user sees the text the model

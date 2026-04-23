@@ -68,6 +68,34 @@ class ChatResponse:
         return len(self.tool_calls) > 0
 
 
+def _extract_thinking_delta(delta: Any) -> str:
+    """Pull a streaming extended-thinking chunk out of a LiteLLM delta.
+
+    LiteLLM surfaces Anthropic extended-thinking deltas two different ways
+    depending on provider/version:
+
+    - ``delta.thinking_blocks`` — a list of ``{"type": "thinking", "thinking": "..."}``
+      dicts (newer; matches the final-message content-block shape).
+    - ``delta.thinking`` — a plain string (older / some proxies).
+
+    Return the concatenated text for this chunk, or ``""`` if neither
+    field is present. Never raises; unknown shapes are ignored so the
+    stream continues.
+    """
+    text = ""
+    blocks = getattr(delta, "thinking_blocks", None)
+    if isinstance(blocks, list):
+        for block in blocks:
+            if isinstance(block, dict):
+                piece = block.get("thinking") or block.get("text") or ""
+                if isinstance(piece, str):
+                    text += piece
+    plain = getattr(delta, "thinking", None)
+    if isinstance(plain, str):
+        text += plain
+    return text
+
+
 class ModelRouter:
     """Routes LLM calls to different models based on task type.
 
@@ -692,14 +720,38 @@ class LLMClient:
                     effective,
                 )
 
+        # Extended thinking for Anthropic models — parity with the non-
+        # streaming path. Thinking blocks arrive interleaved with content
+        # and are surfaced per-chunk below.
+        if self.thinking_budget > 0 and self._is_anthropic_model(effective):
+            kwargs["thinking"] = {"type": "enabled", "budget_tokens": self.thinking_budget}
+
         try:
             response = await _get_litellm().acompletion(**kwargs)
             collected_content = ""
+            collected_thinking = ""
             collected_tool_calls: list[dict[str, Any]] = []
 
             async for chunk in response:
                 delta = chunk.choices[0].delta
                 finish_reason = chunk.choices[0].finish_reason
+
+                # Extended thinking deltas (Anthropic) — LiteLLM surfaces
+                # them on the delta as either ``delta.thinking_blocks`` (list)
+                # or as a plain ``delta.thinking`` string, depending on
+                # provider/version. Yield as a ChatResponse with only the
+                # ``thinking`` field set; the agent loop routes it to the
+                # TUI's ``on_thinking`` callback.
+                think_text = _extract_thinking_delta(delta)
+                if think_text:
+                    collected_thinking += think_text
+                    yield ChatResponse(
+                        content="",
+                        thinking=think_text,
+                        tool_calls=[],
+                        finish_reason=None,
+                        usage={},
+                    )
 
                 if delta.content:
                     collected_content += delta.content

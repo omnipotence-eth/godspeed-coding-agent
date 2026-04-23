@@ -236,8 +236,8 @@ class TUIApp:
                     logger.warning("Mention resolution failed: %s", exc)
                     # Fall through with original input
 
-            # Run agent loop with context-aware thinking indicator
-            spinner = _ThinkingSpinner()
+            # Run agent loop with context-aware thinking indicator + live HUD.
+            spinner = _ThinkingSpinner(llm_client=self._llm_client)
 
             def _track_tool_call(
                 tool_name: str, args: dict[str, Any], _s: _ThinkingSpinner = spinner
@@ -288,9 +288,28 @@ class TUIApp:
                 text: str,
                 _s: _ThinkingSpinner = spinner,
             ) -> None:
+                # Record thinking tokens for the live HUD BEFORE we stop
+                # the spinner to print; the next spinner.start() will
+                # include 🧠 in its label.
+                _s.add_thinking_chunk(text)
                 _s.stop()
                 format_thinking(text)
                 _s.start()
+
+            def _on_chunk_with_hud(
+                text: str,
+                _s: _ThinkingSpinner = spinner,
+            ) -> None:
+                """Track chunk tokens, then stop spinner and stream text.
+
+                Order matters: record FIRST so the throttled refresh sees the
+                new counter (there's no visible overlap because the status
+                bar is already live). Stopping before printing avoids
+                carriage-return fights between ``Status`` and ``console.print``.
+                """
+                _s.add_output_chunk(text)
+                _s.stop()
+                _on_assistant_chunk(text)
 
             # Fresh cancel state per turn
             self._cancel_event.clear()
@@ -339,7 +358,7 @@ class TUIApp:
                     on_tool_call=_track_tool_call,
                     on_tool_result=_track_tool_result,
                     on_permission_denied=_track_permission_denied,
-                    on_assistant_chunk=spinner.wrap(_on_assistant_chunk),
+                    on_assistant_chunk=_on_chunk_with_hud,
                     max_iterations=self._commands.max_iterations,
                     pause_event=self._pause_event,
                     cancel_event=self._cancel_event,
@@ -388,6 +407,10 @@ class TUIApp:
                     model=self._llm_client.model,
                     turns=self._turn_count,
                     budget_usd=getattr(self._llm_client, "max_cost_usd", 0.0),
+                    cache_read_tokens=getattr(self._llm_client, "total_cache_read_tokens", 0),
+                    cache_creation_tokens=getattr(
+                        self._llm_client, "total_cache_creation_tokens", 0
+                    ),
                 )
 
         # Session summary on exit
@@ -423,28 +446,124 @@ _TOOL_LABELS: dict[str, str] = {
 
 
 class _ThinkingSpinner:
-    """Context-aware Rich Status spinner.
+    """Context-aware Rich Status spinner with live token HUD.
 
-    Shows what the agent is doing — "Thinking..." when waiting for LLM,
-    tool-specific labels during tool execution.
+    Two roles:
+    1. Show what the agent is doing — "Thinking..." when waiting for LLM,
+       tool-specific labels during tool execution.
+    2. Surface live token counts as the model streams — output chars since
+       start of turn (approx tokens via tiktoken if available, else char/4),
+       plus elapsed wall-clock seconds. Gives users the Claude-Code-style
+       "at a glance" feedback on cost and progress without waiting for the
+       turn to finish.
+
+    Label refresh is throttled to ~5Hz (200ms) to avoid terminal-redraw
+    overhead; the in-memory counters update unthrottled so the post-turn
+    HUD stays accurate.
     """
 
-    def __init__(self) -> None:
+    _REFRESH_INTERVAL_S = 0.2  # 5Hz cap on live label updates
+
+    def __init__(self, llm_client: LLMClient | None = None) -> None:
         self._status: Any | None = None
         self._started = False
+        self._llm_client = llm_client
+        self._start_time: float = 0.0
+        self._output_chars = 0
+        self._thinking_chars = 0
+        self._current_tool_label: str | None = None
+        self._last_refresh: float = 0.0
+        # Anchor for cumulative counters on the client. Subtracting the
+        # anchor from current totals gives the delta for this turn.
+        self._anchor_input_tokens = 0
+        self._anchor_cache_read = 0
+        self._anchor_cache_create = 0
+
+    # ---- label rendering -------------------------------------------------
+
+    @staticmethod
+    def _approx_output_tokens(chars: int) -> int:
+        """Rough tokenization: OpenAI BPE averages ~3.9 chars/token in English."""
+        return chars // 4 if chars else 0
+
+    @staticmethod
+    def _fmt_tokens(n: int) -> str:
+        if n >= 10_000:
+            return f"{n / 1000:.1f}k"
+        if n >= 1000:
+            return f"{n / 1000:.2f}k"
+        return str(n)
+
+    def _render_label(self) -> str:
+        """Render the current spinner label with token counters."""
+        from godspeed.tui.theme import PROMPT_ICON
+
+        base = self._current_tool_label or "Thinking"
+
+        meta_parts: list[str] = []
+        # Prior-turn input tokens (anchored delta from prior cumulative).
+        if self._llm_client is not None:
+            input_delta = self._llm_client.total_input_tokens - self._anchor_input_tokens
+            cache_read_delta = self._llm_client.total_cache_read_tokens - self._anchor_cache_read
+            if input_delta > 0:
+                if cache_read_delta > 0:
+                    pct = int(100 * cache_read_delta / max(1, input_delta))
+                    meta_parts.append(f"↑{self._fmt_tokens(input_delta)} ({pct}% cached)")
+                else:
+                    meta_parts.append(f"↑{self._fmt_tokens(input_delta)}")
+
+        if self._thinking_chars:
+            meta_parts.append(
+                f"🧠{self._fmt_tokens(self._approx_output_tokens(self._thinking_chars))}"
+            )
+
+        if self._output_chars:
+            meta_parts.append(
+                f"↓{self._fmt_tokens(self._approx_output_tokens(self._output_chars))}"
+            )
+
+        if self._start_time:
+            elapsed = time.monotonic() - self._start_time
+            meta_parts.append(f"{elapsed:.1f}s")
+
+        label = f"{base}  " + " · ".join(meta_parts) if meta_parts else f"{base}..."
+        return f"[{MUTED}]{PROMPT_ICON} {label}[/{MUTED}]"
+
+    def _maybe_refresh(self) -> None:
+        if not self._started or self._status is None:
+            return
+        now = time.monotonic()
+        if (now - self._last_refresh) < self._REFRESH_INTERVAL_S:
+            return
+        self._last_refresh = now
+        self._status.update(self._render_label())
 
     def _make_label(self, text: str) -> str:
         from godspeed.tui.theme import PROMPT_ICON
 
         return f"[{MUTED}]{PROMPT_ICON} {text}[/{MUTED}]"
 
+    # ---- lifecycle -------------------------------------------------------
+
     def start(self) -> None:
         if self._started:
             return
         from rich.status import Status
 
+        # Reset per-segment counters. Anchor cumulative totals so the live
+        # HUD shows this-turn delta, not the whole-session sum.
+        self._start_time = time.monotonic()
+        self._output_chars = 0
+        self._thinking_chars = 0
+        self._current_tool_label = None
+        self._last_refresh = 0.0
+        if self._llm_client is not None:
+            self._anchor_input_tokens = self._llm_client.total_input_tokens
+            self._anchor_cache_read = self._llm_client.total_cache_read_tokens
+            self._anchor_cache_create = self._llm_client.total_cache_creation_tokens
+
         self._status = Status(
-            self._make_label("Thinking..."),
+            self._render_label(),
             console=console,
             spinner="dots",
             spinner_style=MUTED,
@@ -459,17 +578,38 @@ class _ThinkingSpinner:
         label = _TOOL_LABELS.get(tool_name, tool_name)
         primary_arg = args.get("file_path") or args.get("command") or args.get("pattern") or ""
         if primary_arg:
-            # Truncate long args
             if len(primary_arg) > 50:
                 primary_arg = "..." + primary_arg[-47:]
-            self._status.update(self._make_label(f"{label} {primary_arg}"))
+            self._current_tool_label = f"{label} {primary_arg}"
         else:
-            self._status.update(self._make_label(f"{label}..."))
+            self._current_tool_label = label
+        # Tool switch triggers an immediate label refresh so the user sees
+        # the tool name without waiting for the 200ms throttle window.
+        self._status.update(self._render_label())
+        self._last_refresh = time.monotonic()
 
     def stop(self) -> None:
         if self._started and self._status is not None:
             self._status.stop()
             self._started = False
+
+    # ---- live HUD hooks --------------------------------------------------
+
+    def add_output_chunk(self, text: str) -> None:
+        """Record a streamed assistant-text chunk. Throttled label refresh."""
+        if not text:
+            return
+        self._output_chars += len(text)
+        self._maybe_refresh()
+
+    def add_thinking_chunk(self, text: str) -> None:
+        """Record a streamed extended-thinking chunk."""
+        if not text:
+            return
+        self._thinking_chars += len(text)
+        self._maybe_refresh()
+
+    # ---- utility ---------------------------------------------------------
 
     def wrap(self, fn: Any) -> Any:
         """Return a wrapper that stops the spinner before calling *fn*."""

@@ -238,6 +238,33 @@ Godspeed auto-upgrades `ollama/` to `ollama_chat/` for tool-capable models (Qwen
 
 Godspeed reads `GODSPEED.md`, `AGENTS.md`, `CLAUDE.md`, and `.cursorrules` from the project root for persistent instructions. Bring your existing config from any agent.
 
+### Permission modes & productivity flags
+
+Dial how often Godspeed asks before running tool calls. Matches Claude Code's
+flag names where they overlap.
+
+```bash
+godspeed                              # default 'normal' mode: session-granted approvals
+godspeed --auto                       # auto-approve read-only + low-risk; still prompt HIGH/DESTRUCTIVE
+godspeed --yolo                       # auto-approve everything past the hard floor (deny rules + dangerous-command regex). Prompts once.
+godspeed --dangerously-skip-permissions   # disable the entire engine. Disposable sandbox only.
+```
+
+Set `permission_mode` in `~/.godspeed/settings.yaml` to persist the choice:
+`strict` | `normal` | `auto` | `yolo` | `unsafe`. When set via config there is
+no re-prompt — editing the file counts as opting in.
+
+### Live token HUD
+
+While the agent is thinking or streaming, the spinner shows a live one-liner
+with input / thinking / output tokens, cache-hit ratio on Anthropic, and
+elapsed seconds — so you always see cost as it accrues.
+
+### Zero-config web search
+
+`web_search` uses DuckDuckGo's HTML endpoint with a shared connection pool.
+No API key, no setup — it just works out of the box in every mode.
+
 ### First session
 
 ```

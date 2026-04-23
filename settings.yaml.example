@@ -42,6 +42,31 @@ audit:
 prompt_caching: true
 
 # =============================================================================
+# PERMISSION MODE — Dial prompt frequency vs. autonomy
+# =============================================================================
+# strict  — ASK escalates to DENY. Most cautious.
+# normal  — (default) risk-level defaults + session grants + per-call prompts
+#           for HIGH/DESTRUCTIVE.
+# auto    — productivity mode: auto-approve READ_ONLY + LOW tools; still
+#           prompt on HIGH (file writes, shell) and DESTRUCTIVE. Deny
+#           rules + dangerous-command regex still apply. Good default for
+#           "trusted project, fewer interruptions."
+# yolo    — auto-approve every tool call after the hard floor (deny rules
+#           + dangerous-command detection). CLI flag: --yolo.
+# unsafe  — disable the entire permission engine INCLUDING the hard floor.
+#           Claude-Code parity for --dangerously-skip-permissions. Only
+#           safe in a disposable sandbox (Docker, ephemeral VM).
+#
+# CLI flags override this setting:
+#   godspeed --auto          # force auto mode for this session
+#   godspeed --yolo          # confirm-then-force yolo for this session
+#   godspeed --dangerously-skip-permissions
+#                            # confirm-then-force unsafe for this session
+# Set GODSPEED_YOLO_CONFIRMED=1 (or GODSPEED_UNSAFE_CONFIRMED=1) to skip
+# the interactive confirmation prompt.
+permission_mode: normal
+
+# =============================================================================
 # PERFORMANCE TIPS
 # =============================================================================
 # 1. Schema caching is automatic — schemas are cached after first generation

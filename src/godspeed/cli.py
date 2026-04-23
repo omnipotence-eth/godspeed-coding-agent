@@ -179,6 +179,132 @@ def _load_env_files(project_dir: Path | None = None) -> list[tuple[Path, list[st
     return loaded
 
 
+_YOLO_CONFIRM_ENV = "GODSPEED_YOLO_CONFIRMED"
+_UNSAFE_CONFIRM_ENV = "GODSPEED_UNSAFE_CONFIRMED"
+
+
+def _resolve_permission_mode(
+    settings_mode: str,
+    *,
+    flag_auto: bool,
+    flag_yolo: bool,
+    flag_dangerous_skip: bool,
+    interactive: bool,
+) -> str:
+    """Resolve the effective permission mode from CLI flags + settings.
+
+    CLI flags override ``settings.permission_mode``. Only one of
+    ``--auto`` / ``--yolo`` / ``--dangerously-skip-permissions`` may
+    be passed at a time. For ``yolo`` and ``unsafe`` the user is
+    prompted to confirm unless the corresponding env var is set.
+
+    Args:
+        settings_mode: Value from ``settings.permission_mode``.
+        flag_auto: ``--auto`` flag.
+        flag_yolo: ``--yolo`` flag.
+        flag_dangerous_skip: ``--dangerously-skip-permissions`` flag.
+        interactive: If False (headless), skip the tty confirmation and
+            require the env var to opt into yolo/unsafe.
+
+    Returns:
+        One of "strict", "normal", "auto", "yolo", "unsafe".
+
+    Raises:
+        click.UsageError: Multiple flags set.
+        click.Abort: User declined the confirmation prompt.
+    """
+    flags_set = sum([flag_auto, flag_yolo, flag_dangerous_skip])
+    if flags_set > 1:
+        msg = "--auto, --yolo, and --dangerously-skip-permissions are mutually exclusive. Pick one."
+        raise click.UsageError(msg)
+
+    forced_by_flag = False
+    if flag_dangerous_skip:
+        effective = "unsafe"
+        forced_by_flag = True
+    elif flag_yolo:
+        effective = "yolo"
+        forced_by_flag = True
+    elif flag_auto:
+        effective = "auto"
+        forced_by_flag = True
+    else:
+        effective = settings_mode
+
+    if effective not in ("yolo", "unsafe"):
+        return effective
+
+    # Persisted intent (settings.yaml: permission_mode: yolo) counts as
+    # prior confirmation — editing the settings file IS opting in. Only
+    # show the interactive banner when a CLI flag forces the mode just
+    # for this session.
+    if not forced_by_flag:
+        return effective
+
+    # Confirmation gate for the two high-risk modes when the CLI flag
+    # forces them.
+    env_var = _UNSAFE_CONFIRM_ENV if effective == "unsafe" else _YOLO_CONFIRM_ENV
+    if os.environ.get(env_var, "").lower() in ("1", "true", "yes"):
+        return effective
+
+    from godspeed.tui.safe_console import print_markup_safe
+    from godspeed.tui.theme import BOLD_ERROR, BOLD_WARNING, DIM, WARNING
+
+    if effective == "unsafe":
+        banner_title = "DANGEROUSLY-SKIP-PERMISSIONS"
+        banner_warn = (
+            "The entire permission engine is disabled, including deny rules\n"
+            "and dangerous-command detection. Godspeed will run ANY tool call\n"
+            "the model emits — including destructive shell commands."
+        )
+        safe_ctx = "Only use this in a disposable sandbox (Docker, ephemeral VM)."
+    else:
+        banner_title = "YOLO MODE"
+        banner_warn = (
+            "All non-destructive tool calls will run without asking. Deny rules\n"
+            "and dangerous-command regex still apply (the hard floor)."
+        )
+        safe_ctx = (
+            "Recommended for trusted codebases where you want fewer prompts.\n"
+            "Use --auto instead for a gentler productivity mode."
+        )
+
+    if not interactive:
+        # Headless runs must opt in via env var. No tty prompts in CI.
+        msg = (
+            f"Refusing to enter {effective!r} in headless mode without "
+            f"{env_var}=1 in the environment."
+        )
+        raise click.UsageError(msg)
+
+    from godspeed.tui.output import console as _c
+
+    _c.print()
+    print_markup_safe(_c, f"  [{BOLD_ERROR}]⚠ {banner_title}[/{BOLD_ERROR}]")
+    print_markup_safe(_c, f"  [{WARNING}]{banner_warn}[/{WARNING}]")
+    print_markup_safe(_c, f"  [{DIM}]{safe_ctx}[/{DIM}]")
+    print_markup_safe(_c, f"  [{DIM}]Set {env_var}=1 to skip this prompt next time.[/{DIM}]")
+
+    try:
+        answer = (
+            click.prompt(
+                f"  Enable {effective} mode for this session? [y/N]",
+                default="n",
+                show_default=False,
+            )
+            .strip()
+            .lower()
+        )
+    except (KeyboardInterrupt, click.Abort, EOFError) as exc:
+        raise click.Abort() from exc
+
+    if answer not in ("y", "yes"):
+        raise click.Abort()
+
+    print_markup_safe(_c, f"  [{BOLD_WARNING}]{effective} mode engaged.[/{BOLD_WARNING}]")
+    return effective
+
+
 def _setup_logging(verbose: bool) -> None:
     """Configure logging based on verbosity level.
 
@@ -392,6 +518,11 @@ async def _run_app(
     project_dir: Path,
     verbose: bool,
     audit_dir: Path | None,
+    *,
+    mode_auto: bool = False,
+    mode_yolo: bool = False,
+    mode_dangerous: bool = False,
+    thinking_budget: int | None = None,
 ) -> None:
     """Wire up all components and launch the TUI."""
     from godspeed.agent.conversation import Conversation
@@ -414,6 +545,16 @@ async def _run_app(
     effective_project_dir = project_dir.resolve()
     session_id = str(uuid4())
 
+    # Resolve permission mode from CLI flags + settings. May prompt the
+    # user for confirmation when entering yolo/unsafe, or abort on decline.
+    effective_permission_mode = _resolve_permission_mode(
+        settings.permission_mode,
+        flag_auto=mode_auto,
+        flag_yolo=mode_yolo,
+        flag_dangerous_skip=mode_dangerous,
+        interactive=True,
+    )
+
     # Tools
     registry, risk_levels = _build_tool_registry()
 
@@ -431,7 +572,7 @@ async def _run_app(
         allow_patterns=settings.permissions.allow,
         ask_patterns=settings.permissions.ask,
         tool_risk_levels=risk_levels,
-        mode=settings.permission_mode,
+        mode=effective_permission_mode,
     )
 
     # Audit trail
@@ -493,7 +634,9 @@ async def _run_app(
         model=effective_model,
         fallback_models=settings.fallback_models,
         router=router,
-        thinking_budget=settings.thinking_budget,
+        thinking_budget=(
+            thinking_budget if thinking_budget is not None else settings.thinking_budget
+        ),
         max_cost_usd=settings.max_cost_usd,
         prompt_caching=settings.prompt_caching,
     )
@@ -643,6 +786,38 @@ async def _run_app(
     default=None,
     help="Directory for audit logs (default: ~/.godspeed/audit).",
 )
+@click.option(
+    "--auto",
+    "mode_auto",
+    is_flag=True,
+    help="Productivity mode: auto-approve read-only + low-risk tools; still "
+    "prompt on HIGH/DESTRUCTIVE. Overrides settings.permission_mode.",
+)
+@click.option(
+    "--yolo",
+    "mode_yolo",
+    is_flag=True,
+    help="Auto-approve every tool call after the hard floor (deny rules + "
+    "dangerous-command detection still run). Prompts for confirmation; "
+    "skip with GODSPEED_YOLO_CONFIRMED=1.",
+)
+@click.option(
+    "--dangerously-skip-permissions",
+    "mode_dangerous",
+    is_flag=True,
+    help="Disable the entire permission engine, including the hard floor. "
+    "Only safe in a disposable sandbox (Docker, VM). Claude-Code parity.",
+)
+@click.option(
+    "--think",
+    "thinking_budget",
+    type=int,
+    default=None,
+    metavar="TOKENS",
+    help="Enable Anthropic extended thinking with this budget (tokens). "
+    "E.g. --think 8192. Overrides settings.thinking_budget. No effect "
+    "on non-Claude models.",
+)
 @click.pass_context
 def main(
     ctx: click.Context,
@@ -650,6 +825,10 @@ def main(
     project_dir: Path,
     verbose: bool,
     audit_dir: Path | None,
+    mode_auto: bool,
+    mode_yolo: bool,
+    mode_dangerous: bool,
+    thinking_budget: int | None,
 ) -> None:
     """Godspeed -- Security-first open-source coding agent."""
     _setup_logging(verbose)
@@ -666,11 +845,26 @@ def main(
     ctx.obj["project_dir"] = project_dir
     ctx.obj["verbose"] = verbose
     ctx.obj["audit_dir"] = audit_dir
+    ctx.obj["mode_auto"] = mode_auto
+    ctx.obj["mode_yolo"] = mode_yolo
+    ctx.obj["mode_dangerous"] = mode_dangerous
+    ctx.obj["thinking_budget"] = thinking_budget
 
     # If no subcommand, launch the TUI
     if ctx.invoked_subcommand is None:
         with contextlib.suppress(KeyboardInterrupt):
-            asyncio.run(_run_app(model, project_dir, verbose, audit_dir))
+            asyncio.run(
+                _run_app(
+                    model,
+                    project_dir,
+                    verbose,
+                    audit_dir,
+                    mode_auto=mode_auto,
+                    mode_yolo=mode_yolo,
+                    mode_dangerous=mode_dangerous,
+                    thinking_budget=thinking_budget,
+                )
+            )
 
 
 @main.command()
@@ -814,6 +1008,35 @@ def init() -> None:
     default=None,
     help="Read the task from a file instead of the positional argument.",
 )
+@click.option(
+    "--auto",
+    "mode_auto",
+    is_flag=True,
+    help="Productivity mode: auto-approve read-only + low-risk tools; still "
+    "prompt on HIGH/DESTRUCTIVE. Overrides settings.permission_mode.",
+)
+@click.option(
+    "--yolo",
+    "mode_yolo",
+    is_flag=True,
+    help="Auto-approve every tool call after the hard floor. In headless "
+    "mode, requires GODSPEED_YOLO_CONFIRMED=1 in the environment.",
+)
+@click.option(
+    "--dangerously-skip-permissions",
+    "mode_dangerous",
+    is_flag=True,
+    help="Disable the permission engine entirely. Headless requires "
+    "GODSPEED_UNSAFE_CONFIRMED=1 in the environment.",
+)
+@click.option(
+    "--think",
+    "thinking_budget",
+    type=int,
+    default=None,
+    metavar="TOKENS",
+    help="Anthropic extended thinking budget. Overrides settings.thinking_budget.",
+)
 def headless_run(
     task: str,
     model: str,
@@ -824,6 +1047,10 @@ def headless_run(
     timeout: int,
     json_output: bool,
     prompt_file: Path | None,
+    mode_auto: bool,
+    mode_yolo: bool,
+    mode_dangerous: bool,
+    thinking_budget: int | None,
 ) -> None:
     """Run a task non-interactively (headless/CI mode).
 
@@ -873,6 +1100,10 @@ def headless_run(
                 max_iterations,
                 timeout,
                 json_output,
+                mode_auto=mode_auto,
+                mode_yolo=mode_yolo,
+                mode_dangerous=mode_dangerous,
+                thinking_budget=thinking_budget,
             )
         )
         sys.exit(int(exit_code))
@@ -905,6 +1136,11 @@ async def _headless_run(
     max_iterations: int,
     timeout: int,
     json_output: bool,
+    *,
+    mode_auto: bool = False,
+    mode_yolo: bool = False,
+    mode_dangerous: bool = False,
+    thinking_budget: int | None = None,
 ) -> int:
     """Execute the headless agent loop.
 
@@ -953,13 +1189,23 @@ async def _headless_run(
     # Tools
     registry, risk_levels = _build_tool_registry()
 
+    # Resolve permission mode — headless mode never prompts the user; the
+    # yolo/unsafe env-var gate fails loudly if the opt-in is missing.
+    effective_permission_mode = _resolve_permission_mode(
+        settings.permission_mode,
+        flag_auto=mode_auto,
+        flag_yolo=mode_yolo,
+        flag_dangerous_skip=mode_dangerous,
+        interactive=False,
+    )
+
     # Permission engine with headless auto-approve
     permission_engine = PermissionEngine(
         deny_patterns=settings.permissions.deny,
         allow_patterns=settings.permissions.allow,
         ask_patterns=settings.permissions.ask,
         tool_risk_levels=risk_levels,
-        mode=settings.permission_mode,
+        mode=effective_permission_mode,
     )
 
     # Wrap with headless auto-approve proxy
@@ -1006,7 +1252,9 @@ async def _headless_run(
         model=effective_model,
         fallback_models=settings.fallback_models,
         router=router,
-        thinking_budget=settings.thinking_budget,
+        thinking_budget=(
+            thinking_budget if thinking_budget is not None else settings.thinking_budget
+        ),
         max_cost_usd=settings.max_cost_usd,
         prompt_caching=settings.prompt_caching,
     )

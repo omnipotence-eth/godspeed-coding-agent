@@ -7,7 +7,75 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
+### Added — v3.5 polish batch
+
+- **Prompt caching for Anthropic / OpenAI** (`llm.client`, `agent.system_prompt`).
+  System prompt + tool descriptions marked with `cache_control: ephemeral`;
+  Anthropic cache reads amortize across turns for ~50-90% input-token
+  cost reduction on repeated prefixes. Toggle via `prompt_caching: false`
+  in settings.yaml. Per-turn HUD now shows `N% cached` when hits occur.
+  New: `docs/prompt_caching.md`.
+
+- **Live token HUD during streaming** (`tui.app._ThinkingSpinner`). The
+  thinking spinner now renders a Claude-Code-style one-liner that updates
+  as chunks stream: input tokens (with cache ratio when available),
+  thinking-block tokens (`🧠`), output tokens (`↓`), and elapsed wall-clock
+  seconds. Refresh is throttled to 5Hz; counters reset per turn so the
+  label shows the current-turn delta rather than the session sum.
+
+- **Permission modes — `auto` / `yolo` / `unsafe`** (`security.permissions`,
+  `config`). `permission_mode` setting gets three new values plus three
+  new CLI flags with Claude-Code parity:
+  - `--auto` → `auto` mode: auto-approves READ_ONLY + LOW tools, still
+    prompts on HIGH/DESTRUCTIVE. Productivity tier without the risk.
+  - `--yolo` → `yolo` mode: auto-approves every tool after the hard
+    floor (deny rules + dangerous-command regex). First-run banner +
+    confirm; skip with `GODSPEED_YOLO_CONFIRMED=1`.
+  - `--dangerously-skip-permissions` → `unsafe` mode: disables the
+    entire engine, including the hard floor. Match for Claude Code's
+    flag of the same name. Only safe in a disposable sandbox.
+  - When these modes come from `settings.yaml` (persisted intent), no
+    confirmation prompt — editing the file IS opting in. Flags ALWAYS
+    prompt (or require the env var in headless).
+
+- **Extended thinking on Anthropic streaming** (`llm.client._stream_chat_inner`,
+  `agent.loop._streaming_call`). `thinking_budget > 0` now enables
+  extended thinking during streaming too (not just the non-streaming
+  path). Streaming thinking deltas route through a new `on_thinking`
+  callback so the TUI renders the pre-answer reasoning panel as it
+  arrives and the HUD tallies `🧠` tokens live. New `--think TOKENS`
+  CLI flag overrides `settings.thinking_budget` for one-offs. New
+  helper `_extract_thinking_delta` handles both LiteLLM shapes
+  (`delta.thinking_blocks` and `delta.thinking`).
+
+- **file_read_batch tool** (`tools.file_read_batch`). Read up to N files
+  in a single async burst — 20-40% faster than serial reads on
+  exploration-heavy turns.
+
+- **repo_summary context** (`context.repo_summary`). Compact project
+  tree + package layout injected into the system prompt so the model
+  doesn't waste a turn rediscovering structure.
+
+- **Shared aiohttp session across web tools** (`utils.http_session`).
+  `web_search` and `web_fetch` reuse a single connection pool (default
+  100 hosts). Urllib fallback removed — aiohttp is a hard dep anyway.
+
+- **Batched async audit writes** (`audit.trail`). Optional `batch_size`
+  parameter queues records and flushes in a single fsync per N events;
+  ~10x reduction in audit I/O on high-throughput sessions.
+
+- **Safe markup console** (`tui.safe_console`). Single entry point for
+  Rich `print` that catches `MarkupError` from unbalanced or
+  model-generated `[...]` in tool output and falls back to plain
+  print. Closes the class of "agent crashed mid-turn on bracket-heavy
+  output" reports.
+
+- **Speech extras** (`speech/`, `pyproject [speech]`). Optional
+  faster-whisper STT + Piper TTS wiring as a module — not yet connected
+  to the CLI but available for downstream integrations. Install with
+  `pip install 'godspeed-coding-agent[speech]'`.
+
+### Added — from v3.4 unreleased window
 
 - **Auto-load `~/.godspeed/.env.local` on startup** (`cli._load_env_files`).
   API keys in `~/.godspeed/.env` / `.env.local` (and the project's

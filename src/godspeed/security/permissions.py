@@ -77,9 +77,19 @@ class PermissionEngine:
         self._grant_ttl: float = 3600.0  # 1 hour default
         self._grants_lock = threading.Lock()
         self.plan_mode: bool = False
-        # "normal" (default), "strict" (treat ASK as DENY), or "yolo"
-        # (auto-approve anything that isn't denied by the hard floor:
-        # deny rules + dangerous-command detection still run first).
+        # Permission mode — governs prompt frequency and hard-floor enforcement.
+        #
+        #   "strict" — treat ASK as DENY. Maximum caution.
+        #   "normal" — default. Risk-level defaults + session grants.
+        #   "auto"   — productivity mode: auto-allow READ_ONLY and LOW,
+        #              still prompt on HIGH, deny DESTRUCTIVE by default.
+        #              Deny rules + dangerous-command regex still apply.
+        #   "yolo"   — auto-approve everything after the hard floor
+        #              (deny rules + dangerous-command detection).
+        #   "unsafe" — skip the entire engine including hard floor.
+        #              Claude-Code-equivalent of
+        #              --dangerously-skip-permissions. Only the Dockerized /
+        #              disposable-VM use case justifies this.
         self.mode: str = mode
 
     def evaluate(self, tool_call: ToolCall) -> PermissionDecision:
@@ -87,6 +97,13 @@ class PermissionEngine:
 
         Returns a PermissionDecision with action and reason.
         """
+        # UNSAFE mode — skip the entire engine, including the hard floor.
+        # This is the Claude-Code-equivalent of --dangerously-skip-permissions.
+        # Only use in disposable sandboxes (Docker, ephemeral VM). Recorded
+        # in the audit trail via the reason string.
+        if self.mode == "unsafe":
+            return PermissionDecision(ALLOW, "unsafe mode — all guards skipped")
+
         # Plan mode: block everything except READ_ONLY tools
         if self.plan_mode:
             risk = self._tool_risk_levels.get(tool_call.tool_name, RiskLevel.HIGH)
@@ -95,7 +112,7 @@ class PermissionEngine:
 
         formatted = tool_call.format_for_permission()
 
-        # 1. Deny rules first — always win
+        # 1. Deny rules first — always win (except in unsafe mode above)
         for rule in self._deny_rules:
             if rule.matches(formatted):
                 return PermissionDecision(DENY, f"Matched deny rule: {rule.pattern}")
@@ -122,6 +139,15 @@ class PermissionEngine:
         #    has cleared. Skips session/allow/ask/risk-default entirely.
         if self.mode == "yolo":
             return PermissionDecision(ALLOW, "yolo mode (hard floor enforced)")
+
+        # 3b. AUTO mode — productivity tier. Auto-approve READ_ONLY and LOW
+        #     risk tools; fall through to normal evaluation for HIGH /
+        #     DESTRUCTIVE so the user is still prompted on writes and shell.
+        if self.mode == "auto":
+            risk = self._tool_risk_levels.get(tool_call.tool_name, RiskLevel.HIGH)
+            if risk in (RiskLevel.READ_ONLY, RiskLevel.LOW):
+                return PermissionDecision(ALLOW, f"auto mode (risk={risk.name.lower()})")
+            # fall through to session grants / allow rules / ask / default
 
         # 4. Session grants (user already approved this pattern)
         if self._check_session_grant(formatted):

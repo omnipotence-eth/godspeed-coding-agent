@@ -141,7 +141,7 @@ class GodspeedSettings(BaseSettings):
     MODEL_PRESETS: ClassVar[dict[str, str]] = {
         "fast": "ollama/qwen3:4b",  # Free, local, fast
         "balanced": "ollama/qwen3:14b",  # Free, local, better quality
-        "quality": "nvidia_nim/qwen/qwen3.5-397b-a17b",  # NVIDIA NIM (free-tier) — best on RTX
+        "quality": "nvidia_nim/meta/llama-3.1-70b-instruct",  # NVIDIA NIM - working free tier
         "frontier": "claude-sonnet-4-20250514",  # Claude — best quality, paid
     }
 

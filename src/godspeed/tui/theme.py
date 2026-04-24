@@ -1,89 +1,90 @@
-"""Godspeed visual identity — Ultra-clean minimal.
+"""Godspeed theme — Clean minimal like Claude Code / OpenCode.
 
 Design philosophy:
-- Minimal: no distractions, pure information
-- Fast: load instantly, render lean
-- Text-first: characters over emoji when possible
-- Professional: clean lines, no clutter
+- Minimal: no distractions, pure information  
+- Clean monochrome: black/white/grey only
+- Text-first: simple characters
+- Professional: just what you need
 """
 
 from __future__ import annotations
 
 # =============================================================================
-# Core palette — Clean monochrome (terminal-native)
+# Core palette — Clean monochrome
 # =============================================================================
 
-PRIMARY = "cyan"  # Cyan — clean, visible
-SECONDARY = "grey69"  # Neutral grey
+PRIMARY = "white"
+SECONDARY = "grey"  
 SUCCESS = "green"
 ERROR = "red"
 WARNING = "yellow"
-MUTED = "grey50"  # Dimmed text
-ACCENT = "cyan"
+MUTED = "dim"
+ACCENT = "white"
 
-BRAND_GOLD = "yellow1"
-BRAND_GOLD_BOLD = "bold yellow1"
+# Branded
+BRAND_GOLD = "white"
+BRAND_GOLD_BOLD = "bold white"
 
 # =============================================================================
-# Semantic styles
+# Semantic styles  
 # =============================================================================
 
-BOLD_PRIMARY = f"bold {PRIMARY}"
-BOLD_SECONDARY = f"bold {SECONDARY}"
-BOLD_SUCCESS = f"bold {SUCCESS}"
-BOLD_ERROR = f"bold {ERROR}"
-BOLD_WARNING = f"bold {WARNING}"
+BOLD_PRIMARY = "bold white"
+BOLD_SECONDARY = "bold"
+BOLD_SUCCESS = "bold green"
+BOLD_ERROR = "bold red"
+BOLD_WARNING = "bold yellow"
 DIM = "dim"
 
-# Panel borders
-BORDER_BRAND = "yellow"
-BORDER_TOOL = "grey69"
-BORDER_INFO = "grey69"
+# Panel borders - minimal
+BORDER_BRAND = "white"
+BORDER_TOOL = "grey"
+BORDER_INFO = "grey"
 BORDER_SUCCESS = "green"
 BORDER_ERROR = "red"
 BORDER_WARNING = "yellow"
 
-# Table styles
-TABLE_HEADER = "bold cyan"
-TABLE_BORDER = "grey46"
-TABLE_KEY = "grey35"
+# Table
+TABLE_HEADER = "bold"
+TABLE_BORDER = "grey"
+TABLE_KEY = "grey"
 TABLE_VALUE = "bold"
 
+# Permissions
 PERM_ALLOW = "green"
 PERM_DENY = "red"
 PERM_ASK = "yellow"
-PERM_SESSION = "cyan"
+PERM_SESSION = "white"
 
 CTX_OK = "green"
 CTX_WARN = "yellow"
 CTX_CRITICAL = "red"
 
 # =============================================================================
-# Branded strings
+# Branding
 # =============================================================================
 
-PROMPT_ICON = ">"  # Simple greater-than
+PROMPT_ICON = ">"  
 PROMPT_TEXT = "godspeed"
-BRAND_TAGLINE = "Build fast"
+BRAND_TAGLINE = ""
 
-# Syntax theme
 SYNTAX_THEME = "monokai"
 
 # =============================================================================
-# Ultra-clean markers — Text-only, no emoji
+# Clean markers
 # =============================================================================
 
-MARKER_SUCCESS = "ok"  # Instead of ✓
-MARKER_ERROR = "x"  # Instead of ✗
-MARKER_WARNING = "!"  # Instead of ⚠
-MARKER_TOOL = ">"  # Instead of ▸
-MARKER_INFO = "i"  # Instead of ●
-MARKER_PARALLEL = "||"  # Instead of ⚡
-SEPARATOR_DOT = "|"  # Instead of ·
+MARKER_SUCCESS = "✓"
+MARKER_ERROR = "✗" 
+MARKER_WARNING = "!"
+MARKER_TOOL = ">"
+MARKER_INFO = "i"
+MARKER_PARALLEL = "||"
+SEPARATOR_DOT = "|"
 
 # Structural
 DECORATOR = ""
-RULE_CHAR = "-"  # Minimal rule
+RULE_CHAR = "-"
 GUTTER = ""
 GUTTER_STYLE = MUTED
 
@@ -98,7 +99,7 @@ def styled(text: str, style: str) -> str:
 
 
 def brand(version: str = "") -> str:
-    """Return the branded product name with optional version."""
+    """Return the branded product name."""
     name = styled("Godspeed", BOLD_PRIMARY)
     if version:
         return f"{name} {styled(f'v{version}', MUTED)}"
@@ -106,17 +107,28 @@ def brand(version: str = "") -> str:
 
 
 def icon_prompt(state: str = "") -> str:
-    """Return the branded prompt string for prompt-toolkit (HTML format).
-
-    State can be: '' (normal), 'plan' (plan mode), 'paused'.
-    """
-    color = "ansigold" if not state else "ansiyellow"
+    """Return the prompt string."""
     icon = PROMPT_ICON
     suffix = ""
     if state == "plan":
         suffix = " [plan]"
-        color = "ansicyan"
     elif state == "paused":
         suffix = " [paused]"
-        color = "ansiyellow"
-    return f"<b><{color}>{icon} {PROMPT_TEXT}{suffix}></{color}></b> "
+    return f"{icon} godspeed{suffix}> "
+
+
+def format_permission_prompt(tool_name: str, reason: str, arguments: dict) -> None:
+    """Display a minimal permission prompt."""
+    from godspeed.tui.output import console
+    
+    console.print()
+    console.print(f"  Allow {tool_name}? ({reason})")
+    console.print(f"  [y]es / [n]o / [a]lways")
+    console.print()
+
+
+def format_permission_denied(tool_name: str, reason: str) -> None:
+    """Display a minimal permission denied notice."""
+    from godspeed.tui.output import console
+    
+    console.print(f"  [{ERROR}]Denied: {tool_name}[/{ERROR}] ({reason})")

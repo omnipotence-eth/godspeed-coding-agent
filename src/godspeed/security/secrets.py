@@ -28,26 +28,30 @@ SECRET_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"SG\.[a-zA-Z0-9_\-.]{20,}\.[a-zA-Z0-9_\-.]{20,}"), "sendgrid_api_key"),
     (re.compile(r"sq0[a-z]{3}-[a-zA-Z0-9\-_]{22,}"), "square_api_key"),
     (re.compile(r"SK[0-9a-fA-F]{32}"), "twilio_api_key"),
-    (re.compile(
-        r"HRKU-[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}"
-        r"-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
-    ), "heroku_api_key"),
+    (
+        re.compile(
+            r"HRKU-[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}"
+            r"-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
+        ),
+        "heroku_api_key",
+    ),
     (re.compile(r"key-[0-9a-fA-F]{32}"), "mailgun_api_key"),
     (re.compile(r"NRAK-[A-Z0-9]{27}"), "new_relic_api_key"),
-    (re.compile(
-        r"https://hooks\.slack\.com/services/"
-        r"T[a-zA-Z0-9_]+/B[a-zA-Z0-9_]+/[a-zA-Z0-9_]+",
-        re.IGNORECASE,
-    ), "slack_webhook_url"),
+    (
+        re.compile(
+            r"https://hooks\.slack\.com/services/"
+            r"T[a-zA-Z0-9_]+/B[a-zA-Z0-9_]+/[a-zA-Z0-9_]+",
+            re.IGNORECASE,
+        ),
+        "slack_webhook_url",
+    ),
     (re.compile(r"pypi-AgEIcH[a-zA-Z0-9_\-]{20,}"), "pypi_api_token"),
     (re.compile(r"npm_[a-zA-Z0-9]{36}"), "npm_token"),
     # Private keys
     (re.compile(r"-----BEGIN (?:RSA |EC |DSA )?PRIVATE KEY-----"), "private_key"),
     (re.compile(r"-----BEGIN OPENSSH PRIVATE KEY-----"), "openssh_private_key"),
     # Firebase service account (JSON with private_key field)
-    (re.compile(
-        r'"private_key"\s*:\s*"-----BEGIN PRIVATE KEY-----"'
-    ), "firebase_service_account"),
+    (re.compile(r'"private_key"\s*:\s*"-----BEGIN PRIVATE KEY-----"'), "firebase_service_account"),
     # Generic patterns
     (
         re.compile(r"""(?:password|passwd|pwd)\s*[:=]\s*['"][^'"]{8,}['"]""", re.IGNORECASE),
@@ -93,11 +97,14 @@ SECRET_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     # Discord
     (re.compile(r"[MN][A-Za-z\d]{23,}\.[\w-]{6}\.[\w-]{27,}"), "discord_bot_token"),
     # Datadog
-    (re.compile(
-        r"(?:datadog|dd)_(?:api|app)_key\s*[:=]\s*['\"]?"
-        r"[a-zA-Z0-9]{32,40}['\"]?",
-        re.IGNORECASE,
-    ), "datadog_key"),
+    (
+        re.compile(
+            r"(?:datadog|dd)_(?:api|app)_key\s*[:=]\s*['\"]?"
+            r"[a-zA-Z0-9]{32,40}['\"]?",
+            re.IGNORECASE,
+        ),
+        "datadog_key",
+    ),
     # Unquoted password assignments (common in configs)
     (
         re.compile(r"""(?:password|passwd|pwd)\s*[:=]\s*\S{8,}""", re.IGNORECASE),

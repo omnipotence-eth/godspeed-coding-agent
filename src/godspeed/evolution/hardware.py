@@ -230,15 +230,16 @@ def is_low_memory() -> bool:
 # Machine scan — recommend the optimal model for each tier
 # ---------------------------------------------------------------------------
 
+
 @dataclasses.dataclass
 class MachineSpecs:
     """Machine hardware specifications for model selection."""
 
-    platform: str          # "windows", "linux", "darwin"
-    vram_mb: int | None    # detected GPU VRAM or None
-    ram_gb: float          # system RAM in GB
-    cpu_cores: int         # logical CPU cores
-    gpu_name: str          # GPU name or empty string
+    platform: str  # "windows", "linux", "darwin"
+    vram_mb: int | None  # detected GPU VRAM or None
+    ram_gb: float  # system RAM in GB
+    cpu_cores: int  # logical CPU cores
+    gpu_name: str  # GPU name or empty string
 
 
 def scan_machine() -> MachineSpecs:
@@ -253,6 +254,7 @@ def scan_machine() -> MachineSpecs:
     ram_gb = 0.0
     try:
         import psutil
+
         ram_gb = psutil.virtual_memory().total / (1024**3)
     except ImportError:
         pass

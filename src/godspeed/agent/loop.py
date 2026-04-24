@@ -898,9 +898,7 @@ async def _compact_conversation(conversation: Conversation, llm_client: LLMClien
         logger.error("Compaction failed error=%s", exc, exc_info=True)
         # Don't crash — try truncation as fallback
         with contextlib.suppress(Exception):
-            conversation.compact(
-                f"[Compaction failed: {exc}. Retaining most recent context.]"
-            )
+            conversation.compact(f"[Compaction failed: {exc}. Retaining most recent context.]")
 
 
 def _check_cancel(cancel_event: asyncio.Event | None) -> None:

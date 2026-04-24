@@ -239,9 +239,7 @@ def format_tool_result(name: str, result: str, is_error: bool = False) -> None:
             for line in preview_lines:
                 console.print(f"    {styled(line, DIM)}")
             if line_count > 3:
-                console.print(
-                    f"    {styled(f'... ({line_count - 3} more lines)', DIM)}"
-                )
+                console.print(f"    {styled(f'... ({line_count - 3} more lines)', DIM)}")
 
 
 # =============================================================================
@@ -621,9 +619,7 @@ def format_welcome(
         model_display = f"{model} {styled(f'({preset})', DIM)}"
     console.print(f"  {styled('Model', MUTED)}    {model_display}")
     if fallback_models:
-        fallbacks_short = [
-            m.split("/", 1)[-1] if "/" in m else m for m in fallback_models[:3]
-        ]
+        fallbacks_short = [m.split("/", 1)[-1] if "/" in m else m for m in fallback_models[:3]]
         fallback_str = styled(f"{SEPARATOR_DOT} ".join(fallbacks_short), DIM)
         console.print(f"  {styled('Fallbacks', MUTED)}  {fallback_str}")
 

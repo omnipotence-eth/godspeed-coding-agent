@@ -22,18 +22,20 @@ DANGEROUS_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"\bsrm\b"), "secure file removal"),
     (re.compile(r">\s*/etc/"), "overwrite critical config file"),
     (re.compile(r"chmod\s+(?:777|0777|a\+rwx|ugo\+rwx|a=rwx)"), "world-writable permissions"),
-    (re.compile(
-        r"chmod\s+-R\s+(?:777|0777|a\+rwx|ugo\+rwx)"
-    ), "recursive world-writable permissions"),
+    (
+        re.compile(r"chmod\s+-R\s+(?:777|0777|a\+rwx|ugo\+rwx)"),
+        "recursive world-writable permissions",
+    ),
     (re.compile(r"chmod\s+-R\s+[ao]\+w\b"), "recursive write for all/others"),
     (re.compile(r"chown\s+-R\s+"), "recursive ownership change"),
     # Disk operations
     (re.compile(r"mkfs\."), "filesystem format"),
     (re.compile(r"dd\s+.*of=/dev/"), "raw disk write (of= device)"),
     (re.compile(r"dd\s+if=/dev/zero\s+of="), "zero-fill disk"),
-    (re.compile(
-        r">\s*/dev/(?:sd|nvme|hd|vd|xd|xvd|dm-|mapper|loop|mmcblk|ram)"
-    ), "direct disk overwrite"),
+    (
+        re.compile(r">\s*/dev/(?:sd|nvme|hd|vd|xd|xvd|dm-|mapper|loop|mmcblk|ram)"),
+        "direct disk overwrite",
+    ),
     (re.compile(r"\bcat\s+/dev/zero\s*>\s*/dev/"), "write zeros to device"),
     (re.compile(r"\btee\s+/etc/"), "tee to critical config file"),
     (re.compile(r"\bmv\s+\S+\s+/dev/null"), "data destruction via mv to null"),
@@ -71,9 +73,10 @@ DANGEROUS_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     # Environment destruction
     (re.compile(r"unset\s+(PATH|HOME|USER)", re.IGNORECASE), "unset critical env var"),
     # Privilege escalation (narrowed to dangerous subcommands only)
-    (re.compile(
-        r"sudo\s+(?:rm|dd|mkfs|fdisk|parted|mount|umount|shutdown|reboot)\b"
-    ), "sudo dangerous command"),
+    (
+        re.compile(r"sudo\s+(?:rm|dd|mkfs|fdisk|parted|mount|umount|shutdown|reboot)\b"),
+        "sudo dangerous command",
+    ),
     (re.compile(r"su\s+-"), "switch user"),
     (re.compile(r"sudo\s+-i\b"), "sudo interactive root shell"),
     # Reverse shell / network
@@ -134,10 +137,13 @@ DANGEROUS_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     # Environment exfiltration via pipe
     (re.compile(r"\benv\b.*\|\s*curl"), "environment exfiltration via curl"),
     (re.compile(r"\benv\b.*\|\s*nc"), "environment exfiltration via netcat"),
-    (re.compile(
-        r"cat\s+/(?:etc/(?:passwd|shadow|gshadow|sudoers|group)"
-        r"|home/\S+/.ssh/id_)"
-    ), "sensitive file exfiltration"),
+    (
+        re.compile(
+            r"cat\s+/(?:etc/(?:passwd|shadow|gshadow|sudoers|group)"
+            r"|home/\S+/.ssh/id_)"
+        ),
+        "sensitive file exfiltration",
+    ),
     (re.compile(r"\bprintenv\b.*\|\s*curl"), "environment exfiltration via curl"),
     # Pipe to interpreter (broader)
     (re.compile(r"echo\s.*\|\s*(?:python|perl|ruby|node|sh|bash)"), "echo pipe to interpreter"),
@@ -151,15 +157,18 @@ DANGEROUS_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"kubectl\s+delete\s+pvc\b"), "kubernetes PVC deletion"),
     (re.compile(r"helm\s+uninstall\b"), "helm uninstall"),
     # Cloud resource destruction
-    (re.compile(
-        r"aws\s+(?:s3\s+rm|ec2\s+terminate|rds\s+delete|lambda\s+delete)"
-    ), "AWS resource destruction"),
-    (re.compile(
-        r"gcloud\s+(?:compute\s+instances\s+delete|sql\s+instances\s+delete)"
-    ), "GCP resource destruction"),
-    (re.compile(
-        r"az\s+(?:group\s+delete|vm\s+delete|sql\s+server\s+delete)"
-    ), "Azure resource destruction"),
+    (
+        re.compile(r"aws\s+(?:s3\s+rm|ec2\s+terminate|rds\s+delete|lambda\s+delete)"),
+        "AWS resource destruction",
+    ),
+    (
+        re.compile(r"gcloud\s+(?:compute\s+instances\s+delete|sql\s+instances\s+delete)"),
+        "GCP resource destruction",
+    ),
+    (
+        re.compile(r"az\s+(?:group\s+delete|vm\s+delete|sql\s+server\s+delete)"),
+        "Azure resource destruction",
+    ),
     (re.compile(r"terraform\s+destroy\b"), "terraform infrastructure destruction"),
     # SSH key overwrite
     (re.compile(r"ssh-keygen\s+.*-[tf]\s+"), "SSH key generation/overwrite"),

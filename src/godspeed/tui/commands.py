@@ -287,9 +287,7 @@ class Commands:
             if self._llm_client.fallback_models:
                 fallbacks = ", ".join(self._llm_client.fallback_models)
                 console.print(f"    [{DIM}]Fallbacks: {fallbacks}[/{DIM}]")
-            console.print(
-                f"    [{DIM}]Presets: {', '.join(presets.keys())}[/{DIM}]"
-            )
+            console.print(f"    [{DIM}]Presets: {', '.join(presets.keys())}[/{DIM}]")
         return CommandResult(handled=True)
 
     def _cmd_clear(self, _args: str = "") -> CommandResult:
@@ -1359,7 +1357,5 @@ Describe what this skill does here.
             console.print(f"\n  [{DIM}]No local Ollama models found.[/{DIM}]")
             console.print(f"  [{DIM}]Pull one with: godspeed ollama pull rnj-1:8b[/{DIM}]")
 
-        console.print(
-            f"\n  [{DIM}]Switch with /model <preset> or /model <model_name>[/{DIM}]"
-        )
+        console.print(f"\n  [{DIM}]Switch with /model <preset> or /model <model_name>[/{DIM}]")
         return CommandResult(handled=True)

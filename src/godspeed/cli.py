@@ -1190,8 +1190,7 @@ def models() -> None:
     c.print(f"  [{BOLD_PRIMARY}]Switch models:[/{BOLD_PRIMARY}]")
     c.print(f"    [{DIM}]CLI flag:[/{DIM}]     godspeed -m claude-sonnet-4-20250514")
     c.print(
-        f"    [{DIM}]Preset:[/{DIM}]"
-        f"       godspeed -m fast (or balanced/quality/cloud/frontier)"
+        f"    [{DIM}]Preset:[/{DIM}]       godspeed -m fast (or balanced/quality/cloud/frontier)"
     )
     c.print(f"    [{DIM}]Env var:[/{DIM}]      GODSPEED_MODEL=gpt-4o godspeed")
     c.print(f"    [{DIM}]Settings:[/{DIM}]     Edit ~/.godspeed/settings.yaml")
@@ -1241,8 +1240,7 @@ def ollama_pull(model: str) -> None:
         c.print(f"  [{SUCCESS}]Successfully pulled {model}[/{SUCCESS}]")
     else:
         c.print(
-            f"  [{ERROR}]Failed to pull {model}."
-            f" Check the model name and Ollama status.[/{ERROR}]"
+            f"  [{ERROR}]Failed to pull {model}. Check the model name and Ollama status.[/{ERROR}]"
         )
 
 

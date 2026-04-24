@@ -297,9 +297,7 @@ class EvolutionRegistry:
         This prevents data corruption on disk-full or mid-write crashes.
         """
         lines = [json.dumps(r.to_dict()) + "\n" for r in records]
-        tmp_fd, tmp_path = tempfile.mkstemp(
-            suffix=".jsonl", prefix="registry_", dir=self._base_dir
-        )
+        tmp_fd, tmp_path = tempfile.mkstemp(suffix=".jsonl", prefix="registry_", dir=self._base_dir)
         try:
             with open(tmp_fd, "w", encoding="utf-8") as f:
                 f.write("".join(lines))

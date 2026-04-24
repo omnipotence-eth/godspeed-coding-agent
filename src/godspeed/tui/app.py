@@ -434,6 +434,7 @@ class TUIApp:
                 )
                 preset_tag = ""
                 from godspeed.config import GodspeedSettings
+
                 for pname, pmodel in GodspeedSettings.MODEL_PRESETS.items():
                     if pmodel == self._llm_client.model:
                         preset_tag = pname
@@ -443,9 +444,7 @@ class TUIApp:
                     if getattr(self._permission_engine, "plan_mode", False):
                         perm_mode = "plan"
                     else:
-                        perm_mode = getattr(
-                            self._permission_engine, "_mode", "normal"
-                        )
+                        perm_mode = getattr(self._permission_engine, "_mode", "normal")
                 max_iters = self._commands.max_iterations or 0
                 format_status_hud(
                     input_tokens=self._llm_client.total_input_tokens,

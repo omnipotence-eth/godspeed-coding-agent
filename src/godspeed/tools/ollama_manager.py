@@ -142,7 +142,9 @@ async def pull_model_async(
 
     try:
         proc = await asyncio.create_subprocess_exec(
-            OLLAMA_BIN, "pull", model,
+            OLLAMA_BIN,
+            "pull",
+            model,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
@@ -161,9 +163,7 @@ async def pull_model_async(
                     if status:
                         if "completed" in data and "total" in data:
                             pct = (
-                                int(data["completed"] / data["total"] * 100)
-                                if data["total"]
-                                else 0
+                                int(data["completed"] / data["total"] * 100) if data["total"] else 0
                             )
                             tag = data.get("digest", "")[:12]
                             on_progress(f"Downloading {tag} {status} ({pct}%)")
@@ -271,17 +271,11 @@ class OllamaTool(Tool):
         if action == "list":
             models = list_models()
             if not models:
-                return ToolResult.ok(
-                    "No local models found."
-                    " Install Ollama and pull some models."
-                )
+                return ToolResult.ok("No local models found. Install Ollama and pull some models.")
             lines = [
-                f"{m.name:40s} {m.size_gb:.1f} GB"
-                for m in sorted(models, key=lambda m: m.name)
+                f"{m.name:40s} {m.size_gb:.1f} GB" for m in sorted(models, key=lambda m: m.name)
             ]
-            return ToolResult.ok(
-                f"Installed models ({len(models)}):\n" + "\n".join(lines)
-            )
+            return ToolResult.ok(f"Installed models ({len(models)}):\n" + "\n".join(lines))
 
         if action == "pull":
             if not model:

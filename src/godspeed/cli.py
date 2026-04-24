@@ -395,6 +395,20 @@ def _build_tool_registry(tool_set: str = "full") -> tuple:
     except ImportError:
         pass
 
+    try:
+        from godspeed.tools.checkpoint import CheckpointTool
+
+        tools.append(CheckpointTool())
+    except ImportError:
+        pass
+
+    try:
+        from godspeed.tools.workflow import WorkflowTool
+
+        tools.append(WorkflowTool())
+    except ImportError:
+        pass
+
     for tool in tools:
         if allowed is not None and tool.name not in allowed:
             continue

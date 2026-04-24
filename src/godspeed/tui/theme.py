@@ -1,51 +1,33 @@
-"""Godspeed visual identity — Midnight Gold.
+"""Godspeed visual identity — Ultra-clean minimal.
 
-Single source of truth for all colors, styles, and branded strings.
-Import from here instead of hardcoding Rich markup anywhere else.
-
-Design philosophy — Claude Code meets Godspeed:
-- Clean: minimal distraction, maximum information density
-- Soft: colors that don't strain eyes over long sessions
-- Clear: distinct visual hierarchy for rapid scanning
-- Blessed: gold accent reminds you someone's got your back
-
-Palette — refined from Claude Code dark mode:
-- Slate 900: deep background (like Claude Code's #1a1a1a)
-- Slate 800: elevated surface
-- Slate 700: subtle borders
-- Slate 600: muted text
-- Slate 400: secondary text
-- Gold: Godspeed's blessing — brand accent
-- Emerald: success (softer than green)
-- Rose: error (warm, not aggressive)
-- Amber: warning
-- Sky: info / tool markers
+Design philosophy:
+- Minimal: no distractions, pure information
+- Fast: load instantly, render lean
+- Text-first: characters over emoji when possible
+- Professional: clean lines, no clutter
 """
 
 from __future__ import annotations
 
 # =============================================================================
-# Core palette — Rich color names (slate-based like Claude Code)
+# Core palette — Clean monochrome (terminal-native)
 # =============================================================================
 
-# Base colors — dark mode foundation (Claude Code #1a1a1a inspired)
-PRIMARY = "cyan"  # Cyan — clean tool markers
-SECONDARY = "grey69"  # Slate — panels, structure
+PRIMARY = "cyan"  # Cyan — clean, visible
+SECONDARY = "grey69"  # Neutral grey
 SUCCESS = "green"
 ERROR = "red"
 WARNING = "yellow"
-MUTED = "grey50"  # Slate — secondary text
-ACCENT = "cyan"  # Cyan — interactive elements
+MUTED = "grey50"  # Dimmed text
+ACCENT = "cyan"
 
-# Godspeed brand colors
 BRAND_GOLD = "yellow1"
 BRAND_GOLD_BOLD = "bold yellow1"
 
 # =============================================================================
-# Semantic styles — Rich markup strings
+# Semantic styles
 # =============================================================================
 
-# Text styles
 BOLD_PRIMARY = f"bold {PRIMARY}"
 BOLD_SECONDARY = f"bold {SECONDARY}"
 BOLD_SUCCESS = f"bold {SUCCESS}"
@@ -53,15 +35,13 @@ BOLD_ERROR = f"bold {ERROR}"
 BOLD_WARNING = f"bold {WARNING}"
 DIM = "dim"
 
-# Panel borders — subtle, like Claude Code
+# Panel borders
 BORDER_BRAND = "yellow"
 BORDER_TOOL = "grey69"
 BORDER_INFO = "grey69"
 BORDER_SUCCESS = "green"
 BORDER_ERROR = "red"
 BORDER_WARNING = "yellow"
-BORDER_ERROR = "light_coral"
-BORDER_WARNING = "gold3"
 
 # Table styles
 TABLE_HEADER = "bold cyan"
@@ -69,13 +49,11 @@ TABLE_BORDER = "grey46"
 TABLE_KEY = "grey35"
 TABLE_VALUE = "bold"
 
-# Permission colors
 PERM_ALLOW = "green"
 PERM_DENY = "red"
 PERM_ASK = "yellow"
 PERM_SESSION = "cyan"
 
-# Context usage thresholds
 CTX_OK = "green"
 CTX_WARN = "yellow"
 CTX_CRITICAL = "red"
@@ -84,29 +62,29 @@ CTX_CRITICAL = "red"
 # Branded strings
 # =============================================================================
 
-PROMPT_ICON = "\u2694"  # ⚔ — crossed swords (builder's mark)
+PROMPT_ICON = ">"  # Simple greater-than
 PROMPT_TEXT = "godspeed"
-BRAND_TAGLINE = "Security-first — Build with blessing"
+BRAND_TAGLINE = "Build fast"
 
 # Syntax theme
 SYNTAX_THEME = "monokai"
 
 # =============================================================================
-# Unicode markers — Claude Code inspired
+# Ultra-clean markers — Text-only, no emoji
 # =============================================================================
 
-MARKER_SUCCESS = "\u2713"  # ✓ check
-MARKER_ERROR = "\u2717"  # ✗ cross
-MARKER_WARNING = "\u26a0"  # ⚠ warning
-MARKER_TOOL = "\u25b8"  # ▸ tool execution
-MARKER_INFO = "\u25cf"  # ● info
-MARKER_PARALLEL = "\u26a1"  # ⚡
-SEPARATOR_DOT = "\u00b7"  # ·
+MARKER_SUCCESS = "ok"  # Instead of ✓
+MARKER_ERROR = "x"  # Instead of ✗
+MARKER_WARNING = "!"  # Instead of ⚠
+MARKER_TOOL = ">"  # Instead of ▸
+MARKER_INFO = "i"  # Instead of ●
+MARKER_PARALLEL = "||"  # Instead of ⚡
+SEPARATOR_DOT = "|"  # Instead of ·
 
 # Structural
-DECORATOR = "\u2571"  # ╲
-RULE_CHAR = "\u2500"  # ─
-GUTTER = "\u2502"  # │
+DECORATOR = ""
+RULE_CHAR = "-"  # Minimal rule
+GUTTER = ""
 GUTTER_STYLE = MUTED
 
 # =============================================================================

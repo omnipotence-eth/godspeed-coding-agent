@@ -100,7 +100,8 @@ class TestFormatPermissionPrompt:
 
     def test_permission_uses_dot_separator(self) -> None:
         output = _capture(format_permission_prompt, "shell", "ASK", arguments={"command": "ls"})
-        assert "\u00b7" in output  # · dot separator
+        # Ultra-clean: pipe or middle-dot
+        assert "|" in output or "\u00b7" in output
 
 
 class TestFormatToolCall:

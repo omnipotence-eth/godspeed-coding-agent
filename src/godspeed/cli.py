@@ -388,6 +388,13 @@ def _build_tool_registry(tool_set: str = "full") -> tuple:
     except ImportError:
         pass
 
+    try:
+        from godspeed.tools.smart_complete import SmartCompleteTool
+
+        tools.append(SmartCompleteTool())
+    except ImportError:
+        pass
+
     for tool in tools:
         if allowed is not None and tool.name not in allowed:
             continue

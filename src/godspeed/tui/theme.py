@@ -1,5 +1,5 @@
 """Godspeed visual identity — Midnight Gold.
- 
+
 Single source of truth for all colors, styles, and branded strings.
 Import from here instead of hardcoding Rich markup anywhere else.
 

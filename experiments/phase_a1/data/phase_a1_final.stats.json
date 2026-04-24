@@ -1,0 +1,72 @@
+{
+  "output": "experiments\\phase_a1\\data\\phase_a1_final.jsonl",
+  "total_kept": 578,
+  "seed": 42,
+  "per_source": {
+    "anchor": {
+      "loaded": 50,
+      "invalid": 0,
+      "duplicates": 0,
+      "over_cap": 0,
+      "kept": 50
+    },
+    "augment": {
+      "loaded": 200,
+      "invalid": 0,
+      "duplicates": 60,
+      "over_cap": 0,
+      "kept": 140
+    },
+    "synthetic": {
+      "loaded": 156,
+      "invalid": 1,
+      "duplicates": 14,
+      "over_cap": 0,
+      "kept": 141
+    },
+    "distill": {
+      "loaded": 1500,
+      "invalid": 0,
+      "duplicates": 88,
+      "over_cap": 1165,
+      "kept": 247
+    }
+  },
+  "per_tool_caps": {
+    "distill": 80
+  },
+  "final_source_counts": {
+    "augment": 140,
+    "distill": 247,
+    "synthetic": 141,
+    "anchor": 50
+  },
+  "final_category_mix": {
+    "single_tool": 343,
+    "multi_turn": 231,
+    "no_tool": 4
+  },
+  "final_tool_usage": {
+    "file_read": 325,
+    "file_write": 150,
+    "glob_search": 106,
+    "test_runner": 61,
+    "shell": 60,
+    "tasks": 37,
+    "repo_map": 35,
+    "pdf_read": 22,
+    "notebook_edit": 21,
+    "spawn_agent": 20,
+    "image_read": 17,
+    "web_search": 16,
+    "web_fetch": 16,
+    "background_check": 16,
+    "grep_search": 15,
+    "verify": 15,
+    "diff_apply": 15,
+    "git": 14,
+    "github": 10,
+    "file_edit": 6,
+    "code_search": 4
+  }
+}

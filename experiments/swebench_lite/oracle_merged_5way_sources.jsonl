@@ -1,0 +1,23 @@
+{"instance_id": "marshmallow-code__marshmallow-1343", "strategy": "oracle_resolved", "chosen_from": "e1_kimi", "chosen_lines": 13, "resolving_runs": ["e1_kimi", "seed3", "iter1", "p1_dev23_v3"]}
+{"instance_id": "marshmallow-code__marshmallow-1359", "strategy": "oracle_resolved", "chosen_from": "p1_dev23_v3", "chosen_lines": 22, "resolving_runs": ["p1_dev23_v3"]}
+{"instance_id": "pvlib__pvlib-python-1072", "strategy": "oracle_resolved", "chosen_from": "e1_kimi", "chosen_lines": 16, "resolving_runs": ["e1_kimi", "p1_dev23_v3"]}
+{"instance_id": "pvlib__pvlib-python-1154", "strategy": "oracle_resolved", "chosen_from": "e1_kimi", "chosen_lines": 16, "resolving_runs": ["e1_kimi", "gpt_oss", "seed3"]}
+{"instance_id": "pvlib__pvlib-python-1606", "strategy": "oracle_resolved", "chosen_from": "gpt_oss", "chosen_lines": 27, "resolving_runs": ["gpt_oss", "e1_kimi", "seed3", "iter1", "p1_dev23_v3"]}
+{"instance_id": "pvlib__pvlib-python-1707", "strategy": "fallback_shortest_nonempty", "chosen_from": "e1_kimi", "chosen_lines": 18, "resolving_runs": []}
+{"instance_id": "pvlib__pvlib-python-1854", "strategy": "oracle_resolved", "chosen_from": "p1_dev23_v3", "chosen_lines": 13, "resolving_runs": ["p1_dev23_v3", "iter1", "e1_kimi"]}
+{"instance_id": "pydicom__pydicom-1139", "strategy": "fallback_shortest_nonempty", "chosen_from": "e1_kimi", "chosen_lines": 21, "resolving_runs": []}
+{"instance_id": "pydicom__pydicom-1256", "strategy": "oracle_resolved", "chosen_from": "gpt_oss", "chosen_lines": 124, "resolving_runs": ["gpt_oss"]}
+{"instance_id": "pydicom__pydicom-1413", "strategy": "fallback_shortest_nonempty", "chosen_from": "seed3", "chosen_lines": 13, "resolving_runs": []}
+{"instance_id": "pydicom__pydicom-1694", "strategy": "oracle_resolved", "chosen_from": "e1_kimi", "chosen_lines": 22, "resolving_runs": ["e1_kimi", "iter1", "gpt_oss"]}
+{"instance_id": "pydicom__pydicom-901", "strategy": "fallback_shortest_nonempty", "chosen_from": "seed3", "chosen_lines": 33, "resolving_runs": []}
+{"instance_id": "pylint-dev__astroid-1196", "strategy": "oracle_resolved", "chosen_from": "iter1", "chosen_lines": 38, "resolving_runs": ["iter1"]}
+{"instance_id": "pylint-dev__astroid-1268", "strategy": "fallback_shortest_nonempty", "chosen_from": "e1_kimi", "chosen_lines": 16, "resolving_runs": []}
+{"instance_id": "pylint-dev__astroid-1333", "strategy": "fallback_shortest_nonempty", "chosen_from": "gpt_oss", "chosen_lines": 14, "resolving_runs": []}
+{"instance_id": "pylint-dev__astroid-1866", "strategy": "oracle_resolved", "chosen_from": "e1_kimi", "chosen_lines": 15, "resolving_runs": ["e1_kimi", "p1_dev23_v3", "seed3"]}
+{"instance_id": "pylint-dev__astroid-1978", "strategy": "fallback_shortest_nonempty", "chosen_from": "e1_kimi", "chosen_lines": 15, "resolving_runs": []}
+{"instance_id": "pyvista__pyvista-4315", "strategy": "fallback_shortest_nonempty", "chosen_from": "seed3", "chosen_lines": 40, "resolving_runs": []}
+{"instance_id": "sqlfluff__sqlfluff-1517", "strategy": "fallback_shortest_nonempty", "chosen_from": "seed3", "chosen_lines": 28, "resolving_runs": []}
+{"instance_id": "sqlfluff__sqlfluff-1625", "strategy": "fallback_shortest_nonempty", "chosen_from": "p1_dev23_v3", "chosen_lines": 15, "resolving_runs": []}
+{"instance_id": "sqlfluff__sqlfluff-1733", "strategy": "oracle_resolved", "chosen_from": "gpt_oss", "chosen_lines": 38, "resolving_runs": ["gpt_oss"]}
+{"instance_id": "sqlfluff__sqlfluff-1763", "strategy": "fallback_shortest_nonempty", "chosen_from": "seed3", "chosen_lines": 14, "resolving_runs": []}
+{"instance_id": "sqlfluff__sqlfluff-2419", "strategy": "oracle_resolved", "chosen_from": "gpt_oss", "chosen_lines": 14, "resolving_runs": ["gpt_oss", "e1_kimi", "iter1", "seed3", "p1_dev23_v3"]}

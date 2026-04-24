@@ -1,0 +1,65 @@
+{
+  "output": "experiments\\phase_a1\\data\\phase_a1_final.jsonl",
+  "total_kept": 1605,
+  "seed": 42,
+  "per_source": {
+    "anchor": {
+      "loaded": 50,
+      "invalid": 0,
+      "duplicates": 0,
+      "kept": 50
+    },
+    "augment": {
+      "loaded": 200,
+      "invalid": 0,
+      "duplicates": 60,
+      "kept": 140
+    },
+    "synthetic": {
+      "loaded": 114,
+      "invalid": 1,
+      "duplicates": 5,
+      "kept": 108
+    },
+    "distill": {
+      "loaded": 1500,
+      "invalid": 0,
+      "duplicates": 193,
+      "kept": 1307
+    }
+  },
+  "final_source_counts": {
+    "distill": 1307,
+    "augment": 140,
+    "synthetic": 108,
+    "anchor": 50
+  },
+  "final_category_mix": {
+    "multi_turn": 1122,
+    "single_tool": 479,
+    "no_tool": 4
+  },
+  "final_tool_usage": {
+    "file_read": 1566,
+    "glob_search": 1013,
+    "file_write": 349,
+    "shell": 133,
+    "test_runner": 59,
+    "repo_map": 32,
+    "tasks": 28,
+    "notebook_edit": 21,
+    "pdf_read": 21,
+    "spawn_agent": 20,
+    "web_search": 16,
+    "web_fetch": 16,
+    "diff_apply": 15,
+    "background_check": 15,
+    "image_read": 15,
+    "verify": 13,
+    "grep_search": 13,
+    "git": 12,
+    "github": 8,
+    "file_edit": 6,
+    "code_search": 4
+  }
+}

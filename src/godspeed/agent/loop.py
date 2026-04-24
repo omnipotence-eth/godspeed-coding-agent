@@ -136,6 +136,11 @@ async def agent_loop(
         # pause doesn't strand the loop. Raises AgentCancelledError; caller unwinds.
         _check_cancel(cancel_event)
 
+        # Clear stale speculative tasks from previous iteration
+        for task in speculative_cache.values():
+            task.cancel()
+        speculative_cache.clear()
+
         # Pause/resume: if pause_event exists and is cleared, wait for it
         if pause_event is not None and not pause_event.is_set():
             logger.info("Agent loop paused at iteration=%d", iteration)
@@ -239,6 +244,7 @@ async def agent_loop(
         # These are fast and order-sensitive, so always sequential.
         permitted: list[ToolCall] = []
         for raw_tc, tool_call in parsed_calls:
+            _check_cancel(cancel_event)
             if tool_call is None:
                 retries += 1
                 if retries > MAX_RETRIES:
@@ -278,7 +284,7 @@ async def agent_loop(
 
             # Pre-tool hook: can block execution
             if hook_executor is not None:
-                hook_ok = await asyncio.get_event_loop().run_in_executor(
+                hook_ok = await asyncio.get_running_loop().run_in_executor(
                     None, hook_executor.run_pre_tool, tool_call.tool_name
                 )
                 if not hook_ok:
@@ -330,11 +336,12 @@ async def agent_loop(
                         coros.append(cached_task)
                     else:
                         coros.append(asyncio.create_task(tool_registry.dispatch(tc, tool_context)))
-                parallel_results = list(await asyncio.gather(*coros))
+                parallel_results = await asyncio.gather(*coros)
 
             # Dispatch write tools sequentially
             serial_results: list[ToolResult] = []
             for tc in write_calls:
+                _check_cancel(cancel_event)
                 result = await tool_registry.dispatch(tc, tool_context)
                 serial_results.append(result)
 
@@ -350,9 +357,11 @@ async def agent_loop(
 
             # Process results in original order
             for tool_call, result in zip(permitted, results, strict=True):
+                _check_cancel(cancel_event)
+
                 # Post-tool hook
                 if hook_executor is not None:
-                    await asyncio.get_event_loop().run_in_executor(
+                    await asyncio.get_running_loop().run_in_executor(
                         None, hook_executor.run_post_tool, tool_call.tool_name
                     )
 
@@ -445,6 +454,17 @@ async def agent_loop(
             )
             if batch_has_non_write:
                 consecutive_writes = batch_writes
+                # Also reset edit counters when non-write tools are in the batch
+                consecutive_successful_edits = sum(
+                    1
+                    for tc, r in zip(permitted, results, strict=True)
+                    if not r.is_error and tc.tool_name in ("file_edit", "file_write")
+                )
+                recent_change_descriptions = [
+                    f"{tc.tool_name} {tc.arguments.get('file_path', '?')}"
+                    for tc, r in zip(permitted, results, strict=True)
+                    if not r.is_error and tc.tool_name in ("file_edit", "file_write")
+                ]
             else:
                 consecutive_writes += batch_writes
 
@@ -516,7 +536,7 @@ async def agent_loop(
                     STUCK_LOOP_THRESHOLD,
                 )
                 conversation.add_user_message(
-                    "You have failed 3 times with the same error. "
+                    f"You have failed {STUCK_LOOP_THRESHOLD} times with the same error. "
                     "Stop, explain what is wrong, and try a completely "
                     "different approach."
                 )
@@ -525,6 +545,8 @@ async def agent_loop(
         else:
             # Sequential dispatch (single call or parallel disabled)
             for tool_call in permitted:
+                _check_cancel(cancel_event)
+
                 # Execute tool with latency tracking (check speculative cache first)
                 t0 = time.monotonic()
                 cached_task = speculative_cache.pop(tool_call.call_id, None)
@@ -541,7 +563,7 @@ async def agent_loop(
 
                 # Post-tool hook
                 if hook_executor is not None:
-                    await asyncio.get_event_loop().run_in_executor(
+                    await asyncio.get_running_loop().run_in_executor(
                         None, hook_executor.run_post_tool, tool_call.tool_name
                     )
 
@@ -680,7 +702,7 @@ async def agent_loop(
                             error_hash[:12],
                         )
                         conversation.add_user_message(
-                            "You have failed 3 times with the same error. "
+                            f"You have failed {STUCK_LOOP_THRESHOLD} times with the same error. "
                             "Stop, explain what is wrong, and try a completely "
                             "different approach."
                         )
@@ -714,8 +736,9 @@ async def _auto_verify_file(
     lang = _EXTENSION_MAP.get(suffix)
 
     if auto_fix_retries > 0 and lang is not None:
-        # Use the retry loop (runs synchronously in the subprocess calls)
-        return _verify_with_retry(
+        # Run in thread to avoid blocking the event loop
+        return await asyncio.to_thread(
+            _verify_with_retry,
             resolved=resolved,
             display_path=file_path,
             lang=lang,
@@ -873,7 +896,11 @@ async def _compact_conversation(conversation: Conversation, llm_client: LLMClien
         conversation.compact(response.content)
     except Exception as exc:
         logger.error("Compaction failed error=%s", exc, exc_info=True)
-        # Don't crash — just warn and continue with full history
+        # Don't crash — try truncation as fallback
+        with contextlib.suppress(Exception):
+            conversation.compact(
+                f"[Compaction failed: {exc}. Retaining most recent context.]"
+            )
 
 
 def _check_cancel(cancel_event: asyncio.Event | None) -> None:

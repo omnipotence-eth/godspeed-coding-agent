@@ -12,6 +12,22 @@ import subprocess
 
 logger = logging.getLogger(__name__)
 
+# Cached VRAM value — subprocess call is expensive, so detect once per process.
+# A dict key is used instead of a simple module-level variable so the sentinel
+# "not yet checked" (None) is distinguishable from "checked but no GPU found"
+# (also returned as None by detect_vram_mb).
+_cached_vram: int | None = None
+_cached_vram_checked: bool = False
+
+
+def _get_cached_vram() -> int | None:
+    """Return cached VRAM, running detection on first call."""
+    global _cached_vram, _cached_vram_checked
+    if not _cached_vram_checked:
+        _cached_vram = detect_vram_mb()
+        _cached_vram_checked = True
+    return _cached_vram
+
 
 # ---------------------------------------------------------------------------
 # VRAM tiers → model selection
@@ -142,7 +158,7 @@ def select_evolution_model(configured_model: str = "") -> str:
         logger.debug("Using configured evolution model=%s", configured_model)
         return configured_model
 
-    vram = detect_vram_mb()
+    vram = _get_cached_vram()
     if vram is None:
         logger.info("Could not detect VRAM — defaulting to %s", FALLBACK_MODEL)
         return FALLBACK_MODEL
@@ -167,7 +183,7 @@ def recommended_num_candidates(configured_model: str = "") -> int:
         # API models have no local VRAM constraint
         return 5
 
-    vram = detect_vram_mb()
+    vram = _get_cached_vram()
     if vram is None:
         return 2  # Conservative default
 
@@ -183,7 +199,7 @@ def recommended_max_eval_cases(configured_model: str = "") -> int:
     if configured_model and not configured_model.startswith("ollama/"):
         return 5
 
-    vram = detect_vram_mb()
+    vram = _get_cached_vram()
     if vram is None:
         return 2
 
@@ -199,7 +215,7 @@ def is_low_memory() -> bool:
 
     Low-memory mode: fewer candidates, smaller batch sizes, streaming traces.
     """
-    vram = detect_vram_mb()
+    vram = _get_cached_vram()
     if vram is None:
         return True  # Assume constrained if we can't detect
     return vram < 6_000

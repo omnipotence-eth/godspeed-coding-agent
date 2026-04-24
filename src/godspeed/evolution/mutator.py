@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import dataclasses
 import logging
+from typing import TYPE_CHECKING
 
 from godspeed.evolution.trace_analyzer import (
     EvolutionReport,
@@ -15,6 +16,9 @@ from godspeed.evolution.trace_analyzer import (
     ToolFailurePattern,
     ToolSequence,
 )
+
+if TYPE_CHECKING:
+    from godspeed.llm.client import LLMClient
 
 logger = logging.getLogger(__name__)
 
@@ -142,10 +146,11 @@ class EvolutionEngine:
     available VRAM (from RTX 5070 Ti 16GB down to Jetson Orin Nano 8GB shared).
     """
 
-    def __init__(self, model: str = "") -> None:
+    def __init__(self, model: str = "", llm_client: LLMClient | None = None) -> None:
         from godspeed.evolution.hardware import select_evolution_model
 
         self._model = select_evolution_model(model)
+        self._llm_client = llm_client
 
     @property
     def model(self) -> str:
@@ -353,7 +358,16 @@ class EvolutionEngine:
     # ------------------------------------------------------------------
 
     async def _call_llm(self, prompt: str) -> str:
-        """Call the configured LLM with a simple prompt. Returns response text."""
+        """Call the configured LLM with a simple prompt. Returns response text.
+
+        Reuses an injected LLMClient when available to avoid repeated
+        connection pool creation.
+        """
+        if self._llm_client is not None:
+            messages = [{"role": "user", "content": prompt}]
+            response = await self._llm_client.chat(messages)
+            return response.content
+
         from godspeed.llm.client import LLMClient
 
         client = LLMClient(model=self._model)

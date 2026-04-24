@@ -446,7 +446,11 @@ class LLMClient:
 
         response = await _get_litellm().acompletion(**kwargs)
 
-        # Parse response
+        # Parse response — guard against empty choices list
+        if not response.choices:
+            logger.warning("LLM returned empty choices list model=%s", model)
+            return ChatResponse(content="", tool_calls=[], finish_reason="stop", usage={})
+
         choice = response.choices[0]
         message = choice.message
 
@@ -565,9 +569,13 @@ class LLMClient:
     ) -> AsyncGenerator[ChatResponse, None]:
         """Inner streaming body — assumes ``self.model`` is already routed."""
         effective = self._effective_model()
+
+        # Apply prompt caching for supported providers (same as _call())
+        cached_messages = self._apply_prompt_caching(effective, messages)
+
         kwargs: dict[str, Any] = {
             "model": effective,
-            "messages": messages,
+            "messages": cached_messages,
             "stream": True,
             "timeout": self.timeout,
         }
@@ -581,12 +589,18 @@ class LLMClient:
                     effective,
                 )
 
+        # Extended thinking for Anthropic models
+        if self.thinking_budget > 0 and self._is_anthropic_model(effective):
+            kwargs["thinking"] = {"type": "enabled", "budget_tokens": self.thinking_budget}
+
         try:
             response = await _get_litellm().acompletion(**kwargs)
             collected_content = ""
             collected_tool_calls: list[dict[str, Any]] = []
 
             async for chunk in response:
+                if not chunk.choices:
+                    continue
                 delta = chunk.choices[0].delta
                 finish_reason = chunk.choices[0].finish_reason
 

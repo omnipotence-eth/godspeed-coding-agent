@@ -27,11 +27,14 @@ class ConversationLogger:
     ``TrainingExporter``.
     """
 
+    _FLUSH_INTERVAL = 10  # flush every N writes instead of every write
+
     def __init__(self, session_id: str, output_dir: Path) -> None:
         self._session_id = session_id
         self._path = output_dir / f"{session_id}.conversation.jsonl"
         self._file: TextIO | None = None
         self._step = 0
+        self._writes_since_flush = 0
 
     # -- public API ----------------------------------------------------------
 
@@ -168,7 +171,10 @@ class ConversationLogger:
 
         line = json.dumps(record, ensure_ascii=False, separators=(",", ":"))
         self._file.write(line + "\n")
-        self._file.flush()
+        self._writes_since_flush += 1
+        if self._writes_since_flush >= self._FLUSH_INTERVAL:
+            self._file.flush()
+            self._writes_since_flush = 0
 
     def __del__(self) -> None:
         self.close()

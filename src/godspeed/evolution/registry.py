@@ -10,6 +10,7 @@ import dataclasses
 import hashlib
 import json
 import logging
+import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
@@ -264,8 +265,13 @@ class EvolutionRegistry:
     def _append_record(self, record: EvolutionRecord) -> None:
         """Append a record to the JSONL registry."""
         line = json.dumps(record.to_dict()) + "\n"
-        with open(self._registry_path, "a", encoding="utf-8") as f:
-            f.write(line)
+        try:
+            with open(self._registry_path, "a", encoding="utf-8") as f:
+                f.write(line)
+                f.flush()
+        except OSError as exc:
+            logger.warning("Failed to append registry record: %s", exc)
+            raise
 
     def _load_records(self) -> list[EvolutionRecord]:
         """Load all records from the JSONL registry."""
@@ -285,9 +291,24 @@ class EvolutionRegistry:
         return records
 
     def _rewrite_registry(self, records: list[EvolutionRecord]) -> None:
-        """Rewrite the entire registry (used for updates like mark_applied)."""
+        """Rewrite the entire registry atomically (used for updates like mark_applied).
+
+        Writes to a temp file first, then atomically replaces the real file.
+        This prevents data corruption on disk-full or mid-write crashes.
+        """
         lines = [json.dumps(r.to_dict()) + "\n" for r in records]
-        self._registry_path.write_text("".join(lines), encoding="utf-8")
+        tmp_fd, tmp_path = tempfile.mkstemp(
+            suffix=".jsonl", prefix="registry_", dir=self._base_dir
+        )
+        try:
+            with open(tmp_fd, "w", encoding="utf-8") as f:
+                f.write("".join(lines))
+                f.flush()
+            Path(tmp_path).replace(self._registry_path)
+        except OSError as exc:
+            logger.warning("Failed to rewrite registry: %s — data may be lost", exc)
+            Path(tmp_path).unlink(missing_ok=True)
+            raise
 
     @staticmethod
     def _hash_text(text: str) -> str:

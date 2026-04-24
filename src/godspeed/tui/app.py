@@ -563,7 +563,7 @@ class _InteractivePermissionProxy:
             success = append_allow_rule(pattern)
             if success:
                 # Also update engine in-memory
-                self._engine.allow_rules.append(pattern)
+                self._engine.add_rule(pattern, "allow")
                 console.print(f"  [{SUCCESS}]Added to allow rules.[/{SUCCESS}]")
             else:
                 from godspeed.tui.theme import WARNING

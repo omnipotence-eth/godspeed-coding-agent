@@ -99,3 +99,8 @@ experiments/phase0_*/
 
 # Session logs (from Windows bash) that sometimes land in the repo tree
 experiments/swebench_lite/*.log
+
+# Test artifacts
+add.py
+test_*.py
+godspeed_evolver.log

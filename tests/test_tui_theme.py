@@ -153,7 +153,7 @@ class TestBrandedStrings:
     """Test branded string constants."""
 
     def test_prompt_icon_is_lightning(self) -> None:
-        assert PROMPT_ICON == "\u26a1"
+        assert PROMPT_ICON == "\u2694"  # ⚔ crossed swords (builder's mark)
 
     def test_prompt_text(self) -> None:
         assert PROMPT_TEXT == "godspeed"

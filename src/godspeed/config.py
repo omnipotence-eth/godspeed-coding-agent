@@ -17,10 +17,14 @@ DEFAULT_GLOBAL_DIR = Path.home() / ".godspeed"
 # Model context windows — used for model-aware compaction prompts.
 # Keys are prefixes matched against the model string.
 MODEL_CONTEXT_WINDOWS: dict[str, int] = {
-    # Frontier models with large context
+    # Frontier models with large context (1M = 2026 Claude Opus 4.6)
+    "claude-opus-4": 1_000_000,
     "claude-opus": 200_000,
+    "claude-sonnet-4": 1_000_000,
     "claude-sonnet": 200_000,
     "claude-haiku": 200_000,
+    "claude-4": 1_000_000,
+    "gpt-5": 1_000_000,
     "gpt-4o": 128_000,
     "gpt-4-turbo": 128_000,
     "gpt-4": 8_192,
@@ -28,10 +32,15 @@ MODEL_CONTEXT_WINDOWS: dict[str, int] = {
     "gemini-2": 1_000_000,
     "gemini-1.5": 1_000_000,
     "gemini-pro": 32_000,
+    # xAI Grok models
+    "grok": 131_072,
+    # NVIDIA NIM models
+    "nvidia_nim": 128_000,
     # Open-source models (common Ollama defaults)
     "ollama/qwen3": 32_768,
     "ollama/llama3": 8_192,
     "ollama/llama3.1": 128_000,
+    "ollama/llama3.3": 128_000,
     "ollama/mistral": 32_768,
     "ollama/codellama": 16_384,
     "ollama/deepseek": 32_768,

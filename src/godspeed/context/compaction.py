@@ -20,9 +20,10 @@ from godspeed.llm.client import LLMClient
 
 logger = logging.getLogger(__name__)
 
-# Threshold for "small" vs "large" context models
+# Threshold for "small" vs "large" vs "ultra-large" context models
 SMALL_CONTEXT_THRESHOLD = 32_768
 LARGE_CONTEXT_THRESHOLD = 100_000
+ULTRA_LARGE_CONTEXT_THRESHOLD = 500_000  # Claude Opus 4.6, GPT-5, Gemini 2
 
 COMPACTION_PROMPT_SMALL = """\
 Aggressively summarize this coding agent conversation.
@@ -77,6 +78,23 @@ Be thorough. With a large context window, it is better to preserve
 too much than too little.
 """
 
+COMPACTION_PROMPT_ULTRA_LARGE = """\
+You are summarizing a coding agent conversation with a 1M+ token context window.
+
+Preserve EVERYTHING important. With this large context, be exhaustive:
+- All architectural decisions, file changes, errors, and task state
+- Complete file path history with change notes
+- User instructions and corrections verbatim when possible
+- All unresolved issues with full context
+- Last 10 tool results (summarized)
+- Code conventions and patterns discovered
+- Session goals and progress toward them
+
+Do NOT discard anything that might be relevant. Better to preserve
+extra context than lose important information. This summary will allow
+a fresh agent to continue exactly where this one left off.
+"""
+
 # Keep the old name as an alias for backwards compatibility in agent/loop.py
 COMPACTION_SYSTEM_PROMPT = COMPACTION_PROMPT_MEDIUM
 
@@ -86,13 +104,17 @@ def get_compaction_prompt(model: str) -> str:
 
     - Small (≤32K): aggressive — keep only essentials
     - Medium (32K-100K): balanced - standard preservation
-    - Large (>100K): detailed — preserve maximum context
+    - Large (>100K, ≤500K): detailed — preserve maximum context
+    - Ultra-Large (>500K, 1M+): exhaustive — preserve everything
     """
     context_size = get_model_context_window(model)
 
     if context_size <= SMALL_CONTEXT_THRESHOLD:
         logger.debug("Using small compaction prompt model=%s context=%d", model, context_size)
         return COMPACTION_PROMPT_SMALL
+    if context_size > ULTRA_LARGE_CONTEXT_THRESHOLD:
+        logger.debug("Using ultra-large compaction prompt model=%s context=%d", model, context_size)
+        return COMPACTION_PROMPT_ULTRA_LARGE
     if context_size > LARGE_CONTEXT_THRESHOLD:
         logger.debug("Using large compaction prompt model=%s context=%d", model, context_size)
         return COMPACTION_PROMPT_LARGE

@@ -371,14 +371,14 @@ class LLMClient:
     ) -> list[dict[str, Any]]:
         """Apply prompt caching markers for supported providers.
 
-        Marks the system prompt with cache_control for Anthropic/OpenAI models,
+        Marks the system prompt with cache_control for Anthropic/OpenAI/xAI models,
         giving ~50% cost reduction on repeated prefixes.
         """
         model_lower = model.lower()
         # Only apply for providers that support cache_control
         supports_caching = any(
             prefix in model_lower
-            for prefix in ("claude", "anthropic", "gpt-4o", "gpt-4-turbo", "o3")
+            for prefix in ("claude", "anthropic", "gpt-4o", "gpt-4-turbo", "grok", "o3", "o4", "o1")
         )
         if not supports_caching:
             return messages

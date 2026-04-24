@@ -12,7 +12,7 @@ from godspeed.tools.base import RiskLevel, Tool, ToolContext, ToolResult
 
 logger = logging.getLogger(__name__)
 
-VALID_ACTIONS = frozenset({"status", "diff", "commit", "log", "undo", "stash", "stash_pop"})
+VALID_ACTIONS = frozenset({"status", "diff", "commit", "log", "undo", "stash", "stash_pop", "create_pr"})
 
 
 class GitTool(Tool):
@@ -29,12 +29,13 @@ class GitTool(Tool):
     @property
     def description(self) -> str:
         return (
-            "Run git operations: status, diff, commit, log, undo, stash, stash_pop. "
+            "Run git operations: status, diff, commit, log, undo, stash, stash_pop, create_pr. "
             "Commit stages all changes and commits with the given message. "
-            "Undo reverts the last commit (soft reset, changes remain staged).\n\n"
+            "Create_pr creates a pull request from current branch.\n\n"
             "Example: git(action='status')\n"
             "Example: git(action='diff')\n"
             "Example: git(action='commit', message='feat: add auth module')\n"
+            "Example: git(action='create_pr', title='feat: add feature', body='Description of changes')\n"
             "Example: git(action='undo')"
         )
 
@@ -55,6 +56,18 @@ class GitTool(Tool):
                 "message": {
                     "type": "string",
                     "description": "Commit message (required for 'commit' action)",
+                },
+                "title": {
+                    "type": "string",
+                    "description": "PR title (required for 'create_pr' action)",
+                },
+                "body": {
+                    "type": "string",
+                    "description": "PR description (optional for 'create_pr' action)",
+                },
+                "base": {
+                    "type": "string",
+                    "description": "Base branch for PR (default: main)",
                 },
             },
             "required": ["action"],
@@ -88,6 +101,14 @@ class GitTool(Tool):
             return await self._stash(repo)
         if action == "stash_pop":
             return await self._stash_pop(repo)
+
+        if action == "create_pr":
+            return await self._create_pr(
+                repo,
+                title=arguments.get("title"),
+                body=arguments.get("body"),
+                base=arguments.get("base", "main"),
+            )
 
         return ToolResult.failure(f"Unhandled action: {action}")
 
@@ -188,7 +209,41 @@ class GitTool(Tool):
             logger.info("git.stash_pop")
             return ToolResult.success(output)
         except GitCommandError as exc:
-            # "No stash entries found" is a common case
             if "no stash entries" in str(exc).lower():
                 return ToolResult.failure("No stash entries to pop")
             return ToolResult.failure(f"git stash pop failed: {exc}")
+
+    async def _create_pr(
+        self,
+        repo: Repo,
+        title: str | None,
+        body: str | None,
+        base: str,
+    ) -> ToolResult:
+        """Create a pull request via gh CLI."""
+        if not title:
+            return ToolResult.failure("title is required for create_pr action")
+
+        branch = repo.active_branch.name
+        if branch == base:
+            return ToolResult.failure(f"Cannot create PR: already on '{base}' branch")
+
+        body_arg = body or f"Automated PR from godspeed-coding-agent"
+        try:
+            result = repo.git.config("--get", "github.user")
+        except GitCommandError:
+            result = ""
+
+        cmd = ["gh", "pr", "create", "--title", title, "--body", body_arg, "--base", base]
+        try:
+            output = repo.git.execute(cmd)
+            logger.info("git.create_pr branch=%s base=%s", branch, base)
+            return ToolResult.success(
+                f"PR created: {title}\nBranch: {branch} → {base}\n{output}"
+            )
+        except GitCommandError as exc:
+            if "gh" in str(exc).lower():
+                return ToolResult.failure(
+                    "gh CLI not found. Install GitHub CLI: https://cli.github.com/"
+                )
+            return ToolResult.failure(f"Failed to create PR: {exc}")

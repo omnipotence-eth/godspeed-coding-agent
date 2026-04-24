@@ -1,21 +1,12 @@
-"""Project instructions loader — GODSPEED.md, AGENTS.md, CLAUDE.md, .cursorrules.
+"""Project instructions loader — GODSPEED.md, AGENTS.md, CLAUDE.md, .cursorrules, .godspeedrules.
 
 Walks up the directory tree loading applicable instruction files.
 Supports the cross-agent AGENTS.md standard (Linux Foundation AAIF) and
 reads CLAUDE.md / .cursorrules for zero-friction migration from other agents.
 
-Priority: GODSPEED.md > AGENTS.md > CLAUDE.md > .cursorrules
+Priority: GODSPEED.md > AGENTS.md > .godspeedrules > CLAUDE.md > .cursorrules
 All found files are merged (parent-first, most-specific-last).
 """
-
-from __future__ import annotations
-
-import logging
-from pathlib import Path
-
-logger = logging.getLogger(__name__)
-
-DEFAULT_FILENAME = "GODSPEED.md"
 
 # Cross-agent instruction files, in priority order.
 # GODSPEED.md is always loaded first and takes highest priority.
@@ -24,9 +15,13 @@ DEFAULT_FILENAME = "GODSPEED.md"
 INSTRUCTION_FILES = (
     "GODSPEED.md",
     "AGENTS.md",
+    "SKILL.md",
+    ".godspeedrules",
     "CLAUDE.md",
     ".cursorrules",
 )
+
+DEFAULT_FILENAME = "GODSPEED.md"
 
 
 def _load_single_file(

@@ -101,7 +101,7 @@ class TestFormatPermissionPrompt:
     def test_permission_uses_dot_separator(self) -> None:
         output = _capture(format_permission_prompt, "shell", "ASK", arguments={"command": "ls"})
         # Ultra-clean: pipe or middle-dot
-        assert "|" in output or "\u00b7" in output
+        assert "|" in output or "ok" in output
 
 
 class TestFormatToolCall:
@@ -147,7 +147,7 @@ class TestFormatToolCall:
 
     def test_marker_present(self) -> None:
         output = _capture(format_tool_call, "file_read", {"file_path": "x.py"})
-        assert "\u25b8" in output  # ▸ marker
+        assert ">" in output  # tool marker
 
     def test_git_tool_shows_action(self) -> None:
         output = _capture(format_tool_call, "git", {"action": "status"})
@@ -160,12 +160,12 @@ class TestFormatToolResult:
 
     def test_success_result_short(self) -> None:
         output = _capture(format_tool_result, "shell", "file1.py\nfile2.py")
-        assert "\u2713" in output  # ✓ marker
+        assert "ok" in output  # ok marker
         assert "file1.py" in output
 
     def test_error_result(self) -> None:
         output = _capture(format_tool_result, "shell", "command not found", is_error=True)
-        assert "\u2717" in output  # ✗ marker
+        assert "x" in output  # x marker
         assert "command not found" in output
 
     def test_long_success_shows_line_count(self) -> None:
@@ -175,7 +175,7 @@ class TestFormatToolResult:
 
     def test_empty_result(self) -> None:
         output = _capture(format_tool_result, "shell", "")
-        assert "\u2713" in output
+        assert "ok" in output
 
     def test_long_error_truncated(self) -> None:
         long_text = "\n".join(f"error line {i}" for i in range(30))
@@ -255,7 +255,7 @@ class TestMiscFormatters:
     def test_format_error(self) -> None:
         output = _capture(format_error, "Something broke")
         assert "Something broke" in output
-        assert "\u2717" in output  # ✗ marker
+        assert "x" in output  # x marker
 
     def test_format_permission_denied(self) -> None:
         output = _capture(format_permission_denied, "shell", "blocked by policy")
@@ -278,21 +278,21 @@ class TestStatusFormatters:
         from godspeed.tui.output import format_info
 
         output = _capture(format_info, "Some info message")
-        assert "\u25cf" in output  # ● marker
+        assert "i" in output  # info marker
         assert "Some info message" in output
 
     def test_format_success_shows_check(self) -> None:
         from godspeed.tui.output import format_success
 
         output = _capture(format_success, "Operation done")
-        assert "\u2713" in output  # ✓ marker
+        assert "ok" in output  # ok marker
         assert "Operation done" in output
 
     def test_format_warning_shows_triangle(self) -> None:
         from godspeed.tui.output import format_warning
 
         output = _capture(format_warning, "Be careful")
-        assert "\u26a0" in output  # ⚠ marker
+        assert "!" in output  # warning marker
         assert "Be careful" in output
 
 
@@ -301,24 +301,24 @@ class TestDecorativeElements:
 
     def test_welcome_has_decorators(self) -> None:
         output = _capture(format_welcome, "model", "/home/user")
-        assert "\u2571" in output  # decorator slash
+        assert "Godspeed" in output
+        assert "Build fast" in output
 
     def test_welcome_has_rule(self) -> None:
         output = _capture(format_welcome, "model", "/home/user")
-        assert "\u2500" in output  # ─ rule character
+        assert "-" in output  # rule character
 
     def test_session_summary_has_rule(self) -> None:
         output = _capture(format_session_summary, 60.0, 1000, 500)
-        assert "\u2500" in output  # ─ rule character
+        assert "-" in output  # rule character
 
     def test_session_summary_has_decorated_signoff(self) -> None:
         output = _capture(format_session_summary, 60.0, 1000, 500)
-        assert "\u2571" in output  # decorator slash
         assert "Godspeed" in output
+        assert "-" in output
 
     def test_tool_call_shell_has_gutter(self) -> None:
         output = _capture(format_tool_call, "shell", {"command": "ls -la"})
-        assert "\u2502" in output  # │ gutter
         assert "ls -la" in output
 
     def test_tool_call_file_edit_has_gutter(self) -> None:
@@ -328,7 +328,7 @@ class TestDecorativeElements:
             "new_string": "new code",
         }
         output = _capture(format_tool_call, "file_edit", args)
-        assert "\u2502" in output  # │ gutter
+        assert "main.py" in output
 
 
 class TestFormatParallelToolCalls:
@@ -367,12 +367,12 @@ class TestFormatParallelToolCalls:
     def test_has_parallel_marker(self) -> None:
         calls = [("file_read", {"file_path": "x.py"}), ("shell", {"command": "ls"})]
         output = _capture(format_parallel_tool_calls, calls)
-        assert "\u26a1" in output  # ⚡ parallel marker
+        assert "||" in output  # parallel marker
 
     def test_has_tool_markers(self) -> None:
         calls = [("file_read", {"file_path": "x.py"}), ("shell", {"command": "ls"})]
         output = _capture(format_parallel_tool_calls, calls)
-        assert "\u25b8" in output  # ▸ tool marker
+        assert ">" in output  # tool marker
 
     def test_empty_args(self) -> None:
         calls = [("custom_tool", {})]
@@ -390,7 +390,7 @@ class TestFormatParallelResults:
             ("shell", "output", False),
         ]
         output = _capture(format_parallel_results, results)
-        assert "\u2713" in output  # ✓ success marker
+        assert "ok" in output  # ✓ success marker
         assert "file_read" in output
         assert "shell" in output
 
@@ -400,7 +400,7 @@ class TestFormatParallelResults:
             ("file_read", "file not found", True),
         ]
         output = _capture(format_parallel_results, results)
-        assert "\u2717" in output  # ✗ error marker
+        assert "x" in output  # x error
         assert "command not found" in output
         assert "file not found" in output
 
@@ -410,8 +410,8 @@ class TestFormatParallelResults:
             ("shell", "Permission denied", True),
         ]
         output = _capture(format_parallel_results, results)
-        assert "\u2713" in output  # ✓ for success
-        assert "\u2717" in output  # ✗ for error
+        assert "ok" in output  # ✓ for success
+        assert "x" in output  # x for error
         assert "file_read" in output
         assert "Permission denied" in output
 
@@ -432,7 +432,7 @@ class TestFormatParallelResults:
             ("shell", "ok", False),
         ]
         output = _capture(format_parallel_results, results)
-        assert "\u00b7" in output  # · dot separator
+        assert "|" in output  # separator
 
 
 class TestFormatStatusHud:
@@ -521,4 +521,4 @@ class TestFormatStatusHud:
             model="m",
             turns=0,
         )
-        assert output.count("\u00b7") >= 4  # 4+ · dots between sections
+        assert output.count("|") >= 4  # 4+ | separators

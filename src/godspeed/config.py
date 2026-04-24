@@ -178,6 +178,13 @@ class GodspeedSettings(BaseSettings):
     # Hooks — shell commands at lifecycle events
     hooks: list[dict[str, Any]] = Field(default_factory=list)
 
+    # GitHub Actions — workflow configuration
+    # {
+    #   "workflows": [{"name": "Review", "on": ["pull_request"], "runs-on": "ubuntu-latest"}],
+    #   "token": "${{ secrets.GITHUB_TOKEN }}",
+    # }
+    github_actions: dict[str, Any] = Field(default_factory=dict)
+
     # Agent behavior
     parallel_tool_calls: bool = True
     auto_fix_retries: int = 3  # lint-fix retry rounds (0 = one-shot, no auto-fix)

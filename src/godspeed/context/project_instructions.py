@@ -30,6 +30,7 @@ INSTRUCTION_FILES = (
     ".cursorrules",
     "MEMORY.md",
     "SESSION_SUMMARY.md",
+    "SKILL.md",
 )
 
 

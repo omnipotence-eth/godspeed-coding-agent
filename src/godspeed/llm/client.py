@@ -420,6 +420,7 @@ class LLMClient:
         "o3",
         "o4",
         "deepseek",
+        "xai",  # xAI Grok models support prompt caching
     )
     # Providers that reject or ignore ``cache_control`` noisily — skip.
     _CACHING_DENYLIST: tuple[str, ...] = (

@@ -268,15 +268,28 @@ class Commands:
                         )
         else:
             model = self._llm_client.model
-            format_info(f"Active model: [{BOLD_PRIMARY}]{model}[/{BOLD_PRIMARY}]")
-            if self._llm_client.fallback_models:
-                fallbacks = ", ".join(self._llm_client.fallback_models)
-                console.print(f"    [{DIM}]Fallbacks: {fallbacks}[/{DIM}]")
-
             from godspeed.config import GodspeedSettings
 
             presets = GodspeedSettings.MODEL_PRESETS
-            console.print(f"    [{DIM}]Presets: {', '.join(presets.keys())}[/{DIM}]")
+            matched_preset = ""
+            for pname, pmodel in presets.items():
+                if pmodel == model:
+                    matched_preset = pname
+                    break
+
+            if matched_preset:
+                format_info(
+                    f"Active model: [{BOLD_PRIMARY}]{model}[/{BOLD_PRIMARY}]"
+                    f"  [{DIM}](preset: {matched_preset})[/{DIM}]"
+                )
+            else:
+                format_info(f"Active model: [{BOLD_PRIMARY}]{model}[/{BOLD_PRIMARY}]")
+            if self._llm_client.fallback_models:
+                fallbacks = ", ".join(self._llm_client.fallback_models)
+                console.print(f"    [{DIM}]Fallbacks: {fallbacks}[/{DIM}]")
+            console.print(
+                f"    [{DIM}]Presets: {', '.join(presets.keys())}[/{DIM}]"
+            )
         return CommandResult(handled=True)
 
     def _cmd_clear(self, _args: str = "") -> CommandResult:

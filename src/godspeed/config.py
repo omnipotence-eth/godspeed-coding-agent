@@ -144,16 +144,16 @@ class GodspeedSettings(BaseSettings):
     # "cloud" and "frontier" are API-based (no local VRAM needed).
     # "fast", "balanced", "quality" are local Ollama models.
     MODEL_PRESETS: ClassVar[dict[str, str]] = {
-        "fast": "ollama/rnj-1:8b",                      # Free, local, 5.1GB, #1 tool-calling in class
-        "balanced": "ollama/qwen2.5-coder:14b",          # Free, local, 9GB, strong all-around
-        "quality": "ollama/devstral-small-2:24b",        # Free, local, 15GB, 65.8% SWE-bench Verified
-        "cloud": "nvidia_nim/qwen/qwen3.5-397b-a17b",   # NVIDIA NIM free tier — no local GPU needed
-        "frontier": "claude-sonnet-4-20250514",          # Claude — best quality, paid API
+        "fast": "ollama/rnj-1:8b",
+        "balanced": "ollama/qwen2.5-coder:14b",
+        "quality": "ollama/devstral-small-2:24b",
+        "cloud": "nvidia_nim/qwen/qwen3.5-397b-a17b",
+        "frontier": "claude-sonnet-4-20250514",
     }
 
-    # LLM — default to free local Ollama model; override via settings.yaml,
-    # GODSPEED_MODEL env var, or `godspeed -m <model>`
-    model: str = "ollama/rnj-1:8b"
+    # LLM — default to cloud Qwen 3.5 397B (NVIDIA NIM free tier).
+    # Override via settings.yaml, GODSPEED_MODEL env var, or -m flag.
+    model: str = "nvidia_nim/qwen/qwen3.5-397b-a17b"
     fallback_models: list[str] = Field(default_factory=list)
 
     # Paths

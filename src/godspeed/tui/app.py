@@ -38,7 +38,16 @@ from godspeed.tui.output import (
     format_tool_result,
     format_welcome,
 )
-from godspeed.tui.theme import BOLD_WARNING, DIM, ERROR, MUTED, icon_prompt
+from godspeed.tui.theme import (
+    BOLD_PRIMARY,
+    BOLD_WARNING,
+    DIM,
+    ERROR,
+    MUTED,
+    PROMPT_ICON,
+    icon_prompt,
+    styled,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -153,6 +162,36 @@ class TUIApp:
         self._diff_reviewer = _InteractiveDiffReviewer()
         tool_context.diff_reviewer = self._diff_reviewer
 
+    def _get_permission_mode(self) -> str:
+        """Return the current permission mode string for display."""
+        if self._permission_engine is None:
+            return "normal"
+        if getattr(self._permission_engine, "plan_mode", False):
+            return "plan"
+        # Check for strict/yolo mode
+        deny_count = len(getattr(self._permission_engine, "deny_rules", []))
+        has_wildcard_deny = any(
+            r.pattern in ("*", "Shell(*)", "FileWrite(*)", "FileEdit(*)")
+            for r in getattr(self._permission_engine, "deny_rules", [])
+        )
+        if deny_count > 5 or has_wildcard_deny:
+            return "strict"
+        # If all tools are auto-approved (no ask rules), it's "yolo"
+        ask_count = len(getattr(self._permission_engine, "ask_rules", []))
+        if ask_count == 0 and deny_count == 0:
+            return "yolo"
+        return "normal"
+
+    def _get_prompt_state(self) -> str:
+        """Return the prompt state string for icon_prompt()."""
+        if self._permission_engine is not None and getattr(
+            self._permission_engine, "plan_mode", False
+        ):
+            return "plan"
+        if self._pause_event is not None and not self._pause_event.is_set():
+            return "paused"
+        return ""
+
     async def run(self) -> None:
         """Run the main TUI loop."""
         start_time = time.monotonic()
@@ -174,6 +213,9 @@ class TUIApp:
             tools=tool_names,
             deny_rules=deny_rules,
             audit_enabled=self._audit_trail is not None,
+            permission_mode=self._get_permission_mode(),
+            context_limit=self._conversation.max_tokens,
+            fallback_models=self._llm_client.fallback_models,
         )
 
         try:
@@ -196,7 +238,7 @@ class TUIApp:
                 user_input = await asyncio.get_event_loop().run_in_executor(
                     None,
                     lambda: session.prompt(
-                        HTML(icon_prompt()),
+                        HTML(icon_prompt(self._get_prompt_state())),
                     ),
                 )
             except KeyboardInterrupt:
@@ -214,6 +256,15 @@ class TUIApp:
                 if cmd_result.should_quit:
                     break
                 continue
+
+            # Echo user message with turn marker
+            self._turn_count += 1
+            console.print()
+            console.print(
+                f"  {styled(str(self._turn_count), MUTED)}"
+                f" {styled(PROMPT_ICON, BOLD_PRIMARY)}"
+                f" {user_input.strip()}"
+            )
 
             # Parse @-mentions from input and resolve to content blocks
             effective_input = user_input
@@ -376,7 +427,26 @@ class TUIApp:
                 # so it appears as the last line of the turn before the
                 # next prompt. Uses LLMClient's own accumulators so no
                 # session-state plumbing needed.
-                self._turn_count += 1
+                context_pct = (
+                    self._conversation.token_count / self._conversation.max_tokens * 100
+                    if self._conversation.max_tokens > 0
+                    else 0
+                )
+                preset_tag = ""
+                from godspeed.config import GodspeedSettings
+                for pname, pmodel in GodspeedSettings.MODEL_PRESETS.items():
+                    if pmodel == self._llm_client.model:
+                        preset_tag = pname
+                        break
+                perm_mode = ""
+                if self._permission_engine is not None:
+                    if getattr(self._permission_engine, "plan_mode", False):
+                        perm_mode = "plan"
+                    else:
+                        perm_mode = getattr(
+                            self._permission_engine, "_mode", "normal"
+                        )
+                max_iters = self._commands.max_iterations or 0
                 format_status_hud(
                     input_tokens=self._llm_client.total_input_tokens,
                     output_tokens=self._llm_client.total_output_tokens,
@@ -384,6 +454,10 @@ class TUIApp:
                     model=self._llm_client.model,
                     turns=self._turn_count,
                     budget_usd=getattr(self._llm_client, "max_cost_usd", 0.0),
+                    max_iterations=max_iters,
+                    context_pct=context_pct,
+                    permission_mode=perm_mode,
+                    preset=preset_tag,
                 )
 
         # Session summary on exit
@@ -395,6 +469,8 @@ class TUIApp:
             tool_calls=tool_calls,
             tool_errors=tool_errors,
             tool_denied=tool_denied,
+            model=self._llm_client.model,
+            session_id=self._session_id,
         )
 
         if self._audit_trail is not None:
@@ -430,8 +506,6 @@ class _ThinkingSpinner:
         self._started = False
 
     def _make_label(self, text: str) -> str:
-        from godspeed.tui.theme import PROMPT_ICON
-
         return f"[{MUTED}]{PROMPT_ICON} {text}[/{MUTED}]"
 
     def start(self) -> None:

@@ -438,6 +438,30 @@ def _build_tool_registry(tool_set: str = "full") -> tuple:
     except ImportError:
         pass
 
+    try:
+        from godspeed.tools.ai_debug import AIDebugTool, StackTraceTool
+
+        tools.append(AIDebugTool())
+        tools.append(StackTraceTool())
+    except ImportError:
+        pass
+
+    try:
+        from godspeed.tools.profiler import ProfileTool, MemoryProfileTool
+
+        tools.append(ProfileTool())
+        tools.append(MemoryProfileTool())
+    except ImportError:
+        pass
+
+    try:
+        from godspeed.tools.doc_generator import DocGeneratorTool, OpenAPITool
+
+        tools.append(DocGeneratorTool())
+        tools.append(OpenAPITool())
+    except ImportError:
+        pass
+
     for tool in tools:
         if allowed is not None and tool.name not in allowed:
             continue

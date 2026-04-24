@@ -132,7 +132,6 @@ class MemoryStore:
         Analyzes recent actions and stores important patterns.
         Returns list of created memory IDs.
         """
-        import time
 
         created = []
 

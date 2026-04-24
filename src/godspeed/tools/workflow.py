@@ -124,7 +124,6 @@ class WorkflowStore:
     """Store and manage workflows."""
 
     def __init__(self) -> None:
-        import json
 
         self.db_path = Path.home() / ".godspeed" / "workflows"
         self.db_path.mkdir(parents=True, exist_ok=True)

@@ -278,8 +278,8 @@ def discover_mcp_servers(project_dir: str | None = None) -> list[MCPServerConfig
 
     Returns list of discovered server configurations.
     """
-    import os
     from pathlib import Path
+
     import yaml
 
     discovered: list[MCPServerConfig] = []

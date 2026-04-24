@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import base64
 from typing import Any
 
 from godspeed.tools.base import RiskLevel, Tool, ToolContext, ToolResult
@@ -60,17 +59,16 @@ class VoiceInputTool(Tool):
         duration: int = 10,
     ) -> ToolResult:
         """Execute voice input action."""
-        import subprocess
-        import tempfile
         import os
+        import tempfile
 
         if action == "status":
             return ToolResult.ok("Voice input ready. Use action=start to begin recording.")
 
         elif action == "start":
             try:
-                import sounddevice as sd
                 import numpy as np
+                import sounddevice as sd
 
                 # Record audio
                 audio_data = []

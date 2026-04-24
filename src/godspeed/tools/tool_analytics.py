@@ -64,8 +64,6 @@ class ToolAnalyticsTool(Tool):
         limit: int = 10,
     ) -> ToolResult:
         """Execute analytics action."""
-        from collections import Counter
-        import time
 
         analytics = _get_analytics()
 

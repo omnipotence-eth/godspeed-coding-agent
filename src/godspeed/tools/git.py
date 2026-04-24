@@ -228,7 +228,7 @@ class GitTool(Tool):
         if branch == base:
             return ToolResult.failure(f"Cannot create PR: already on '{base}' branch")
 
-        body_arg = body or f"Automated PR from godspeed-coding-agent"
+        body_arg = body or "Automated PR from godspeed-coding-agent"
         try:
             result = repo.git.config("--get", "github.user")
         except GitCommandError:

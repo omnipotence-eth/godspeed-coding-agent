@@ -47,7 +47,7 @@ class ExtendedThinking:
         ]
 
         if context:
-            trace.append(f"### Context")
+            trace.append("### Context")
             for k, v in context.items():
                 trace.append(f"- {k}: {v}")
 

@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
 from enum import Enum
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -84,7 +84,6 @@ class HookTool(Tool):
 
     async def execute(self, tool_context, action, hook_type=None, handler_code=None):
         """Manage hooks."""
-        from godspeed.tools.base import ToolResult
 
         if action == "list":
             hooks = []
@@ -96,4 +95,3 @@ class HookTool(Tool):
         return ToolResult.failure(f"Unknown action: {action}")
 
 
-from godspeed.tools.base import RiskLevel, Tool, ToolContext, ToolResult

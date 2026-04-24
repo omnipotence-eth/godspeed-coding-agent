@@ -288,8 +288,8 @@ def _build_tool_registry(tool_set: str = "full") -> tuple:
 
     allowed = get_allowed_tool_names(tool_set)
     from godspeed.tools.base import RiskLevel
-    from godspeed.tools.file_edit import FileEditTool
     from godspeed.tools.batch_edit import BatchEditTool
+    from godspeed.tools.file_edit import FileEditTool
     from godspeed.tools.file_read import FileReadTool
     from godspeed.tools.file_write import FileWriteTool
     from godspeed.tools.registry import ToolRegistry
@@ -420,6 +420,21 @@ def _build_tool_registry(tool_set: str = "full") -> tuple:
         from godspeed.tools.voice_input import VoiceInputTool
 
         tools.append(VoiceInputTool())
+    except ImportError:
+        pass
+
+    try:
+        from godspeed.tools.code_lens import CodeLensTool, InlineLensTool
+
+        tools.append(CodeLensTool())
+        tools.append(InlineLensTool())
+    except ImportError:
+        pass
+
+    try:
+        from godspeed.tools.project_scaffold import ProjectScaffoldTool
+
+        tools.append(ProjectScaffoldTool())
     except ImportError:
         pass
 

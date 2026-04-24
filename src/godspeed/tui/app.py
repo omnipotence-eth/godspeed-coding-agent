@@ -518,8 +518,12 @@ class _InteractivePermissionProxy:
         # Show the permission prompt with contextual detail
         args = getattr(tool_call, "arguments", None) or {}
         format_permission_prompt(tool_call.tool_name, decision.reason, arguments=args)
+        
+        # Force a newline to ensure prompt is visible before input
+        console.print()
         try:
-            answer = console.input(f"[{BOLD_WARNING}]  > [/{BOLD_WARNING}]").strip().lower()
+            # Use input() directly instead of console.input() for better TTY handling
+            answer = input("  [Y/n/a]: ").strip().lower()
         except (KeyboardInterrupt, EOFError):
             answer = "n"
 
@@ -553,7 +557,7 @@ class _InteractivePermissionProxy:
         )
         console.print(f"  [{ACCENT}]Add to permanent allow rules? (y/n)[/{ACCENT}]")
         try:
-            answer = console.input(f"[{BOLD_WARNING}]  > [/{BOLD_WARNING}]").strip().lower()
+            answer = input("  [Y/n]: ").strip().lower()
         except (KeyboardInterrupt, EOFError):
             answer = "n"
 

@@ -14,6 +14,9 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_GLOBAL_DIR = Path.home() / ".godspeed"
 
+_PERMISSION_MODES = ("strict", "normal", "yolo")
+_SANDBOX_MODES = ("none", "docker")
+
 # Model context windows — used for model-aware compaction prompts.
 # Keys are prefixes matched against the model string.
 MODEL_CONTEXT_WINDOWS: dict[str, int] = {
@@ -137,17 +140,20 @@ class ContextSettings(BaseSettings):
 class GodspeedSettings(BaseSettings):
     """Root configuration for Godspeed."""
 
-    # Model presets for speed + quality balance
+    # Model presets for speed + quality balance.
+    # "cloud" and "frontier" are API-based (no local VRAM needed).
+    # "fast", "balanced", "quality" are local Ollama models.
     MODEL_PRESETS: ClassVar[dict[str, str]] = {
-        "fast": "ollama/qwen3:4b",  # Free, local, fast
-        "balanced": "ollama/qwen3:14b",  # Free, local, better quality
-        "quality": "nvidia_nim/qwen/qwen3.5-397b-a17b",  # NVIDIA NIM (free-tier) — best on RTX
-        "frontier": "claude-sonnet-4-20250514",  # Claude — best quality, paid
+        "fast": "ollama/rnj-1:8b",
+        "balanced": "ollama/qwen2.5-coder:14b",
+        "quality": "ollama/devstral-small-2:24b",
+        "cloud": "nvidia_nim/qwen/qwen3.5-397b-a17b",
+        "frontier": "claude-sonnet-4-20250514",
     }
 
-    # LLM — default to free local Ollama model; override via settings.yaml,
-    # GODSPEED_MODEL env var, or `godspeed -m <model>`
-    model: str = "ollama/qwen3:4b"
+    # LLM — default to cloud Qwen 3.5 397B (NVIDIA NIM free tier).
+    # Override via settings.yaml, GODSPEED_MODEL env var, or -m flag.
+    model: str = "nvidia_nim/qwen/qwen3.5-397b-a17b"
     fallback_models: list[str] = Field(default_factory=list)
 
     # Paths
@@ -241,6 +247,62 @@ class GodspeedSettings(BaseSettings):
     audit: AuditSettings = Field(default_factory=AuditSettings)
     context: ContextSettings = Field(default_factory=ContextSettings)
 
+    @field_validator("permission_mode")
+    @classmethod
+    def validate_permission_mode(cls, v: str) -> str:
+        if v not in _PERMISSION_MODES:
+            msg = f"permission_mode must be one of {_PERMISSION_MODES}, got {v!r}"
+            raise ValueError(msg)
+        return v
+
+    @field_validator("model")
+    @classmethod
+    def validate_model(cls, v: str) -> str:
+        if not v or not v.strip():
+            msg = "model must be a non-empty string"
+            raise ValueError(msg)
+        return v.strip()
+
+    @field_validator("sandbox")
+    @classmethod
+    def validate_sandbox(cls, v: str) -> str:
+        if v not in _SANDBOX_MODES:
+            msg = f"sandbox must be one of {_SANDBOX_MODES}, got {v!r}"
+            raise ValueError(msg)
+        return v
+
+    @field_validator("auto_fix_retries")
+    @classmethod
+    def validate_auto_fix_retries(cls, v: int) -> int:
+        if v < 0:
+            msg = f"auto_fix_retries must be >= 0, got {v}"
+            raise ValueError(msg)
+        return v
+
+    @field_validator("thinking_budget")
+    @classmethod
+    def validate_thinking_budget(cls, v: int) -> int:
+        if v < 0:
+            msg = f"thinking_budget must be >= 0, got {v}"
+            raise ValueError(msg)
+        return v
+
+    @field_validator("max_cost_usd")
+    @classmethod
+    def validate_max_cost_usd(cls, v: float) -> float:
+        if v < 0.0:
+            msg = f"max_cost_usd must be >= 0, got {v}"
+            raise ValueError(msg)
+        return v
+
+    @field_validator("auto_commit_threshold")
+    @classmethod
+    def validate_auto_commit_threshold(cls, v: int) -> int:
+        if v < 1:
+            msg = f"auto_commit_threshold must be >= 1, got {v}"
+            raise ValueError(msg)
+        return v
+
     model_config = SettingsConfigDict(
         env_prefix="GODSPEED_",
         env_file=".env",
@@ -282,6 +344,30 @@ class GodspeedSettings(BaseSettings):
             self.routing.setdefault("architect", self.architect_model)
         return self
 
+    @model_validator(mode="after")
+    def validate_collections(self) -> GodspeedSettings:
+        """Validate hooks and mcp_servers entries have required fields."""
+        for hook in self.hooks:
+            if not isinstance(hook, dict):
+                logger.warning("Skipping non-dict hook entry: %s", hook)
+                continue
+            if not hook.get("command"):
+                logger.warning("Hook entry missing required 'command' key: %s", hook)
+
+        for server in self.mcp_servers:
+            if not isinstance(server, dict):
+                logger.warning("Skipping non-dict MCP server entry: %s", server)
+                continue
+            if not server.get("name"):
+                logger.warning("MCP server entry missing required 'name' key: %s", server)
+
+        # Validate routing model names are non-empty
+        for task_type, model_name in self.routing.items():
+            if not model_name or not model_name.strip():
+                logger.warning("Empty model name in routing[%r] — ignoring", task_type)
+
+        return self
+
     @model_validator(mode="before")
     @classmethod
     def load_yaml_configs(cls, data: dict[str, Any]) -> dict[str, Any]:
@@ -290,17 +376,25 @@ class GodspeedSettings(BaseSettings):
 
         # Load global config
         global_config = DEFAULT_GLOBAL_DIR / "settings.yaml"
-        if global_config.exists():
-            with open(global_config) as f:
-                global_data = yaml.safe_load(f) or {}
-            merged.update(global_data)
+        if global_config.exists() and global_config.is_file():
+            try:
+                with open(global_config) as f:
+                    global_data = yaml.safe_load(f) or {}
+                if isinstance(global_data, dict):
+                    merged.update(global_data)
+            except yaml.YAMLError as exc:
+                logger.warning("Malformed global settings.yaml: %s — skipping", exc)
 
         # Load project config (overrides global, except deny rules which merge)
         project_config = DEFAULT_PROJECT_DIR / "settings.yaml"
-        if project_config.exists():
-            with open(project_config) as f:
-                project_data = yaml.safe_load(f) or {}
-            _merge_configs(merged, project_data)
+        if project_config.exists() and project_config.is_file():
+            try:
+                with open(project_config) as f:
+                    project_data = yaml.safe_load(f) or {}
+                if isinstance(project_data, dict):
+                    _merge_configs(merged, project_data)
+            except yaml.YAMLError as exc:
+                logger.warning("Malformed project settings.yaml: %s — skipping", exc)
 
         # Env vars / constructor args take final precedence
         merged.update({k: v for k, v in data.items() if v is not None})
@@ -341,15 +435,29 @@ def append_permission_rule(
         settings_path = DEFAULT_GLOBAL_DIR / "settings.yaml"
 
     try:
-        if settings_path.exists():
+        if settings_path.exists() and settings_path.is_file():
             with open(settings_path, encoding="utf-8") as f:
-                data = yaml.safe_load(f) or {}
+                try:
+                    data = yaml.safe_load(f) or {}
+                except yaml.YAMLError as exc:
+                    logger.warning("Malformed %s: %s — rebuilding", settings_path, exc)
+                    data = {}
         else:
             settings_path.parent.mkdir(parents=True, exist_ok=True)
             data = {}
 
+        if not isinstance(data, dict):
+            data = {}
+
         permissions = data.setdefault("permissions", {})
+        if not isinstance(permissions, dict):
+            permissions = {}
+            data["permissions"] = permissions
         rule_list = permissions.setdefault(action, [])
+        if not isinstance(rule_list, list):
+            logger.warning("Corrupted rule list for action=%s — rebuilding", action)
+            rule_list = []
+            permissions[action] = rule_list
 
         if pattern not in rule_list:
             rule_list.append(pattern)

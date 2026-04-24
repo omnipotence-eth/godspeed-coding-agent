@@ -123,6 +123,8 @@ class Commands:
         self._handlers["/sessions"] = self._cmd_sessions
         self._handlers["/skill"] = self._cmd_skill
         self._handlers["/actions"] = self._cmd_actions
+        self._handlers["/scan"] = self._cmd_scan
+        self._handlers["/models"] = self._cmd_models
 
     # External references — set after Commands init
     _task_store: Any | None = None
@@ -164,7 +166,9 @@ class Commands:
             (
                 "Session",
                 [
-                    ("/model [name]", "Show or switch the active model"),
+                    ("/model [name|preset]", "Show or switch the active model (supports presets)"),
+                    ("/models", "List installed Ollama models and presets"),
+                    ("/scan", "Scan hardware and recommend optimal models"),
                     ("/clear", "Clear conversation history"),
                     ("/stats", "Show token usage and estimated cost"),
                     ("/export [name]", "Export conversation as markdown"),
@@ -217,21 +221,73 @@ class Commands:
         return CommandResult(handled=True)
 
     def _cmd_model(self, args: str = "") -> CommandResult:
-        """Show or switch the active model."""
-        if args.strip():
-            old_model = self._llm_client.model
-            self._llm_client.model = args.strip()
-            new_model = self._llm_client.model
-            format_success(
-                f"Model switched: [{MUTED}]{old_model}[/{MUTED}]"
-                f" -> [{BOLD_PRIMARY}]{new_model}[/{BOLD_PRIMARY}]"
-            )
+        """Show or switch the active model. Supports preset names."""
+        from godspeed.config import GodspeedSettings
+
+        arg = args.strip()
+
+        if arg:
+            preset_models = GodspeedSettings.MODEL_PRESETS
+            resolved = preset_models.get(arg.lower())
+
+            if resolved:
+                old_model = self._llm_client.model
+                self._llm_client.model = resolved
+                format_success(
+                    f"Model switched: [{MUTED}]{old_model}[/{MUTED}]"
+                    f" -> [{BOLD_PRIMARY}]{resolved}[/{BOLD_PRIMARY}]"
+                    f"  [{DIM}](preset: {arg.lower()})[/{DIM}]"
+                )
+
+                if resolved.lower().startswith("ollama"):
+                    from godspeed.tools.ollama_manager import is_model_installed
+
+                    model_tag = resolved.removeprefix("ollama/")
+                    if not is_model_installed(model_tag):
+                        format_warning(
+                            f"Model {model_tag!r} is not installed locally. "
+                            f"Pull it with: godspeed ollama pull {model_tag}"
+                        )
+            else:
+                old_model = self._llm_client.model
+                self._llm_client.model = arg
+                new_model = self._llm_client.model
+                format_success(
+                    f"Model switched: [{MUTED}]{old_model}[/{MUTED}]"
+                    f" -> [{BOLD_PRIMARY}]{new_model}[/{BOLD_PRIMARY}]"
+                )
+
+                if arg.lower().startswith("ollama/"):
+                    from godspeed.tools.ollama_manager import is_model_installed
+
+                    model_tag = arg.removeprefix("ollama/")
+                    if not is_model_installed(model_tag):
+                        format_warning(
+                            f"Model {model_tag!r} is not installed locally. "
+                            f"Pull it with: godspeed ollama pull {model_tag}"
+                        )
         else:
             model = self._llm_client.model
-            format_info(f"Active model: [{BOLD_PRIMARY}]{model}[/{BOLD_PRIMARY}]")
+            from godspeed.config import GodspeedSettings
+
+            presets = GodspeedSettings.MODEL_PRESETS
+            matched_preset = ""
+            for pname, pmodel in presets.items():
+                if pmodel == model:
+                    matched_preset = pname
+                    break
+
+            if matched_preset:
+                format_info(
+                    f"Active model: [{BOLD_PRIMARY}]{model}[/{BOLD_PRIMARY}]"
+                    f"  [{DIM}](preset: {matched_preset})[/{DIM}]"
+                )
+            else:
+                format_info(f"Active model: [{BOLD_PRIMARY}]{model}[/{BOLD_PRIMARY}]")
             if self._llm_client.fallback_models:
                 fallbacks = ", ".join(self._llm_client.fallback_models)
                 console.print(f"    [{DIM}]Fallbacks: {fallbacks}[/{DIM}]")
+            console.print(f"    [{DIM}]Presets: {', '.join(presets.keys())}[/{DIM}]")
         return CommandResult(handled=True)
 
     def _cmd_clear(self, _args: str = "") -> CommandResult:
@@ -1244,4 +1300,62 @@ Describe what this skill does here.
             format_error(f"Failed to list workflows: {e}")
             return CommandResult(handled=True)
 
+        return CommandResult(handled=True)
+
+    def _cmd_scan(self, _args: str = "") -> CommandResult:
+        """Scan hardware and recommend optimal models per preset tier."""
+        from godspeed.evolution.hardware import format_machine_report
+
+        report = format_machine_report()
+        console.print(report)
+        return CommandResult(handled=True)
+
+    def _cmd_models(self, _args: str = "") -> CommandResult:
+        """List installed Ollama models and available presets."""
+        from rich.table import Table
+
+        from godspeed.config import GodspeedSettings
+        from godspeed.tools.ollama_manager import list_models
+
+        presets = GodspeedSettings.MODEL_PRESETS
+
+        preset_descriptions = {
+            "fast": "Local, low VRAM, fast (5.1GB)",
+            "balanced": "Local, medium VRAM, strong (9GB)",
+            "quality": "Local, high VRAM, best (15GB)",
+            "cloud": "NVIDIA NIM free tier, no GPU",
+            "frontier": "Claude, best quality, paid API",
+        }
+
+        table = Table(title="Model Presets", border_style=TABLE_BORDER, expand=False)
+        table.add_column("Preset", style=BOLD_PRIMARY)
+        table.add_column("Model", style=MUTED)
+        table.add_column("Description")
+
+        for name, model in presets.items():
+            desc = preset_descriptions.get(name, "")
+            table.add_row(name, model, desc)
+
+        console.print(table)
+
+        installed = list_models()
+        if installed:
+            console.print()
+            inst_table = Table(
+                title="Installed Ollama Models",
+                border_style=TABLE_BORDER,
+                expand=False,
+            )
+            inst_table.add_column("Name", style=BOLD_PRIMARY)
+            inst_table.add_column("Size", justify="right")
+
+            for m in sorted(installed, key=lambda x: x.name):
+                inst_table.add_row(m.name, f"{m.size_gb:.1f} GB")
+
+            console.print(inst_table)
+        else:
+            console.print(f"\n  [{DIM}]No local Ollama models found.[/{DIM}]")
+            console.print(f"  [{DIM}]Pull one with: godspeed ollama pull rnj-1:8b[/{DIM}]")
+
+        console.print(f"\n  [{DIM}]Switch with /model <preset> or /model <model_name>[/{DIM}]")
         return CommandResult(handled=True)

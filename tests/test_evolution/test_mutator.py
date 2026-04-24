@@ -347,14 +347,14 @@ trigger: read-edit
 
 class TestModelConfig:
     def test_default_model_auto_detects(self) -> None:
-        with patch("godspeed.evolution.hardware.detect_vram_mb", return_value=14000):
+        with patch("godspeed.evolution.hardware._get_cached_vram", return_value=14000):
             engine = EvolutionEngine()
-            assert engine.model == "ollama/gemma3:12b"
+            assert engine.model == "ollama/devstral-small-2:24b"
 
     def test_default_model_low_vram(self) -> None:
-        with patch("godspeed.evolution.hardware.detect_vram_mb", return_value=4000):
+        with patch("godspeed.evolution.hardware._get_cached_vram", return_value=5500):
             engine = EvolutionEngine()
-            assert engine.model == "ollama/qwen2.5:3b"
+            assert engine.model == "ollama/rnj-1:8b"
 
     def test_custom_model(self) -> None:
         engine = EvolutionEngine(model="anthropic/claude-sonnet-4-20250514")

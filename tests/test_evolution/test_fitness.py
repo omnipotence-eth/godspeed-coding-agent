@@ -286,14 +286,14 @@ class TestLengthPenalty:
 
 class TestModelConfig:
     def test_default_model_auto_detects(self) -> None:
-        with patch("godspeed.evolution.hardware.detect_vram_mb", return_value=14000):
+        with patch("godspeed.evolution.hardware._get_cached_vram", return_value=14000):
             e = FitnessEvaluator()
-            assert e.judge_model == "ollama/gemma3:12b"
+            assert e.judge_model == "ollama/devstral-small-2:24b"
 
     def test_default_model_low_vram(self) -> None:
-        with patch("godspeed.evolution.hardware.detect_vram_mb", return_value=4000):
+        with patch("godspeed.evolution.hardware._get_cached_vram", return_value=5500):
             e = FitnessEvaluator()
-            assert e.judge_model == "ollama/qwen2.5:3b"
+            assert e.judge_model == "ollama/rnj-1:8b"
 
     def test_custom_model(self) -> None:
         e = FitnessEvaluator(judge_model="anthropic/claude-sonnet-4-20250514")

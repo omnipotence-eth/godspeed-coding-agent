@@ -6,11 +6,16 @@ using a configurable LLM judge (default: Ollama for $0 cost).
 
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 import json
 import logging
+from typing import TYPE_CHECKING
 
 from godspeed.evolution.mutator import MutationCandidate
+
+if TYPE_CHECKING:
+    from godspeed.llm.client import LLMClient
 
 logger = logging.getLogger(__name__)
 
@@ -83,10 +88,11 @@ Return ONLY a JSON object with these exact keys:
 class FitnessEvaluator:
     """Score mutation candidates using LLM-as-judge."""
 
-    def __init__(self, judge_model: str = "") -> None:
+    def __init__(self, judge_model: str = "", llm_client: LLMClient | None = None) -> None:
         from godspeed.evolution.hardware import select_evolution_model
 
         self._judge_model = select_evolution_model(judge_model)
+        self._llm_client = llm_client
 
     @property
     def judge_model(self) -> str:
@@ -108,17 +114,15 @@ class FitnessEvaluator:
             FitnessScore with multi-dimensional scores.
         """
         cases = test_cases or [f"Evaluate {candidate.artifact_type} for {candidate.artifact_id}"]
-        verdicts: list[JudgeVerdict] = []
 
-        for case in cases:
+        # Run judge calls concurrently for all test cases
+        async def judge_case(case: str) -> JudgeVerdict | None:
             try:
-                verdict = await self._judge(
+                return await self._judge(
                     purpose=case,
                     original=candidate.original,
                     mutated=candidate.mutated,
                 )
-                if verdict is not None:
-                    verdicts.append(verdict)
             except Exception:
                 logger.warning(
                     "Judge call failed case=%s artifact=%s",
@@ -126,6 +130,10 @@ class FitnessEvaluator:
                     candidate.artifact_id,
                     exc_info=True,
                 )
+                return None
+
+        verdicts_raw = await asyncio.gather(*(judge_case(c) for c in cases))
+        verdicts = [v for v in verdicts_raw if v is not None]
 
         if not verdicts:
             return FitnessScore(
@@ -160,7 +168,12 @@ class FitnessEvaluator:
             return None
 
     async def _call_llm(self, prompt: str) -> str:
-        """Call the configured judge LLM."""
+        """Call the configured judge LLM. Reuses client when provided."""
+        if self._llm_client is not None:
+            messages = [{"role": "user", "content": prompt}]
+            response = await self._llm_client.chat(messages)
+            return response.content
+
         from godspeed.llm.client import LLMClient
 
         client = LLMClient(model=self._judge_model)
@@ -209,7 +222,11 @@ class FitnessEvaluator:
             return None
 
         def _clamp(val: float) -> float:
-            return max(0.0, min(10.0, float(val)))
+            try:
+                return max(0.0, min(10.0, float(val)))
+            except (ValueError, TypeError):
+                logger.debug("Non-numeric judge score value: %s", val)
+                return 0.0
 
         winner = str(data["winner"]).lower()
         if winner not in ("a", "b", "tie"):

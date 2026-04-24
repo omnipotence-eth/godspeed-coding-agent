@@ -8,6 +8,8 @@ Ollama and local models are always $0.
 from __future__ import annotations
 
 import logging
+import math
+from functools import lru_cache
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +45,31 @@ _MODEL_PRICING: dict[str, tuple[float, float]] = {
 _FREE_PREFIXES = ("ollama/", "ollama_chat/", "lm_studio/", "llamacpp/")
 
 
+def _is_free_provider(model_lower: str) -> bool:
+    """Check if a model is from a free/local provider."""
+    return any(model_lower.startswith(prefix) for prefix in _FREE_PREFIXES)
+
+
+def _strip_provider_prefix(model_lower: str) -> str:
+    """Strip the provider prefix from a model name for pricing matching."""
+    return model_lower.split("/")[-1] if "/" in model_lower else model_lower
+
+
+@lru_cache(maxsize=64)
+def _get_model_pricing(name: str) -> tuple[float, float]:
+    """Get cached (input_price, output_price) per million tokens for a model name.
+
+    Returns (0.0, 0.0) for unknown models.
+    """
+    best_match = ""
+    best_pricing = (0.0, 0.0)
+    for prefix, pricing in _MODEL_PRICING.items():
+        if name.startswith(prefix) and len(prefix) > len(best_match):
+            best_match = prefix
+            best_pricing = pricing
+    return best_pricing
+
+
 def estimate_cost(
     model: str,
     input_tokens: int,
@@ -51,29 +78,28 @@ def estimate_cost(
     """Estimate the cost of an LLM call in USD.
 
     Returns 0.0 for local/free models or unknown pricing.
+    Negative token counts are clamped to 0.
     """
+    if input_tokens < 0:
+        input_tokens = 0
+    if output_tokens < 0:
+        output_tokens = 0
+
     model_lower = model.lower()
 
     # Free local models
-    if any(model_lower.startswith(prefix) for prefix in _FREE_PREFIXES):
+    if _is_free_provider(model_lower):
         return 0.0
 
     # Strip provider prefix for matching (e.g., "anthropic/claude-sonnet..." → "claude-sonnet...")
-    name = model_lower.split("/")[-1] if "/" in model_lower else model_lower
+    name = _strip_provider_prefix(model_lower)
 
-    # Find the best matching pricing entry (longest prefix match)
-    best_match = ""
-    best_pricing = (0.0, 0.0)
-    for prefix, pricing in _MODEL_PRICING.items():
-        if name.startswith(prefix) and len(prefix) > len(best_match):
-            best_match = prefix
-            best_pricing = pricing
+    inp_price, out_price = _get_model_pricing(name)
+    if inp_price == 0.0 and out_price == 0.0 and name != "":
+        logger.debug("Unknown model pricing for %r — cost estimate is 0.0", model)
 
-    if not best_match:
-        return 0.0
-
-    input_cost = (input_tokens / 1_000_000) * best_pricing[0]
-    output_cost = (output_tokens / 1_000_000) * best_pricing[1]
+    input_cost = (input_tokens / 1_000_000) * inp_price
+    output_cost = (output_tokens / 1_000_000) * out_price
     return input_cost + output_cost
 
 
@@ -92,15 +118,16 @@ def get_cheapest_model(models: list[str]) -> str:
     for model_name in models:
         model_lower = model_name.lower()
         # Free models get cost 0
-        if any(model_lower.startswith(prefix) for prefix in _FREE_PREFIXES):
+        if _is_free_provider(model_lower):
             return model_name  # Can't beat free
 
-        name = model_lower.split("/")[-1] if "/" in model_lower else model_lower
-        total_cost = 0.0
-        for prefix, (inp, out) in _MODEL_PRICING.items():
-            if name.startswith(prefix):
-                total_cost = inp + out
-                break
+        name = _strip_provider_prefix(model_lower)
+        inp_price, out_price = _get_model_pricing(name)
+        total_cost = inp_price + out_price
+
+        if total_cost == 0.0 and inp_price == 0.0 and out_price == 0.0:
+            # Unknown pricing — skip, don't treat as free
+            continue
 
         if total_cost < best_cost:
             best_cost = total_cost
@@ -114,7 +141,7 @@ def format_cost(cost: float) -> str:
 
     Returns "free" for zero cost, otherwise "$X.XXXX".
     """
-    if cost == 0.0:
+    if math.isclose(cost, 0.0, abs_tol=1e-10):
         return "free"
     if cost < 0.01:
         return f"${cost:.4f}"

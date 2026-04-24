@@ -21,6 +21,9 @@ from godspeed.tui.theme import (
     BOLD_PRIMARY,
     BOLD_WARNING,
     BRAND_TAGLINE,
+    CTX_CRITICAL,
+    CTX_OK,
+    CTX_WARN,
     DECORATOR,
     DIM,
     ERROR,
@@ -230,8 +233,13 @@ def format_tool_result(name: str, result: str, is_error: bool = False) -> None:
             for line in lines:
                 console.print(f"    {styled(line, DIM)}")
         else:
-            # Long results: show summary
+            # Long results: show first 3 lines as preview + line count
+            preview_lines = lines[:3]
             console.print(f"  {marker} {tool}  {styled(f'({line_count} lines)', DIM)}")
+            for line in preview_lines:
+                console.print(f"    {styled(line, DIM)}")
+            if line_count > 3:
+                console.print(f"    {styled(f'... ({line_count - 3} more lines)', DIM)}")
 
 
 # =============================================================================
@@ -432,16 +440,18 @@ def format_status_hud(
     model: str,
     turns: int,
     budget_usd: float = 0.0,
+    max_iterations: int = 0,
+    context_pct: float = 0.0,
+    permission_mode: str = "",
+    preset: str = "",
 ) -> None:
     """Print a compact one-line session HUD after each completed turn.
 
     Example rendering:
-        · 1,234 in + 567 out · $0.0024 · qwen3.5-397b · 3 turns
+        | 1,234 in + 567 out (1,801) | ctx 34% | $0.0024 | qwen3.5-397b | 3/50 turns
 
-    When ``budget_usd`` > 0, the cost is shown as ``$X / $Y`` with a red
-    tint if we're within 20% of the hard limit. Callers pass the
-    already-known LLMClient totals so this function stays pure — no
-    coupling to session/app state.
+    Shows context window usage percentage, cost, model with preset tag,
+    iteration progress, and active permission mode.
     """
     total_tokens = input_tokens + output_tokens
     tokens_text = styled(f"{input_tokens:,} in + {output_tokens:,} out ({total_tokens:,})", DIM)
@@ -454,14 +464,44 @@ def format_status_hud(
     else:
         cost_text = styled(f"${cost_usd:.4f}", DIM)
 
-    # Short model label — drop provider prefix for readability when present
+    # Short model label — drop provider prefix for readability
     model_short = model.split("/", 1)[-1] if "/" in model else model
-    model_text = styled(model_short, MUTED)
+    if preset:
+        model_text = styled(f"{model_short} [{preset}]", MUTED)
+    else:
+        model_text = styled(model_short, MUTED)
 
-    turns_text = styled(f"{turns} turn{'s' if turns != 1 else ''}", DIM)
+    # Turn progress
+    if max_iterations > 0:
+        turns_text = styled(f"{turns}/{max_iterations} turns", DIM)
+    else:
+        turns_text = styled(f"{turns} turn{'s' if turns != 1 else ''}", DIM)
+
+    parts = [tokens_text]
+
+    # Context window usage
+    if context_pct > 0:
+        if context_pct >= 90:
+            ctx_style = CTX_CRITICAL
+        elif context_pct >= 70:
+            ctx_style = CTX_WARN
+        else:
+            ctx_style = CTX_OK
+        ctx_text = styled(f"ctx {context_pct:.0f}%", ctx_style)
+        parts.append(ctx_text)
+
+    parts.extend([cost_text, model_text, turns_text])
+
+    # Permission mode indicator
+    if permission_mode == "yolo":
+        parts.append(styled("YOLO", BOLD_WARNING))
+    elif permission_mode == "strict":
+        parts.append(styled("strict", WARNING))
+    elif permission_mode == "plan":
+        parts.append(styled("plan", "ansicyan"))
+
     sep = styled(SEPARATOR_DOT, MUTED)
-
-    console.print(f"  {sep} {tokens_text} {sep} {cost_text} {sep} {model_text} {sep} {turns_text}")
+    console.print(f"  {sep} {f' {sep} '.join(parts)}")
 
 
 def format_diff_review_prompt(
@@ -553,13 +593,17 @@ def format_welcome(
     tools: list[str] | None = None,
     deny_rules: list[str] | None = None,
     audit_enabled: bool = True,
+    permission_mode: str = "normal",
+    preset: str = "",
+    context_limit: int = 0,
+    fallback_models: list[str] | None = None,
 ) -> None:
-    """Display welcome banner — clean, minimal, function-first."""
+    """Display welcome banner with key session info, inspired by opencode/claude-code."""
     from godspeed import __version__
 
     console.print()
 
-    # Decorated branded header
+    # Branded header
     dec = styled(f"{DECORATOR}{DECORATOR}{DECORATOR}", MUTED)
     header = f"  {dec} {PROMPT_ICON} {brand(__version__)} {dec}"
     console.print(header)
@@ -569,16 +613,77 @@ def format_welcome(
     # Thin rule separator
     console.print(f"  {_rule()}")
 
-    # Key info — aligned, clean
-    audit_status = styled("enabled", SUCCESS) if audit_enabled else styled("disabled", ERROR)
-    console.print(f"  {styled('Model', MUTED)}    {model}")
+    # Model line — show full model name + preset tag + fallback chain
+    model_display = model
+    if preset:
+        model_display = f"{model} {styled(f'({preset})', DIM)}"
+    console.print(f"  {styled('Model', MUTED)}    {model_display}")
+    if fallback_models:
+        fallbacks_short = [m.split("/", 1)[-1] if "/" in m else m for m in fallback_models[:3]]
+        fallback_str = styled(f"{SEPARATOR_DOT} ".join(fallbacks_short), DIM)
+        console.print(f"  {styled('Fallbacks', MUTED)}  {fallback_str}")
+
+    # Context window
+    if context_limit > 0:
+        ctx_display = f"{context_limit:,} tokens"
+        console.print(f"  {styled('Context', MUTED)}   {ctx_display}")
+
+    # Project directory
     console.print(f"  {styled('Project', MUTED)}  {project_dir}")
+
+    # Permission mode — show prominently if not default
+    mode_labels = {
+        "normal": styled("normal", SUCCESS),
+        "strict": styled("strict", WARNING),
+        "yolo": styled("YOLO", BOLD_WARNING),
+        "plan": styled("plan", "ansicyan"),
+    }
+    mode_display = mode_labels.get(permission_mode, styled(permission_mode, DIM))
+    console.print(f"  {styled('Mode', MUTED)}      {mode_display}")
+
+    # Audit status
+    audit_status = styled("enabled", SUCCESS) if audit_enabled else styled("disabled", ERROR)
     console.print(f"  {styled('Audit', MUTED)}    {audit_status}")
 
+    # Tool count
+    if tools:
+        tool_count = len(tools)
+        console.print(
+            f"  {styled('Tools', MUTED)}    "
+            f"{tool_count} available"
+            f" {styled(f'({SEPARATOR_DOT} /permissions to see rules)', DIM)}"
+        )
+
+    # Deny rules summary
+    if deny_rules:
+        console.print(
+            f"  {styled('Denied', MUTED)}    "
+            f"{len(deny_rules)} rule{'s' if len(deny_rules) != 1 else ''}"
+        )
+
+    # Preset quick reference
+    from godspeed.config import GodspeedSettings
+
+    presets = GodspeedSettings.MODEL_PRESETS
+    console.print()
+    console.print(f"  {styled('Presets', MUTED)}   ", end="")
+    preset_parts = []
+    for name, preset_model in presets.items():
+        short = preset_model.split("/", 1)[-1] if "/" in preset_model else preset_model
+        if name == preset:
+            preset_parts.append(styled(f"{name}={short}*", BOLD_PRIMARY))
+        else:
+            preset_parts.append(styled(f"{name}={short}", DIM))
+    console.print(f" {SEPARATOR_DOT} ".join(preset_parts))
+
     # Hint line
+    console.print()
     console.print(
-        f"\n  {styled(f'Type /help for commands {SEPARATOR_DOT} /plan for read-only mode', DIM)}\n"
+        f"  {styled('/help', DIM)} {styled(SEPARATOR_DOT, MUTED)}"
+        f" {styled('/plan', DIM)} {styled(SEPARATOR_DOT, MUTED)}"
+        f" {styled('/scan', DIM)}"
     )
+    console.print()
 
 
 def format_session_summary(
@@ -589,12 +694,21 @@ def format_session_summary(
     tool_calls: int = 0,
     tool_errors: int = 0,
     tool_denied: int = 0,
+    model: str = "",
+    session_id: str = "",
 ) -> None:
     """Display session summary on quit — clean, compact."""
     console.print()
     console.print(f"  {_rule()}")
     console.print(f"  {styled('Session complete', DIM)}")
     console.print()
+
+    # Model and session
+    if model:
+        model_short = model.split("/", 1)[-1] if "/" in model else model
+        console.print(f"    {styled('Model', MUTED)}     {model_short}")
+    if session_id:
+        console.print(f"    {styled('Session', MUTED)}   {session_id[:12]}...")
 
     # Duration
     minutes = int(duration_secs // 60)

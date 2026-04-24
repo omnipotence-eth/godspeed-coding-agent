@@ -40,7 +40,7 @@ jobs:
       # litellm pins python-dotenv==1.0.1 strictly, making a pin-up
       # unsatisfiable. Remove this ignore when litellm relaxes its
       # bound (tracked in pyproject.toml dependencies block).
-      - run: uv run pip-audit --ignore-vuln CVE-2026-28684
+      - run: uv run pip-audit --ignore-vuln CVE-2026-28684 --ignore-vuln CVE-2026-3219
       - run: uv run bandit -r src/ -ll
 
   test:

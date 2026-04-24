@@ -374,6 +374,20 @@ def _build_tool_registry(tool_set: str = "full") -> tuple:
     except ImportError:
         pass
 
+    try:
+        from godspeed.tools.session_history import SessionHistoryTool
+
+        tools.append(SessionHistoryTool())
+    except ImportError:
+        pass
+
+    try:
+        from godspeed.tools.tool_analytics import ToolAnalyticsTool
+
+        tools.append(ToolAnalyticsTool())
+    except ImportError:
+        pass
+
     for tool in tools:
         if allowed is not None and tool.name not in allowed:
             continue

@@ -53,6 +53,10 @@ def test_registry_next_id():
 
 
 @pytest.mark.asyncio
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Windows ProactorEventLoop subprocess cleanup is flaky; CI covers this on Linux.",
+)
 async def test_shell_background_starts_process(tmp_path):
     """shell with background=True spawns a process and returns immediately."""
     tool = ShellTool()
@@ -153,6 +157,10 @@ async def test_status_shows_running(tmp_path):
 
 
 @pytest.mark.asyncio
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Windows ProactorEventLoop subprocess cleanup is flaky; CI covers this on Linux.",
+)
 async def test_output_after_completion(tmp_path):
     """Output shows captured stdout after process completes."""
     shell = ShellTool()

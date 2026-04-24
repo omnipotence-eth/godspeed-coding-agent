@@ -265,3 +265,86 @@ class MCPClient:
                 logger.error("MCP SSE disconnect error: %s", exc)
         self._sse_clients.clear()
         self._connections.clear()
+
+
+def discover_mcp_servers(project_dir: str | None = None) -> list[MCPServerConfig]:
+    """Auto-discover MCP servers from common configurations.
+
+    Searches in order:
+    1. ~/.godspeed/mcp_servers.yaml
+    2. project_dir/.godspeed/mcp_servers.yaml
+    3. project_dir/mcpServers.json (Cursor/Claude format)
+    4. project_dir/.mcp.json
+
+    Returns list of discovered server configurations.
+    """
+    import os
+    from pathlib import Path
+    import yaml
+
+    discovered: list[MCPServerConfig] = []
+    search_paths: list[Path] = []
+
+    # Add search paths
+    home = Path.home()
+    search_paths.append(home / ".godspeed" / "mcp_servers.yaml")
+
+    if project_dir:
+        proj = Path(project_dir)
+        search_paths.extend([
+            proj / ".godspeed" / "mcp_servers.yaml",
+            proj / "mcpServers.json",
+            proj / ".mcp.json",
+        ])
+
+    for path in search_paths:
+        if not path.exists():
+            continue
+
+        try:
+            if path.suffix in (".yaml", ".yml"):
+                with open(path) as f:
+                    data = yaml.safe_load(f) or {}
+                    for name, config in data.items():
+                        if isinstance(config, dict):
+                            server = MCPServerConfig(
+                                name=name,
+                                command=config.get("command", ""),
+                                args=config.get("args", []),
+                                env=config.get("env", {}),
+                                transport=config.get("transport", "stdio"),
+                                url=config.get("url"),
+                                headers=config.get("headers"),
+                            )
+                            discovered.append(server)
+                            logger.info("Discovered MCP server from %s: %s", path, name)
+
+            elif path.suffix == ".json":
+                with open(path) as f:
+                    data = json.load(f)
+                    for name, config in data.items():
+                        if isinstance(config, dict):
+                            # Handle Cursor/Claude MCP format
+                            command = config.get("command", "")
+                            args = config.get("args", [])
+                            if isinstance(args, str):
+                                args = args.split()
+
+                            server = MCPServerConfig(
+                                name=name,
+                                command=command,
+                                args=args,
+                                env=config.get("env", {}),
+                                transport="stdio",
+                                url=config.get("url"),
+                            )
+                            discovered.append(server)
+                            logger.info("Discovered MCP server from %s: %s", path, name)
+
+        except Exception as exc:
+            logger.warning("Failed to parse MCP config %s: %s", path, exc)
+
+    return discovered
+
+
+import json

@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import logging
 import re
+from functools import lru_cache
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 
+@lru_cache(maxsize=512)
 def resolve_tool_path(file_path: str, cwd: Path) -> Path:
     """Resolve a file path relative to the project root.
 

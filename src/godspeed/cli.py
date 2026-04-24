@@ -289,6 +289,7 @@ def _build_tool_registry(tool_set: str = "full") -> tuple:
     allowed = get_allowed_tool_names(tool_set)
     from godspeed.tools.base import RiskLevel
     from godspeed.tools.file_edit import FileEditTool
+    from godspeed.tools.batch_edit import BatchEditTool
     from godspeed.tools.file_read import FileReadTool
     from godspeed.tools.file_write import FileWriteTool
     from godspeed.tools.registry import ToolRegistry
@@ -363,6 +364,13 @@ def _build_tool_registry(tool_set: str = "full") -> tuple:
         from godspeed.tools.diff_apply import DiffApplyTool
 
         tools.append(DiffApplyTool())
+    except ImportError:
+        pass
+
+    try:
+        from godspeed.tools.batch_edit import BatchEditTool
+
+        tools.append(BatchEditTool())
     except ImportError:
         pass
 
@@ -505,30 +513,41 @@ async def _run_app(
     )
 
     # MCP server discovery
-    if settings.mcp_servers:
-        from godspeed.mcp.client import MCPClient, MCPServerConfig
-        from godspeed.mcp.tool_adapter import adapt_mcp_tools
+    from godspeed.mcp.client import MCPClient, MCPServerConfig, discover_mcp_servers
+    from godspeed.mcp.tool_adapter import adapt_mcp_tools
 
-        mcp_client = MCPClient()
-        if mcp_client.available:
-            for server_cfg in settings.mcp_servers:
-                config = MCPServerConfig(
-                    name=server_cfg.get("name", "unknown"),
-                    command=server_cfg.get("command", ""),
-                    args=server_cfg.get("args", []),
-                    env=server_cfg.get("env", {}),
-                    transport=server_cfg.get("transport", "stdio"),
-                    url=server_cfg.get("url"),
-                    headers=server_cfg.get("headers"),
-                )
-                try:
-                    definitions = await mcp_client.connect(config)
-                    for tool in adapt_mcp_tools(definitions, mcp_client):
-                        registry.register(tool)
-                        risk_levels[tool.name] = tool.risk_level
-                    logger.info("MCP server %s: %d tools", config.name, len(definitions))
-                except Exception as exc:
-                    logger.warning("MCP server %s failed: %s", config.name, exc)
+    mcp_client = MCPClient()
+
+    if settings.mcp_servers:
+        for server_cfg in settings.mcp_servers:
+            config = MCPServerConfig(
+                name=server_cfg.get("name", "unknown"),
+                command=server_cfg.get("command", ""),
+                args=server_cfg.get("args", []),
+                env=server_cfg.get("env", {}),
+                transport=server_cfg.get("transport", "stdio"),
+                url=server_cfg.get("url"),
+                headers=server_cfg.get("headers"),
+            )
+            try:
+                definitions = await mcp_client.connect(config)
+                for tool in adapt_mcp_tools(definitions, mcp_client):
+                    registry.register(tool)
+                    risk_levels[tool.name] = tool.risk_level
+                logger.info("MCP server %s: %d tools", config.name, len(definitions))
+            except Exception as exc:
+                logger.warning("MCP server %s failed: %s", config.name, exc)
+    elif mcp_client.available:
+        auto_servers = discover_mcp_servers(str(effective_project_dir))
+        for config in auto_servers:
+            try:
+                definitions = await mcp_client.connect(config)
+                for tool in adapt_mcp_tools(definitions, mcp_client):
+                    registry.register(tool)
+                    risk_levels[tool.name] = tool.risk_level
+                logger.info("Auto-discovered MCP server %s: %d tools", config.name, len(definitions))
+            except Exception as exc:
+                logger.warning("Auto-discovered MCP server %s failed: %s", config.name, exc)
 
     # Sub-agent coordinator
     from godspeed.agent.coordinator import AgentCoordinator, SpawnAgentTool

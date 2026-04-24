@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import yaml
 from pydantic import Field, field_validator, model_validator
@@ -136,6 +136,14 @@ class ContextSettings(BaseSettings):
 
 class GodspeedSettings(BaseSettings):
     """Root configuration for Godspeed."""
+
+    # Model presets for speed + quality balance
+    MODEL_PRESETS: ClassVar[dict[str, str]] = {
+        "fast": "ollama/qwen3:4b",  # Free, local, fast
+        "balanced": "ollama/qwen3:14b",  # Free, local, better quality
+        "quality": "nvidia_nim/qwen/qwen3.5-397b-a17b",  # NVIDIA NIM (free-tier) — best on RTX
+        "frontier": "claude-sonnet-4-20250514",  # Claude — best quality, paid
+    }
 
     # LLM — default to free local Ollama model; override via settings.yaml,
     # GODSPEED_MODEL env var, or `godspeed -m <model>`

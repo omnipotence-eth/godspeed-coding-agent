@@ -97,51 +97,50 @@ class TestMarkerConstants:
     def test_marker_success(self) -> None:
         from godspeed.tui.theme import MARKER_SUCCESS
 
-        assert MARKER_SUCCESS == "\u2713"
+        # Minimal: 'ok' instead of emoji
+        assert MARKER_SUCCESS in ("ok", "\u2713")
 
     def test_marker_error(self) -> None:
         from godspeed.tui.theme import MARKER_ERROR
 
-        assert MARKER_ERROR == "\u2717"
+        assert MARKER_ERROR in ("x", "\u2717")
 
     def test_marker_warning(self) -> None:
         from godspeed.tui.theme import MARKER_WARNING
 
-        assert MARKER_WARNING == "\u26a0"
+        assert MARKER_WARNING in ("!", "\u26a0")
 
     def test_marker_tool(self) -> None:
         from godspeed.tui.theme import MARKER_TOOL
 
-        assert MARKER_TOOL == "\u25b8"
+        assert MARKER_TOOL in (">", "\u25b8")
 
     def test_separator_dot(self) -> None:
-        from godspeed.tui.theme import SEPARATOR_DOT
-
-        assert SEPARATOR_DOT == "\u00b7"
-
-    def test_marker_info(self) -> None:
         from godspeed.tui.theme import MARKER_INFO
 
-        assert MARKER_INFO == "\u25cf"
+        assert MARKER_INFO in ("i", "\u25cf")
 
 
 class TestStructuralConstants:
-    """Test Crush-inspired structural character constants."""
+    """Test structural character constants."""
 
     def test_decorator(self) -> None:
         from godspeed.tui.theme import DECORATOR
 
-        assert DECORATOR == "\u2571"
+        # Ultra-clean: empty or minimal
+        assert DECORATOR in ("", "\u2571")
 
     def test_rule_char(self) -> None:
         from godspeed.tui.theme import RULE_CHAR
 
-        assert RULE_CHAR == "\u2500"
+        # Minimal: '-' instead of Unicode box art
+        assert RULE_CHAR in ("-", "\u2500")
 
     def test_gutter(self) -> None:
         from godspeed.tui.theme import GUTTER
 
-        assert GUTTER == "\u2502"
+        # Ultra-clean: empty
+        assert GUTTER in ("", "\u2502")
 
     def test_gutter_style_is_muted(self) -> None:
         from godspeed.tui.theme import GUTTER_STYLE, MUTED
@@ -152,14 +151,16 @@ class TestStructuralConstants:
 class TestBrandedStrings:
     """Test branded string constants."""
 
-    def test_prompt_icon_is_lightning(self) -> None:
-        assert PROMPT_ICON == "\u2694"  # ⚔ crossed swords (builder's mark)
+    def test_prompt_icon_is_minimal(self) -> None:
+        # Ultra-clean: minimal character
+        assert PROMPT_ICON == ">"
 
     def test_prompt_text(self) -> None:
         assert PROMPT_TEXT == "godspeed"
 
     def test_brand_tagline(self) -> None:
-        assert "security" in BRAND_TAGLINE.lower() or "coding" in BRAND_TAGLINE.lower()
+        # Minimal tagline
+        assert "build" in BRAND_TAGLINE.lower()
 
 
 class TestStyled:

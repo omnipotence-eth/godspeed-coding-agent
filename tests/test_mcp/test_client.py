@@ -79,4 +79,4 @@ class TestMCPClient:
         import asyncio
 
         client = MCPClient()
-        asyncio.get_event_loop().run_until_complete(client.disconnect_all())
+        asyncio.run(client.disconnect_all())

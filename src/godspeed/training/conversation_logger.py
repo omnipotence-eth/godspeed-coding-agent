@@ -27,7 +27,7 @@ class ConversationLogger:
     ``TrainingExporter``.
     """
 
-    _FLUSH_INTERVAL = 10  # flush every N writes instead of every write
+    _FLUSH_INTERVAL = 10  # flush every N writes; close() always flushes
 
     def __init__(self, session_id: str, output_dir: Path) -> None:
         self._session_id = session_id
@@ -147,6 +147,12 @@ class ConversationLogger:
                 pass
             finally:
                 self._file = None
+
+    def flush(self) -> None:
+        """Flush buffered writes to disk without closing."""
+        if self._file is not None:
+            self._file.flush()
+            self._writes_since_flush = 0
 
     @property
     def path(self) -> Path:

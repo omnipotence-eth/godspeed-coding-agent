@@ -22,7 +22,9 @@ def clog(logger_dir: Path) -> ConversationLogger:
     cl.close()
 
 
-def _read_lines(path: Path) -> list[dict]:
+def _read_lines(clog: ConversationLogger, path: Path) -> list[dict]:
+    """Read JSONL records, flushing the logger first to ensure data is on disk."""
+    clog.flush()
     return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
 
 
@@ -34,7 +36,7 @@ class TestConversationLogger:
 
     def test_log_system(self, clog: ConversationLogger) -> None:
         clog.log_system("You are Godspeed.")
-        records = _read_lines(clog.path)
+        records = _read_lines(clog, clog.path)
         assert len(records) == 1
         assert records[0]["role"] == "system"
         assert records[0]["content"] == "You are Godspeed."
@@ -43,7 +45,7 @@ class TestConversationLogger:
 
     def test_log_user_text(self, clog: ConversationLogger) -> None:
         clog.log_user("Fix the bug in auth.py")
-        records = _read_lines(clog.path)
+        records = _read_lines(clog, clog.path)
         assert records[0]["role"] == "user"
         assert records[0]["content"] == "Fix the bug in auth.py"
 
@@ -53,12 +55,12 @@ class TestConversationLogger:
             {"type": "image_url", "image_url": {"url": "data:image/png;base64,abc"}},
         ]
         clog.log_user(blocks)
-        records = _read_lines(clog.path)
+        records = _read_lines(clog, clog.path)
         assert records[0]["content"] == blocks
 
     def test_log_assistant_text_only(self, clog: ConversationLogger) -> None:
         clog.log_assistant(content="I found the issue.")
-        records = _read_lines(clog.path)
+        records = _read_lines(clog, clog.path)
         assert records[0]["role"] == "assistant"
         assert records[0]["content"] == "I found the issue."
         assert "tool_calls" not in records[0]
@@ -75,12 +77,12 @@ class TestConversationLogger:
             }
         ]
         clog.log_assistant(content="", tool_calls=tool_calls)
-        records = _read_lines(clog.path)
+        records = _read_lines(clog, clog.path)
         assert records[0]["tool_calls"] == tool_calls
 
     def test_log_assistant_with_thinking(self, clog: ConversationLogger) -> None:
         clog.log_assistant(content="Result", thinking="I need to think...")
-        records = _read_lines(clog.path)
+        records = _read_lines(clog, clog.path)
         assert records[0]["thinking"] == "I need to think..."
 
     def test_log_tool_result(self, clog: ConversationLogger) -> None:
@@ -90,7 +92,7 @@ class TestConversationLogger:
             content="1\tdef hello(): pass",
             is_error=False,
         )
-        records = _read_lines(clog.path)
+        records = _read_lines(clog, clog.path)
         assert records[0]["role"] == "tool"
         assert records[0]["tool_call_id"] == "call_1"
         assert records[0]["name"] == "file_read"
@@ -104,7 +106,7 @@ class TestConversationLogger:
             content="command not found",
             is_error=True,
         )
-        records = _read_lines(clog.path)
+        records = _read_lines(clog, clog.path)
         assert records[0]["is_error"] is True
 
     def test_step_counter_increments(self, clog: ConversationLogger) -> None:
@@ -120,7 +122,7 @@ class TestConversationLogger:
             messages_before=25,
             messages_after=1,
         )
-        records = _read_lines(clog.path)
+        records = _read_lines(clog, clog.path)
         assert records[0]["role"] == "meta"
         assert records[0]["event"] == "compaction"
         assert records[0]["summary"].startswith("User asked")
@@ -144,7 +146,7 @@ class TestConversationLogger:
         clog.log_tool_result("call_1", "file_read", "1\tdef main(): pass")
         clog.log_assistant(content="The file has a main function.")
 
-        records = _read_lines(clog.path)
+        records = _read_lines(clog, clog.path)
         assert len(records) == 5
         roles = [r["role"] for r in records]
         assert roles == ["system", "user", "assistant", "tool", "assistant"]
@@ -154,7 +156,7 @@ class TestConversationLogger:
         clog.close()
         # Re-open by logging again (file opened in append mode)
         clog.log_user("second")
-        records = _read_lines(clog.path)
+        records = _read_lines(clog, clog.path)
         assert len(records) == 2
 
     def test_jsonl_format_valid(self, clog: ConversationLogger) -> None:
@@ -168,12 +170,12 @@ class TestConversationLogger:
 
     def test_no_thinking_field_when_empty(self, clog: ConversationLogger) -> None:
         clog.log_assistant(content="just text")
-        records = _read_lines(clog.path)
+        records = _read_lines(clog, clog.path)
         assert "thinking" not in records[0]
 
     def test_no_tool_calls_field_when_empty(self, clog: ConversationLogger) -> None:
         clog.log_assistant(content="just text")
-        records = _read_lines(clog.path)
+        records = _read_lines(clog, clog.path)
         assert "tool_calls" not in records[0]
 
     def test_path_property(self, clog: ConversationLogger, logger_dir: Path) -> None:

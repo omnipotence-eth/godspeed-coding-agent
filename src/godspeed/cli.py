@@ -364,6 +364,13 @@ def _build_tool_registry(tool_set: str = "full") -> tuple:
     except ImportError:
         pass
 
+    try:
+        from godspeed.tools.ollama_manager import OllamaTool
+
+        tools.append(OllamaTool())
+    except ImportError:
+        pass
+
     for tool in tools:
         if allowed is not None and tool.name not in allowed:
             continue
@@ -1127,14 +1134,36 @@ async def _headless_run(
 
 @main.command()
 def models() -> None:
-    """Show popular model options and how to configure them."""
+    """Show popular model options, presets, and how to configure them."""
     from rich.console import Console as RichConsole
     from rich.table import Table
 
+    from godspeed.config import GodspeedSettings
     from godspeed.tui.theme import BOLD_PRIMARY, DIM, MUTED, SUCCESS, TABLE_BORDER
 
     c = RichConsole()
 
+    presets = GodspeedSettings.MODEL_PRESETS
+
+    c.print(f"\n  [{BOLD_PRIMARY}]Model Presets[/{BOLD_PRIMARY}]")
+    c.print(f"  [{DIM}]Use --preset or /model <preset> to switch.[/{DIM}]\n")
+    preset_table = Table(border_style=TABLE_BORDER, expand=False)
+    preset_table.add_column("Preset", style=BOLD_PRIMARY)
+    preset_table.add_column("Model", style=MUTED)
+    preset_table.add_column("Description")
+    preset_descriptions = {
+        "fast": "Local, low VRAM, fast responses (5.1GB)",
+        "balanced": "Local, medium VRAM, strong all-around (9GB)",
+        "quality": "Local, high VRAM, best local coding (15GB)",
+        "cloud": "NVIDIA NIM free tier, no local GPU needed",
+        "frontier": "Claude — best quality, paid API",
+    }
+    for name, model in presets.items():
+        desc = preset_descriptions.get(name, "")
+        preset_table.add_row(name, model, desc)
+    c.print(preset_table)
+
+    c.print()
     table = Table(title="Popular Models", border_style=TABLE_BORDER, expand=False)
     table.add_column("Model", style=BOLD_PRIMARY)
     table.add_column("Provider", style=MUTED)
@@ -1142,22 +1171,13 @@ def models() -> None:
     table.add_column("API Key Env Var", style=MUTED)
 
     free = f"[{SUCCESS}]Free[/{SUCCESS}]"
-    # Free local models
+    table.add_row("ollama/rnj-1:8b", "Ollama", free, "None (local, 5.1GB)")
+    table.add_row("ollama/qwen2.5-coder:14b", "Ollama", free, "None (local, 9GB)")
+    table.add_row("ollama/devstral-small-2:24b", "Ollama", free, "None (local, 15GB)")
     table.add_row("ollama/qwen3:4b", "Ollama", free, "None (local)")
-    table.add_row("ollama/qwen3:8b", "Ollama", free, "None (local)")
-    table.add_row("ollama/qwen3:14b", "Ollama", free, "None (local, 8GB)")
-    table.add_row(
-        "ollama/qwen3-coder:latest",
-        "Ollama",
-        free,
-        "None (local, 18GB, MoE 30B-A3B, coder-tuned)",
-    )
-    table.add_row("ollama/gemma4:e4b", "Ollama", free, "None (local)")
-    table.add_row("ollama/llama3.3:8b", "Ollama", free, "None (local)")
     table.add_row("ollama/deepseek-r1:8b", "Ollama", free, "None (local)")
     table.add_row("ollama/mistral:7b", "Ollama", free, "None (local)")
 
-    # Paid cloud models
     table.add_row("claude-sonnet-4-20250514", "Anthropic", "Paid", "ANTHROPIC_API_KEY")
     table.add_row("claude-opus-4-20250514", "Anthropic", "Paid", "ANTHROPIC_API_KEY")
     table.add_row("gpt-4o", "OpenAI", "Paid", "OPENAI_API_KEY")
@@ -1169,9 +1189,126 @@ def models() -> None:
     c.print()
     c.print(f"  [{BOLD_PRIMARY}]Switch models:[/{BOLD_PRIMARY}]")
     c.print(f"    [{DIM}]CLI flag:[/{DIM}]     godspeed -m claude-sonnet-4-20250514")
+    c.print(
+        f"    [{DIM}]Preset:[/{DIM}]"
+        f"       godspeed -m fast (or balanced/quality/cloud/frontier)"
+    )
     c.print(f"    [{DIM}]Env var:[/{DIM}]      GODSPEED_MODEL=gpt-4o godspeed")
     c.print(f"    [{DIM}]Settings:[/{DIM}]     Edit ~/.godspeed/settings.yaml")
-    c.print(f"    [{DIM}]At runtime:[/{DIM}]   /model claude-sonnet-4-20250514")
+    c.print(f"    [{DIM}]At runtime:[/{DIM}]   /model fast  or  /model ollama/rnj-1:8b")
+
+
+@main.group()
+def ollama() -> None:
+    """Manage local Ollama models — list, pull, show, delete, scan."""
+
+
+@ollama.command("list")
+def ollama_list() -> None:
+    """List locally installed Ollama models."""
+    from rich.console import Console as RichConsole
+
+    from godspeed.tools.ollama_manager import list_models
+    from godspeed.tui.theme import BOLD_PRIMARY, DIM, ERROR
+
+    c = RichConsole()
+    models_list = list_models()
+    if not models_list:
+        best = "rnj-1:8b"
+        c.print(f"[{ERROR}]No local models found.[/{ERROR}]")
+        c.print(f"  [{DIM}]Install Ollama from https://ollama.com, then:[/{DIM}]")
+        c.print(f"  [{BOLD_PRIMARY}]godspeed ollama pull {best}[/{BOLD_PRIMARY}]")
+        return
+
+    c.print(f"\n  [{BOLD_PRIMARY}]Installed Ollama Models[/{BOLD_PRIMARY}] ({len(models_list)})\n")
+    for m in sorted(models_list, key=lambda x: x.name):
+        c.print(f"  {m.name:40s} {m.size_gb:5.1f} GB")
+
+
+@ollama.command("pull")
+@click.argument("model")
+def ollama_pull(model: str) -> None:
+    """Pull a model from Ollama (e.g. godspeed ollama pull rnj-1:8b)."""
+    from rich.console import Console as RichConsole
+
+    from godspeed.tools.ollama_manager import pull_model
+    from godspeed.tui.theme import BOLD_PRIMARY, ERROR, SUCCESS
+
+    c = RichConsole()
+    c.print(f"  Pulling [{BOLD_PRIMARY}]{model}[/{BOLD_PRIMARY}]...")
+    success = pull_model(model)
+    if success:
+        c.print(f"  [{SUCCESS}]Successfully pulled {model}[/{SUCCESS}]")
+    else:
+        c.print(
+            f"  [{ERROR}]Failed to pull {model}."
+            f" Check the model name and Ollama status.[/{ERROR}]"
+        )
+
+
+@ollama.command("show")
+@click.argument("model")
+def ollama_show(model: str) -> None:
+    """Show detailed info about an installed Ollama model."""
+    from rich.console import Console as RichConsole
+
+    from godspeed.tools.ollama_manager import show_model
+    from godspeed.tui.theme import BOLD_PRIMARY, DIM, ERROR
+
+    c = RichConsole()
+    info = show_model(model)
+    if info is None:
+        c.print(f"[{ERROR}]Model {model!r} not found locally.[/{ERROR}]")
+        c.print(f"  [{DIM}]Pull it first: godspeed ollama pull {model}[/{DIM}]")
+        return
+
+    c.print(f"\n  [{BOLD_PRIMARY}]{model}[/{BOLD_PRIMARY}]")
+    for key, value in sorted(info.items()):
+        if key != "name":
+            c.print(f"  {key:20s} {value}")
+
+
+@ollama.command("delete")
+@click.argument("model")
+def ollama_delete(model: str) -> None:
+    """Delete a local Ollama model to free disk space."""
+    from rich.console import Console as RichConsole
+
+    from godspeed.tools.ollama_manager import delete_model
+    from godspeed.tui.theme import ERROR, SUCCESS
+
+    c = RichConsole()
+    success, message = delete_model(model)
+    if success:
+        c.print(f"  [{SUCCESS}]{message}[/{SUCCESS}]")
+    else:
+        c.print(f"  [{ERROR}]Failed: {message}[/{ERROR}]")
+
+
+@main.command("scan")
+def scan_machine() -> None:
+    """Scan your machine hardware and recommend optimal models per preset tier."""
+    from rich.console import Console as RichConsole
+
+    from godspeed.evolution.hardware import format_machine_report
+    from godspeed.tui.theme import BOLD_PRIMARY, DIM
+
+    c = RichConsole()
+    report = format_machine_report()
+    c.print(report)
+    c.print()
+    c.print(
+        f"  [{DIM}]Run"
+        f" [{BOLD_PRIMARY}]godspeed ollama pull <model>[/{BOLD_PRIMARY}]"
+        f"{DIM}] to install a model.[/{DIM}]"
+    )
+    c.print(
+        f"  [{DIM}]Use"
+        f" [{BOLD_PRIMARY}]/model <preset>[/{BOLD_PRIMARY}]"
+        f"{DIM}] or"
+        f" [{BOLD_PRIMARY}]godspeed -m <model>[/{BOLD_PRIMARY}]"
+        f"{DIM}] to switch.[/{DIM}]"
+    )
 
 
 @main.command("export-training")

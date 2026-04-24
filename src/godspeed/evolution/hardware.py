@@ -6,7 +6,10 @@ Falls back gracefully when VRAM detection fails or Ollama is unavailable.
 
 from __future__ import annotations
 
+import dataclasses
 import logging
+import os as _os
+import platform
 import shutil
 import subprocess
 
@@ -35,15 +38,17 @@ def _get_cached_vram() -> int | None:
 
 # Ordered largest-first. Each entry: (min_vram_mb, model, description)
 # VRAM thresholds account for ~1GB overhead from Ollama + OS.
+# Models have been benchmarked for coding agent performance (SWE-bench, tool-calling).
 MODEL_TIERS: list[tuple[int, str, str]] = [
-    (10_000, "ollama/gemma3:12b", "12B — needs ~10GB free VRAM"),
-    (6_000, "ollama/gemma3:4b", "4B — needs ~6GB free VRAM"),
-    (3_000, "ollama/qwen2.5:3b", "3B — needs ~3GB free VRAM"),
-    (1_500, "ollama/qwen2.5:1.5b", "1.5B — needs ~1.5GB free VRAM"),
+    (12_000, "ollama/devstral-small-2:24b", "24B — 65.8% SWE-bench, 384K ctx (15GB)"),
+    (8_000, "ollama/qwen2.5-coder:14b", "14B — strong code repair, 32K ctx (9GB)"),
+    (5_000, "ollama/rnj-1:8b", "8B — #1 tool-calling, 32K ctx (5.1GB)"),
+    (3_000, "ollama/cogito:14b", "14B — hybrid reasoning, 128K ctx"),
+    (1_500, "ollama/qwen2.5:1.5b", "1.5B — absolute fallback (1.5GB)"),
 ]
 
 # Absolute fallback if nothing fits or detection fails
-FALLBACK_MODEL = "ollama/qwen2.5:1.5b"
+FALLBACK_MODEL = "ollama/rnj-1:8b"
 
 # num_candidates scaling by available VRAM
 CANDIDATES_BY_VRAM: list[tuple[int, int]] = [
@@ -219,3 +224,195 @@ def is_low_memory() -> bool:
     if vram is None:
         return True  # Assume constrained if we can't detect
     return vram < 6_000
+
+
+# ---------------------------------------------------------------------------
+# Machine scan — recommend the optimal model for each tier
+# ---------------------------------------------------------------------------
+
+@dataclasses.dataclass
+class MachineSpecs:
+    """Machine hardware specifications for model selection."""
+
+    platform: str          # "windows", "linux", "darwin"
+    vram_mb: int | None    # detected GPU VRAM or None
+    ram_gb: float          # system RAM in GB
+    cpu_cores: int         # logical CPU cores
+    gpu_name: str          # GPU name or empty string
+
+
+def scan_machine() -> MachineSpecs:
+    """Scan the current machine for hardware specifications.
+
+    Returns a MachineSpecs that can be used to recommend optimal models.
+    """
+    vram = _get_cached_vram()
+    gpu_name = _detect_gpu_name()
+
+    # System RAM
+    ram_gb = 0.0
+    try:
+        import psutil
+        ram_gb = psutil.virtual_memory().total / (1024**3)
+    except ImportError:
+        pass
+
+    cpu_cores = _os.cpu_count() or 1
+
+    return MachineSpecs(
+        platform=platform.system().lower(),
+        vram_mb=vram,
+        ram_gb=round(ram_gb, 1),
+        cpu_cores=cpu_cores,
+        gpu_name=gpu_name,
+    )
+
+
+def _detect_gpu_name() -> str:
+    """Detect the GPU name string."""
+    if shutil.which("nvidia-smi"):
+        try:
+            result = subprocess.run(
+                ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if result.returncode == 0:
+                return result.stdout.strip().splitlines()[0].strip()
+        except (subprocess.TimeoutExpired, OSError):
+            pass
+    return ""
+
+
+def recommend_models_for_machine(specs: MachineSpecs | None = None) -> dict[str, str | None]:
+    """Recommend the best model for each preset tier based on machine specs.
+
+    Returns a dict mapping preset tier names to recommended model strings.
+    Models that don't fit the machine are marked as None.
+
+    Example:
+        {
+            "fast": "ollama/rnj-1:8b",
+            "balanced": "ollama/qwen2.5-coder:14b",
+            "quality": None,  # doesn't fit
+            "cloud": "nvidia_nim/qwen/qwen3.5-397b-a17b",
+            "frontier": "claude-sonnet-4-20250514",
+        }
+    """
+    if specs is None:
+        specs = scan_machine()
+
+    vram = specs.vram_mb
+    ram = specs.ram_gb
+
+    # 1GB overhead for OS + Ollama runtime
+    overhead = 1024
+
+    recommendations: dict[str, str | None] = {}
+
+    # Local tiers — depend on VRAM (GPU) or RAM (CPU inference)
+    # GPU mode: use VRAM
+    # CPU mode: use 60% of system RAM as budget
+    if vram is not None and vram > 0:
+        budget = vram - overhead
+        mode = "GPU"
+    else:
+        budget = int(ram * 1024 * 0.6)  # 60% of RAM for CPU inference
+        mode = "CPU"
+
+    logger.info("Model selection mode=%s budget=%dMB vram=%s ram=%.1fGB", mode, budget, vram, ram)
+
+    # Define local model tiers: (min_mb, model_name, description)
+    local_tiers: list[tuple[int, str, str]] = [
+        (12_000, "quality", "ollama/devstral-small-2:24b"),
+        (8_000, "balanced", "ollama/qwen2.5-coder:14b"),
+        (6_000, "balanced_alt", "ollama/deepseek-coder-v2:16b"),
+        (4_000, "fast", "ollama/rnj-1:8b"),
+        (3_000, "fast_alt", "ollama/qwen2.5-coder:7b"),
+        (1_500, "fallback", "ollama/qwen2.5:1.5b"),
+    ]
+
+    selected_fast = "ollama/qwen2.5:1.5b"
+    selected_balanced = None
+    selected_quality = None
+
+    for min_mb, tier_name, model in local_tiers:
+        if budget >= min_mb:
+            if tier_name == "quality" and selected_quality is None:
+                selected_quality = model
+            elif tier_name in ("balanced", "balanced_alt") and selected_balanced is None:
+                selected_balanced = model
+            elif tier_name == "fast" and selected_fast == model:
+                pass  # already set
+            elif tier_name in ("fast_alt", "fallback"):
+                selected_fast = model
+
+    # Walk back if no balanced: balanced = fast model
+    if selected_balanced is None:
+        selected_balanced = selected_fast
+        selected_quality = None
+
+    recommendations["fast"] = selected_fast
+    recommendations["balanced"] = selected_balanced
+    recommendations["quality"] = selected_quality
+
+    # Cloud and frontier tiers always available (API-based, no local GPU needed)
+    recommendations["cloud"] = "nvidia_nim/qwen/qwen3.5-397b-a17b"
+    recommendations["frontier"] = "claude-sonnet-4-20250514"
+
+    return recommendations
+
+
+def format_machine_report(specs: MachineSpecs | None = None) -> str:
+    """Generate a human-readable machine scan report with recommendations.
+
+    Returns a formatted string suitable for display in the terminal.
+    """
+    if specs is None:
+        specs = scan_machine()
+
+    recs = recommend_models_for_machine(specs)
+
+    lines = [
+        "=" * 62,
+        "  GODSPEED MACHINE SCAN",
+        "=" * 62,
+        f"  Platform:     {specs.platform}",
+        f"  CPU Cores:    {specs.cpu_cores}",
+        f"  System RAM:   {specs.ram_gb:.1f} GB",
+    ]
+
+    if specs.gpu_name:
+        lines.append(f"  GPU:          {specs.gpu_name}")
+    if specs.vram_mb:
+        lines.append(f"  VRAM:         {specs.vram_mb / 1024:.1f} GB free")
+    else:
+        lines.append("  VRAM:         not detected (CPU-only mode)")
+
+    lines.append("")
+    lines.append("  RECOMMENDED MODELS:")
+    lines.append("  " + "-" * 42)
+
+    tier_descriptions = {
+        "fast": "Fast (local, low VRAM)",
+        "balanced": "Balanced (local, medium VRAM)",
+        "quality": "Quality (local, high VRAM)",
+        "cloud": "Cloud (NVIDIA NIM free tier)",
+        "frontier": "Frontier (Claude, best quality)",
+    }
+
+    for tier in ("fast", "balanced", "quality", "cloud", "frontier"):
+        model = recs.get(tier)
+        desc = tier_descriptions.get(tier, tier)
+        if model:
+            status = "✓"
+            lines.append(f"  {status} {desc:35s} ->  {model}")
+        else:
+            status = "✗"
+            lines.append(f"  {status} {desc:35s} ->  (insufficient VRAM)")
+
+    lines.append("")
+    lines.append("  Use --preset <tier> or /model <tier> to switch.")
+
+    return "\n".join(lines)

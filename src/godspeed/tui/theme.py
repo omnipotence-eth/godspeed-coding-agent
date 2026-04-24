@@ -14,7 +14,7 @@ from __future__ import annotations
 # =============================================================================
 
 PRIMARY = "white"
-SECONDARY = "grey"
+SECONDARY = "bright_black"
 SUCCESS = "green"
 ERROR = "red"
 WARNING = "yellow"
@@ -44,16 +44,16 @@ DIM = "dim"
 
 # Panel borders
 BORDER_BRAND = "yellow1"
-BORDER_TOOL = "grey"
-BORDER_INFO = "grey"
+BORDER_TOOL = "bright_black"
+BORDER_INFO = "bright_black"
 BORDER_SUCCESS = "green"
 BORDER_ERROR = "red"
 BORDER_WARNING = "yellow"
 
 # Table
 TABLE_HEADER = "bold yellow1"
-TABLE_BORDER = "grey"
-TABLE_KEY = "grey"
+TABLE_BORDER = "bright_black"
+TABLE_KEY = "bright_black"
 TABLE_VALUE = "bold"
 
 # Permissions
@@ -80,8 +80,8 @@ SYNTAX_THEME = "monokai"
 # Clean markers
 # =============================================================================
 
-MARKER_SUCCESS = "✓"
-MARKER_ERROR = "✗"
+MARKER_SUCCESS = "ok"
+MARKER_ERROR = "x"
 MARKER_WARNING = "!"
 MARKER_TOOL = ">"
 MARKER_INFO = "i"
@@ -113,14 +113,19 @@ def brand(version: str = "") -> str:
 
 
 def icon_prompt(state: str = "") -> str:
-    """Return the prompt string."""
-    text = "> godspeed"
+    """Return the prompt string for prompt-toolkit (HTML format)."""
+    color = "ansigold" if not state else "ansigold"
+    icon = PROMPT_ICON
+    suffix = ""
     if state == "plan":
-        text += " [plan]"
+        suffix = " [plan]"
+        color = "ansicyan"
     elif state == "paused":
-        text += " [paused]"
-    text += "> "
-    return text
+        suffix = " [paused]"
+        color = "ansiyellow"
+    elif state:
+        color = "ansiyellow"
+    return f"<b><{color}>{icon} {PROMPT_TEXT}{suffix}></{color}></b> "
 
 
 def format_permission_prompt(tool_name: str, reason: str, arguments: dict) -> None:

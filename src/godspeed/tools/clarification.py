@@ -91,9 +91,10 @@ class AskClarificationTool(Tool):
 
         logger.info("Agent asking clarification: %s", question)
 
-        if context.ask_user_callback:
+        ask_callback = getattr(context, 'ask_user_callback', None)
+        if ask_callback:
             try:
-                response = await context.ask_user_callback(question, options)
+                response = await ask_callback(question, options)
                 return ToolResult.success(
                     f"User responded: {response}",
                     extra={"user_response": response, "question": question, "options": options},

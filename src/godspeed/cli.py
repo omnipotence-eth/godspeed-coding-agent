@@ -335,8 +335,15 @@ def _build_tool_registry(tool_set: str = "full") -> tuple:
         WebFetchTool(),
         NotebookEditTool(),
         BackgroundCheckTool(),
-        AskClarificationTool(),
     ]
+
+    # Skip AskClarificationTool in headless mode - requires TUI callback
+    # try:
+    #     from godspeed.tools.clarification import AskClarificationTool
+
+    #     tools.append(AskClarificationTool())
+    # except ImportError:
+    #     pass
 
     # Optional tools — register if their dependencies are available
     try:
@@ -392,73 +399,6 @@ def _build_tool_registry(tool_set: str = "full") -> tuple:
         from godspeed.tools.smart_complete import SmartCompleteTool
 
         tools.append(SmartCompleteTool())
-    except ImportError:
-        pass
-
-    try:
-        from godspeed.tools.checkpoint import CheckpointTool
-
-        tools.append(CheckpointTool())
-    except ImportError:
-        pass
-
-    try:
-        from godspeed.tools.workflow import WorkflowTool
-
-        tools.append(WorkflowTool())
-    except ImportError:
-        pass
-
-    try:
-        from godspeed.tools.command_palette import CommandPaletteTool
-
-        tools.append(CommandPaletteTool())
-    except ImportError:
-        pass
-
-    try:
-        from godspeed.tools.voice_input import VoiceInputTool
-
-        tools.append(VoiceInputTool())
-    except ImportError:
-        pass
-
-    try:
-        from godspeed.tools.code_lens import CodeLensTool, InlineLensTool
-
-        tools.append(CodeLensTool())
-        tools.append(InlineLensTool())
-    except ImportError:
-        pass
-
-    try:
-        from godspeed.tools.project_scaffold import ProjectScaffoldTool
-
-        tools.append(ProjectScaffoldTool())
-    except ImportError:
-        pass
-
-    try:
-        from godspeed.tools.ai_debug import AIDebugTool, StackTraceTool
-
-        tools.append(AIDebugTool())
-        tools.append(StackTraceTool())
-    except ImportError:
-        pass
-
-    try:
-        from godspeed.tools.profiler import ProfileTool, MemoryProfileTool
-
-        tools.append(ProfileTool())
-        tools.append(MemoryProfileTool())
-    except ImportError:
-        pass
-
-    try:
-        from godspeed.tools.doc_generator import DocGeneratorTool, OpenAPITool
-
-        tools.append(DocGeneratorTool())
-        tools.append(OpenAPITool())
     except ImportError:
         pass
 

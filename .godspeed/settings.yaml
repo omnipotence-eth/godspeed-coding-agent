@@ -1,0 +1,13 @@
+# Godspeed settings
+# API keys - set these in your environment or here
+
+env:
+  NVIDIA_API_KEY: "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"
+  ANTHROPIC_API_KEY: ""
+  OPENAI_API_KEY: ""
+
+# Default model
+model: "nvidia_nim/meta/llama-3.1-70b-instruct"
+
+# Project-specific configuration
+project_dir: "C:/Users/ttimm/godspeed-coding-agent"

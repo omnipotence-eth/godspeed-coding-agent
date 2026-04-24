@@ -32,7 +32,7 @@ class CheckpointTool(Tool):
 
     @property
     def risk_level(self) -> RiskLevel:
-        return RiskLevel.MEDIUM
+        return RiskLevel.HIGH
 
     def get_schema(self) -> dict[str, Any]:
         return {

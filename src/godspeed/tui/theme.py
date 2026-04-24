@@ -1,16 +1,16 @@
-"""Godspeed theme — Clean minimal like Claude Code / OpenCode.
+"""Godspeed theme — Warm professional like Claude Code.
 
 Design philosophy:
-- Minimal: no distractions, pure information  
-- Clean monochrome: black/white/grey only
-- Text-first: simple characters
-- Professional: just what you need
+- Warm amber/gold palette (like Claude Code)
+- Professional and inviting
+- Clean minimal
+- Easy on the eyes
 """
 
 from __future__ import annotations
 
 # =============================================================================
-# Core palette — Clean monochrome
+# Core palette — Warm amber/gold (Claude Code inspired)
 # =============================================================================
 
 PRIMARY = "white"
@@ -21,23 +21,29 @@ WARNING = "yellow"
 MUTED = "dim"
 ACCENT = "white"
 
+# Warm amber palette (signature)
+AMBER = "yellow"
+AMBER_GOLD = "yellow1"
+ORANGE = "yellow1"
+GOLD_BOLD = "bold yellow1"
+
 # Branded
-BRAND_GOLD = "white"
-BRAND_GOLD_BOLD = "bold white"
+BRAND_GOLD = "yellow1"
+BRAND_GOLD_BOLD = "bold yellow1"
 
 # =============================================================================
 # Semantic styles  
 # =============================================================================
 
-BOLD_PRIMARY = "bold white"
+BOLD_PRIMARY = "bold"  # Clean white
 BOLD_SECONDARY = "bold"
 BOLD_SUCCESS = "bold green"
 BOLD_ERROR = "bold red"
 BOLD_WARNING = "bold yellow"
 DIM = "dim"
 
-# Panel borders - minimal
-BORDER_BRAND = "white"
+# Panel borders
+BORDER_BRAND = "yellow1"
 BORDER_TOOL = "grey"
 BORDER_INFO = "grey"
 BORDER_SUCCESS = "green"
@@ -45,7 +51,7 @@ BORDER_ERROR = "red"
 BORDER_WARNING = "yellow"
 
 # Table
-TABLE_HEADER = "bold"
+TABLE_HEADER = "bold yellow1"
 TABLE_BORDER = "grey"
 TABLE_KEY = "grey"
 TABLE_VALUE = "bold"
@@ -53,8 +59,8 @@ TABLE_VALUE = "bold"
 # Permissions
 PERM_ALLOW = "green"
 PERM_DENY = "red"
-PERM_ASK = "yellow"
-PERM_SESSION = "white"
+PERM_ASK = "yellow1"
+PERM_SESSION = "yellow"
 
 CTX_OK = "green"
 CTX_WARN = "yellow"
@@ -66,7 +72,7 @@ CTX_CRITICAL = "red"
 
 PROMPT_ICON = ">"  
 PROMPT_TEXT = "godspeed"
-BRAND_TAGLINE = ""
+BRAND_TAGLINE = "Build fast"
 
 SYNTAX_THEME = "monokai"
 
@@ -110,11 +116,12 @@ def icon_prompt(state: str = "") -> str:
     """Return the prompt string."""
     icon = PROMPT_ICON
     suffix = ""
+    color = "yellow1"
     if state == "plan":
         suffix = " [plan]"
     elif state == "paused":
         suffix = " [paused]"
-    return f"{icon} godspeed{suffix}> "
+    return f"[bold {color}]{icon} godspeed{suffix}> [/bold {color}]"
 
 
 def format_permission_prompt(tool_name: str, reason: str, arguments: dict) -> None:
@@ -122,8 +129,8 @@ def format_permission_prompt(tool_name: str, reason: str, arguments: dict) -> No
     from godspeed.tui.output import console
     
     console.print()
-    console.print(f"  Allow {tool_name}? ({reason})")
-    console.print(f"  [y]es / [n]o / [a]lways")
+    console.print(f"  [yellow1]Allow {tool_name}?[/yellow1] ({reason})")
+    console.print(f"  [yellow]y[/yellow]es / [red]n[/red]o / [yellow]a[/yellow]lways")
     console.print()
 
 
@@ -131,4 +138,4 @@ def format_permission_denied(tool_name: str, reason: str) -> None:
     """Display a minimal permission denied notice."""
     from godspeed.tui.output import console
     
-    console.print(f"  [{ERROR}]Denied: {tool_name}[/{ERROR}] ({reason})")
+    console.print(f"  [red]✗ {tool_name}[/red] ({reason})")

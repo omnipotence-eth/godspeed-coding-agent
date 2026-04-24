@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import re
-from pathlib import Path
 from typing import Any
 
 from godspeed.tools.base import RiskLevel, Tool, ToolContext, ToolResult
@@ -86,7 +85,7 @@ class AIDebugTool(Tool):
         # Common patterns
         patterns = self._get_common_patterns(error_type)
         if patterns:
-            lines.append(f"\n### Likely Causes")
+            lines.append("\n### Likely Causes")
             for p in patterns:
                 lines.append(f"- {p}")
 

@@ -298,7 +298,6 @@ def _build_tool_registry(tool_set: str = "full") -> tuple:
     risk_levels: dict[str, RiskLevel] = {}
 
     from godspeed.tools.background import BackgroundCheckTool
-    from godspeed.tools.clarification import AskClarificationTool
     from godspeed.tools.complexity import ComplexityTool
     from godspeed.tools.coverage import CoverageTool
     from godspeed.tools.dep_audit import DepAuditTool

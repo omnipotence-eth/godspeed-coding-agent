@@ -64,7 +64,6 @@ class CodeLensTool(Tool):
         action_type: str = "suggest",
     ) -> ToolResult:
         """Execute code lens action."""
-        import ast
         import os
 
         if not file_path or not os.path.exists(file_path):
@@ -246,7 +245,7 @@ class InlineLensTool(Tool):
             symbol = symbol_match.group()
             actions.append({
                 "title": f"Rename '{symbol}'",
-                "command": f"rename_symbol",
+                "command": "rename_symbol",
             })
 
         actions.append({"title": "Go to definition", "command": "goto_definition"})

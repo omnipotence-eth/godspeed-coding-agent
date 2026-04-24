@@ -58,7 +58,6 @@ class DocGeneratorTool(Tool):
         format: str = "markdown",
     ) -> ToolResult:
         """Generate documentation."""
-        import ast
         import os
 
         if not os.path.exists(file_path):

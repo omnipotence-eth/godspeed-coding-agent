@@ -14,7 +14,7 @@ from __future__ import annotations
 # =============================================================================
 
 PRIMARY = "white"
-SECONDARY = "grey"  
+SECONDARY = "grey"
 SUCCESS = "green"
 ERROR = "red"
 WARNING = "yellow"
@@ -32,7 +32,7 @@ BRAND_GOLD = "yellow1"
 BRAND_GOLD_BOLD = "bold yellow1"
 
 # =============================================================================
-# Semantic styles  
+# Semantic styles
 # =============================================================================
 
 BOLD_PRIMARY = "bold"  # Clean white
@@ -70,7 +70,7 @@ CTX_CRITICAL = "red"
 # Branding
 # =============================================================================
 
-PROMPT_ICON = ">"  
+PROMPT_ICON = ">"
 PROMPT_TEXT = "godspeed"
 BRAND_TAGLINE = "Build fast"
 
@@ -81,7 +81,7 @@ SYNTAX_THEME = "monokai"
 # =============================================================================
 
 MARKER_SUCCESS = "✓"
-MARKER_ERROR = "✗" 
+MARKER_ERROR = "✗"
 MARKER_WARNING = "!"
 MARKER_TOOL = ">"
 MARKER_INFO = "i"
@@ -114,28 +114,27 @@ def brand(version: str = "") -> str:
 
 def icon_prompt(state: str = "") -> str:
     """Return the prompt string."""
-    icon = PROMPT_ICON
-    suffix = ""
-    color = "yellow1"
+    text = "> godspeed"
     if state == "plan":
-        suffix = " [plan]"
+        text += " [plan]"
     elif state == "paused":
-        suffix = " [paused]"
-    return f"[bold {color}]{icon} godspeed{suffix}> [/bold {color}]"
+        text += " [paused]"
+    text += "> "
+    return text
 
 
 def format_permission_prompt(tool_name: str, reason: str, arguments: dict) -> None:
     """Display a minimal permission prompt."""
     from godspeed.tui.output import console
-    
+
     console.print()
     console.print(f"  [yellow1]Allow {tool_name}?[/yellow1] ({reason})")
-    console.print(f"  [yellow]y[/yellow]es / [red]n[/red]o / [yellow]a[/yellow]lways")
+    console.print("  [yellow]y[/yellow]es / [red]n[/red]o / [yellow]a[/yellow]lways")
     console.print()
 
 
 def format_permission_denied(tool_name: str, reason: str) -> None:
     """Display a minimal permission denied notice."""
     from godspeed.tui.output import console
-    
+
     console.print(f"  [red]✗ {tool_name}[/red] ({reason})")

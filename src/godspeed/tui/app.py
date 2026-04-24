@@ -518,7 +518,7 @@ class _InteractivePermissionProxy:
         # Show the permission prompt with contextual detail
         args = getattr(tool_call, "arguments", None) or {}
         format_permission_prompt(tool_call.tool_name, decision.reason, arguments=args)
-        
+
         # Force a newline to ensure prompt is visible before input
         console.print()
         try:

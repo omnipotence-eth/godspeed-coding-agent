@@ -10,6 +10,8 @@ from godspeed.tools.path_utils import resolve_tool_path
 
 logger = logging.getLogger(__name__)
 
+MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB limit for file writes
+
 
 class FileWriteTool(Tool):
     """Create or overwrite a file with new content.
@@ -62,6 +64,12 @@ class FileWriteTool(Tool):
             return ToolResult.failure("file_path must be a non-empty string")
         if not isinstance(content, str):
             return ToolResult.failure(f"content must be a string, got {type(content).__name__}")
+
+        # Check file size limit
+        if len(content.encode("utf-8")) > MAX_FILE_SIZE:
+            return ToolResult.failure(
+                f"File content exceeds maximum size of {MAX_FILE_SIZE // (1024 * 1024)} MB"
+            )
 
         try:
             resolved = resolve_tool_path(file_path_str, context.cwd)

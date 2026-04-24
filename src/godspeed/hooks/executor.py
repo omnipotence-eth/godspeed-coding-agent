@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import shlex
 import subprocess
 from pathlib import Path
 
@@ -108,9 +109,21 @@ class HookExecutor:
         )
 
         try:
-            result = subprocess.run(  # noqa: S602  # nosec B602
-                command,
-                shell=True,
+            # Use shell=False with shlex.split for security (avoid command injection)
+            # This prevents shell metacharacter injection attacks
+            try:
+                cmd_args = shlex.split(command)
+            except ValueError as exc:
+                logger.warning(
+                    "Hook command parse error command=%s error=%s",
+                    command,
+                    exc,
+                )
+                return 1
+
+            result = subprocess.run(
+                cmd_args,
+                shell=False,
                 cwd=self._cwd,
                 timeout=hook.timeout,
                 capture_output=True,

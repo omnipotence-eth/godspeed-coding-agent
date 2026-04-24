@@ -203,6 +203,13 @@ class GodspeedSettings(BaseSettings):
     auto_commit: bool = False
     auto_commit_threshold: int = 5
 
+    # Loop control — configurable magic numbers (advanced users)
+    max_iterations: int = 50  # max agent loop iterations per turn
+    max_retries: int = 3  # max retries for malformed tool calls
+    stuck_loop_threshold: int = 3  # consecutive identical errors before warning
+    auto_stash_threshold: int = 3  # consecutive writes before auto-stash
+    must_fix_cap: int = 3  # max must-fix injections per session
+
     # Thinking — extended thinking for Anthropic/Claude models
     thinking_budget: int = 0  # 0 = disabled; >0 = budget_tokens for thinking blocks
 
@@ -365,6 +372,55 @@ class GodspeedSettings(BaseSettings):
         for task_type, model_name in self.routing.items():
             if not model_name or not model_name.strip():
                 logger.warning("Empty model name in routing[%r] — ignoring", task_type)
+
+        return self
+
+    @model_validator(mode="after")
+    def warn_insecure_settings(self) -> GodspeedSettings:
+        """Log warnings for insecure configuration settings."""
+        # Check for yolo mode (no permission checks)
+        if self.permission_mode == "yolo":
+            logger.warning(
+                "INSECURE: permission_mode='yolo' disables all permission checks. "
+                "Any tool can be executed without user approval."
+            )
+
+        # Check for empty deny list
+        if not self.permissions.deny:
+            logger.warning(
+                "No deny rules configured in permissions.deny. "
+                "Consider adding deny rules for sensitive files (e.g., .env, *.key, .ssh/*)."
+            )
+
+        # Check if audit is disabled
+        if not self.audit.enabled:
+            logger.warning(
+                "INSECURE: audit.enabled=False disables the audit trail. "
+                "This reduces accountability and makes security incidents harder to investigate."
+            )
+
+        # Check for very permissive allow rules
+        for rule in self.permissions.allow:
+            if rule == "*" or rule == "**":
+                logger.warning(
+                    "INSECURE: Allow rule '%s' permits ALL tools without restriction.",
+                    rule,
+                )
+
+        # Check for sandbox=none with yolo mode
+        if self.sandbox == "none" and self.permission_mode == "yolo":
+            logger.warning(
+                "HIGHLY INSECURE: sandbox='none' with permission_mode='yolo'. "
+                "Tools run without any sandboxing or permission checks."
+            )
+
+        # Check for very high context tokens (potential memory issue)
+        if self.max_context_tokens > 500_000:
+            logger.warning(
+                "Very high max_context_tokens=%d may cause memory issues. "
+                "Consider reducing to 200000 or less.",
+                self.max_context_tokens,
+            )
 
         return self
 

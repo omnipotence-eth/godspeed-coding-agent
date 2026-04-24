@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUT = 120
 MAX_TIMEOUT = 600
+MAX_COMMAND_LENGTH = 10000  # 10K characters max for shell commands
 
 
 def _kill_process_tree(pid: int) -> None:
@@ -133,6 +134,12 @@ class ShellTool(Tool):
         command = arguments.get("command", "")
         if not isinstance(command, str) or not command.strip():
             return ToolResult.failure("command must be a non-empty string")
+
+        # Check command length limit
+        if len(command) > MAX_COMMAND_LENGTH:
+            return ToolResult.failure(
+                f"Command exceeds maximum length of {MAX_COMMAND_LENGTH} characters"
+            )
 
         # Background execution
         if arguments.get("background", False):

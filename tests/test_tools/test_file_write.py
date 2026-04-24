@@ -73,3 +73,14 @@ class TestFileWriteTool:
             tool.execute({"file_path": "size.txt", "content": "12345"}, _ctx(tmp_path))
         )
         assert "5 bytes" in result.output
+
+    def test_file_size_limit(self, tmp_path: Path) -> None:
+        """Test that files exceeding MAX_FILE_SIZE are rejected."""
+        tool = FileWriteTool()
+        # Create content that exceeds 10 MB limit
+        large_content = "x" * (11 * 1024 * 1024)  # 11 MB
+        result = asyncio.run(
+            tool.execute({"file_path": "large.txt", "content": large_content}, _ctx(tmp_path))
+        )
+        assert result.is_error
+        assert "exceeds maximum size" in result.error.lower()

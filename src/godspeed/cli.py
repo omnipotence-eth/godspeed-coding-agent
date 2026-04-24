@@ -409,6 +409,20 @@ def _build_tool_registry(tool_set: str = "full") -> tuple:
     except ImportError:
         pass
 
+    try:
+        from godspeed.tools.command_palette import CommandPaletteTool
+
+        tools.append(CommandPaletteTool())
+    except ImportError:
+        pass
+
+    try:
+        from godspeed.tools.voice_input import VoiceInputTool
+
+        tools.append(VoiceInputTool())
+    except ImportError:
+        pass
+
     for tool in tools:
         if allowed is not None and tool.name not in allowed:
             continue

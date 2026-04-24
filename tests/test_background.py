@@ -158,15 +158,22 @@ async def test_status_shows_running(tmp_path):
 
 @pytest.mark.asyncio
 async def test_output_after_completion(tmp_path):
-    """Output shows captured stdout after process completes."""
+    """Output shows captured stdout after process completion."""
     shell = ShellTool()
     ctx = ToolContext(cwd=tmp_path, session_id="test")
 
     cmd = "echo hello_background"
     await shell.execute({"command": cmd, "background": True}, ctx)
 
-    # Wait for process to finish and output to be collected
-    await asyncio.sleep(1.0)
+    for _ in range(20):
+        await asyncio.sleep(0.5)
+        check = BackgroundCheckTool()
+        result = await check.execute({"action": "status"}, ctx)
+        if "exited" in result.output:
+            break
+    else:
+        check = BackgroundCheckTool()
+        result = await check.execute({"action": "kill", "id": 1}, ctx)
 
     check = BackgroundCheckTool()
     result = await check.execute({"action": "output", "id": 1}, ctx)

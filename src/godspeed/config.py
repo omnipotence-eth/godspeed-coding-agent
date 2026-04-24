@@ -138,6 +138,7 @@ class GodspeedSettings(BaseSettings):
     """Root configuration for Godspeed."""
 
     # Model presets for speed + quality balance
+    # Note: quality preset uses llama-3.1-70b which is verified working on NVIDIA NIM free tier
     MODEL_PRESETS: ClassVar[dict[str, str]] = {
         "fast": "ollama/qwen3:4b",  # Free, local, fast
         "balanced": "ollama/qwen3:14b",  # Free, local, better quality

@@ -8,6 +8,13 @@ Priority: GODSPEED.md > AGENTS.md > .godspeedrules > CLAUDE.md > .cursorrules
 All found files are merged (parent-first, most-specific-last).
 """
 
+from __future__ import annotations
+
+import logging
+from pathlib import Path
+
+logger = logging.getLogger(__name__)
+
 # Cross-agent instruction files, in priority order.
 # GODSPEED.md is always loaded first and takes highest priority.
 # Others are loaded as supplementary context if GODSPEED.md is absent

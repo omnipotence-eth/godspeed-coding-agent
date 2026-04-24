@@ -49,6 +49,7 @@ class TestGitTool:
         assert schema["required"] == ["action"]
         assert set(schema["properties"]["action"]["enum"]) == {
             "commit",
+            "create_pr",
             "diff",
             "log",
             "stash",

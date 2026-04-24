@@ -11,6 +11,7 @@ from godspeed.config import get_model_context_window
 from godspeed.context.compaction import (
     COMPACTION_PROMPT_LARGE,
     COMPACTION_PROMPT_SMALL,
+    COMPACTION_PROMPT_ULTRA_LARGE,
     compact_if_needed,
     get_compaction_prompt,
 )
@@ -21,10 +22,10 @@ class TestModelContextWindows:
     """Test model context window lookup."""
 
     def test_claude_opus(self) -> None:
-        assert get_model_context_window("claude-opus-4-20250514") == 200_000
+        assert get_model_context_window("claude-opus-4-20250514") == 1_000_000
 
     def test_claude_sonnet(self) -> None:
-        assert get_model_context_window("claude-sonnet-4-20250514") == 200_000
+        assert get_model_context_window("claude-sonnet-4-20250514") == 1_000_000
 
     def test_gpt4o(self) -> None:
         assert get_model_context_window("gpt-4o-2024-05-13") == 128_000
@@ -48,7 +49,7 @@ class TestModelContextWindows:
         assert get_model_context_window("") == 32_768
 
     def test_case_insensitive(self) -> None:
-        assert get_model_context_window("Claude-Sonnet-4") == 200_000
+        assert get_model_context_window("Claude-Sonnet-4") == 1_000_000
 
     def test_gemini_large_context(self) -> None:
         assert get_model_context_window("gemini-2-flash") == 1_000_000
@@ -70,14 +71,14 @@ class TestCompactionPromptSelection:
         assert prompt == COMPACTION_PROMPT_SMALL  # 32768 ≤ 32768 threshold
 
     def test_frontier_model_gets_detailed_prompt(self) -> None:
-        # claude-sonnet = 200K → large
+        # claude-sonnet-4 = 1M → ultra-large
         prompt = get_compaction_prompt("claude-sonnet-4-20250514")
-        assert prompt == COMPACTION_PROMPT_LARGE
-        assert "thorough" in prompt.lower()
+        assert prompt == COMPACTION_PROMPT_ULTRA_LARGE
+        assert "exhaustive" in prompt.lower()
 
-    def test_gpt4o_gets_large_prompt(self) -> None:
-        # gpt-4o = 128K → large
-        prompt = get_compaction_prompt("gpt-4o-mini")
+    def test_large_model_gets_detailed_prompt(self) -> None:
+        # gpt-4o = 128K → large (not ultra-large)
+        prompt = get_compaction_prompt("gpt-4o")
         assert prompt == COMPACTION_PROMPT_LARGE
 
     def test_unknown_model_gets_medium_prompt(self) -> None:
@@ -123,11 +124,11 @@ class TestCompactIfNeeded:
         result = await compact_if_needed(conv, client, model="claude-sonnet-4")
 
         if result:
-            # Verify chat was called with the large prompt (claude = 200K)
+            # Verify chat was called with the ultra-large prompt (claude-sonnet-4 = 1M)
             call_args = client.chat.call_args
             messages = call_args[1]["messages"] if "messages" in call_args[1] else call_args[0][0]
             system_content = messages[0]["content"]
-            assert "thorough" in system_content.lower()
+            assert "exhaustive" in system_content.lower()
 
     @pytest.mark.asyncio
     async def test_compaction_with_small_model(self) -> None:

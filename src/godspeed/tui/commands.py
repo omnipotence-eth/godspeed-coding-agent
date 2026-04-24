@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+import shutil
+import subprocess
 from collections.abc import Callable
 from datetime import UTC
 from pathlib import Path
@@ -117,6 +119,10 @@ class Commands:
         self._handlers["/export"] = self._cmd_export
         self._handlers["/quit"] = self._cmd_quit
         self._handlers["/exit"] = self._cmd_quit
+        self._handlers["/review"] = self._cmd_review
+        self._handlers["/sessions"] = self._cmd_sessions
+        self._handlers["/skill"] = self._cmd_skill
+        self._handlers["/actions"] = self._cmd_actions
 
     # External references — set after Commands init
     _task_store: Any | None = None
@@ -1004,3 +1010,238 @@ class Commands:
     def _cmd_quit(self, _args: str = "") -> CommandResult:
         """Exit Godspeed — session summary shown by app.py."""
         return CommandResult(handled=True, should_quit=True)
+
+    def _cmd_review(self, _args: str = "") -> CommandResult:
+        """Show git status and diff review of changes in this session."""
+
+        git_path = shutil.which("git")
+        if git_path is None:
+            format_error("Git not found.")
+            return CommandResult(handled=True)
+
+        # Check if in a git repo
+        try:
+            result = subprocess.run(
+                ["git", "rev-parse", "--git-dir"],
+                cwd=self._cwd,
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if result.returncode != 0:
+                format_error("Not a git repository.")
+                return CommandResult(handled=True)
+        except (subprocess.SubprocessError, FileNotFoundError):
+            format_error("Git not available.")
+            return CommandResult(handled=True)
+
+        from rich.table import Table
+
+        table = Table(title="Git Status", border_style=TABLE_BORDER, expand=False)
+        table.add_column("File", style=BOLD_PRIMARY)
+        table.add_column("Status")
+
+        try:
+            result = subprocess.run(
+                ["git", "status", "--porcelain"],
+                cwd=self._cwd,
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if result.returncode != 0:
+                format_error("git status failed.")
+                return CommandResult(handled=True)
+
+            lines = result.stdout.strip().splitlines()
+            if not lines:
+                format_info("No uncommitted changes.")
+                return CommandResult(handled=True)
+
+            for line in lines[:20]:  # Limit to 20 files
+                if len(line) < 3:
+                    continue
+                status = line[:2]
+                filepath = line[3:]
+                status_icon = (
+                    "[success]M[/success]"
+                    if status == " M"
+                    else "[warning]A[/warning]"
+                    if status == "??"
+                    else "[error]D[/error]"
+                    if "D" in status
+                    else "[error]?[/error]"
+                )
+                table.add_row(filepath, status_icon)
+
+            console.print(table)
+
+            # Show diff summary
+            diff_result = subprocess.run(
+                ["git", "diff", "--stat"],
+                cwd=self._cwd,
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if diff_result.returncode == 0 and diff_result.stdout.strip():
+                format_info(f"Diff summary:\n{DIM}{diff_result.stdout.strip()}[/{DIM}]")
+
+        except (subprocess.SubprocessError, FileNotFoundError) as e:
+            format_error(f"Git command failed: {e}")
+            return CommandResult(handled=True)
+
+        return CommandResult(handled=True)
+
+    def _cmd_sessions(self, _args: str = "") -> CommandResult:
+        """List past sessions from .godspeed/sessions/."""
+        from datetime import datetime
+
+        sessions_dir = self._cwd / ".godspeed" / "sessions"
+        if not sessions_dir.exists():
+            format_info("No past sessions.")
+            return CommandResult(handled=True)
+
+        session_files = sorted(sessions_dir.glob("*.jsonl"), reverse=True)[:20]
+        if not session_files:
+            format_info("No past sessions.")
+            return CommandResult(handled=True)
+
+        from rich.table import Table
+
+        table = Table(title="Past Sessions", border_style=TABLE_BORDER, expand=False)
+        table.add_column("Session", style=BOLD_PRIMARY)
+        table.add_column("When")
+        table.add_column("Messages")
+
+        for sf in session_files:
+            name = sf.stem
+            try:
+                lines = sf.read_text().splitlines()
+                count = len(lines)
+                mtime = sf.stat().st_mtime
+                when = datetime.fromtimestamp(mtime, tz=UTC).strftime("%Y-%m-%d %H:%M")
+            except OSError:
+                continue
+
+            table.add_row(name[:12], when, str(count))
+
+        console.print(table)
+        return CommandResult(handled=True)
+
+    def _cmd_skill(self, args: str = "") -> CommandResult:
+        """Manage custom skills: list, add, remove."""
+        parts = args.split(maxsplit=1)
+        action = parts[0].lower() if parts else "list"
+        arg = parts[1] if len(parts) > 1 else ""
+
+        from godspeed.skills.loader import discover_skills
+
+        if action == "list":
+            dirs = [
+                self._cwd / ".godspeed" / "skills",
+                self._cwd / ".godspeed" / "commands",
+            ]
+            skills = discover_skills(dirs)
+            if not skills:
+                format_info("No custom skills found.")
+                return CommandResult(handled=True)
+
+            from rich.table import Table
+
+            table = Table(title="Custom Skills", border_style=TABLE_BORDER, expand=False)
+            table.add_column("Skill", style=BOLD_PRIMARY)
+            table.add_column("Trigger")
+            table.add_column("Description")
+
+            for s in skills:
+                table.add_row(s.name, s.trigger, s.description[:50])
+
+            console.print(table)
+            return CommandResult(handled=True)
+
+        if action == "add":
+            if not arg:
+                format_error("Usage: /skill add <name>")
+                return CommandResult(handled=True)
+
+            skill_path = self._cwd / ".godspeed" / "commands" / f"{arg}.md"
+            if skill_path.exists():
+                format_warning(f"Skill already exists: {arg}")
+                return CommandResult(handled=True)
+
+            skill_path.parent.mkdir(parents=True, exist_ok=True)
+            template = f"""---
+name: {arg}
+description: Custom skill for {arg}
+trigger: {arg}
+---
+# {arg} skill
+
+Describe what this skill does here.
+"""
+            skill_path.write_text(template, encoding="utf-8")
+            format_success(f"Created: [{BOLD_PRIMARY}]{skill_path.name}[/{BOLD_PRIMARY}]")
+            format_info("Edit the skill file and restart.")
+            return CommandResult(handled=True)
+
+        if action == "remove":
+            if not arg:
+                format_error("Usage: /skill remove <name>")
+                return CommandResult(handled=True)
+
+            skill_path = self._cwd / ".godspeed" / "commands" / f"{arg}.md"
+            if not skill_path.exists():
+                format_error(f"Skill not found: {arg}")
+                return CommandResult(handled=True)
+
+            skill_path.unlink()
+            format_success(f"Removed: [{BOLD_PRIMARY}]{arg}[/{BOLD_PRIMARY}]")
+            return CommandResult(handled=True)
+
+        format_error("Usage: /skill [list|add|remove] <name>")
+        return CommandResult(handled=True)
+
+    def _cmd_actions(self, _args: str = "") -> CommandResult:
+        """Run or list GitHub Actions workflows."""
+
+        gh_path = shutil.which("gh")
+        if gh_path is None:
+            format_error("GitHub CLI (gh) not installed.")
+            return CommandResult(handled=True)
+
+        try:
+            result = subprocess.run(
+                ["gh", "run", "list", "--limit", "5"],
+                cwd=self._cwd,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            if result.returncode != 0:
+                format_error("No GitHub repository or workflows found.")
+                return CommandResult(handled=True)
+
+            if not result.stdout.strip():
+                format_info("No recent workflow runs.")
+                return CommandResult(handled=True)
+
+            from rich.table import Table
+
+            table = Table(title="GitHub Actions", border_style=TABLE_BORDER, expand=False)
+            table.add_column("Workflow", style=BOLD_PRIMARY)
+            table.add_column("Status")
+            table.add_column("When")
+
+            for line in result.stdout.strip().splitlines()[:10]:
+                parts = line.split()
+                if len(parts) >= 3:
+                    table.add_row(parts[0], parts[1], " ".join(parts[2:]))
+
+            console.print(table)
+
+        except (subprocess.SubprocessError, FileNotFoundError) as e:
+            format_error(f"Failed to list workflows: {e}")
+            return CommandResult(handled=True)
+
+        return CommandResult(handled=True)

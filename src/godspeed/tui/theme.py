@@ -1,30 +1,45 @@
 """Godspeed visual identity — Midnight Gold.
-
+ 
 Single source of truth for all colors, styles, and branded strings.
 Import from here instead of hardcoding Rich markup anywhere else.
 
-Palette rationale:
-- Gold: speed, confidence, blessing ("Godspeed" = journey blessing)
-- Steel blue: trust, precision, engineering
-- Mint green: clean modern success
-- Warm red: urgent but not aggressive errors
-- Amber: clear caution without clashing with gold
-- Slate: secondary info, timestamps, muted text
+Design philosophy — Claude Code meets Godspeed:
+- Clean: minimal distraction, maximum information density
+- Soft: colors that don't strain eyes over long sessions
+- Clear: distinct visual hierarchy for rapid scanning
+- Blessed: gold accent reminds you someone's got your back
+
+Palette — refined from Claude Code dark mode:
+- Slate 900: deep background (like Claude Code's #1a1a1a)
+- Slate 800: elevated surface
+- Slate 700: subtle borders
+- Slate 600: muted text
+- Slate 400: secondary text
+- Gold: Godspeed's blessing — brand accent
+- Emerald: success (softer than green)
+- Rose: error (warm, not aggressive)
+- Amber: warning
+- Sky: info / tool markers
 """
 
 from __future__ import annotations
 
 # =============================================================================
-# Core palette — Rich color names
+# Core palette — Rich color names (slate-based like Claude Code)
 # =============================================================================
 
-PRIMARY = "gold1"  # Electric gold — brand color
-SECONDARY = "steel_blue1"  # Cool trust — panels, structure
-SUCCESS = "green3"  # Mint green — success states
-ERROR = "indian_red1"  # Warm red — errors
-WARNING = "dark_orange"  # Amber — caution
-MUTED = "grey50"  # Slate — secondary text, dimmer for contrast
-ACCENT = "cornflower_blue"  # Accent for interactive elements
+# Base colors — dark mode foundation (Claude Code #1a1a1a inspired)
+PRIMARY = "cyan"  # Cyan — clean tool markers
+SECONDARY = "grey69"  # Slate — panels, structure
+SUCCESS = "green"
+ERROR = "red"
+WARNING = "yellow"
+MUTED = "grey50"  # Slate — secondary text
+ACCENT = "cyan"  # Cyan — interactive elements
+
+# Godspeed brand colors
+BRAND_GOLD = "yellow1"
+BRAND_GOLD_BOLD = "bold yellow1"
 
 # =============================================================================
 # Semantic styles — Rich markup strings
@@ -38,58 +53,60 @@ BOLD_ERROR = f"bold {ERROR}"
 BOLD_WARNING = f"bold {WARNING}"
 DIM = "dim"
 
-# Panel borders
-BORDER_BRAND = PRIMARY
-BORDER_TOOL = SECONDARY
-BORDER_SUCCESS = SUCCESS
-BORDER_ERROR = ERROR
-BORDER_WARNING = WARNING
-BORDER_INFO = SECONDARY
+# Panel borders — subtle, like Claude Code
+BORDER_BRAND = "yellow"
+BORDER_TOOL = "grey69"
+BORDER_INFO = "grey69"
+BORDER_SUCCESS = "green"
+BORDER_ERROR = "red"
+BORDER_WARNING = "yellow"
+BORDER_ERROR = "light_coral"
+BORDER_WARNING = "gold3"
 
 # Table styles
-TABLE_HEADER = f"bold {PRIMARY}"
-TABLE_BORDER = SECONDARY
-TABLE_KEY = MUTED
+TABLE_HEADER = "bold cyan"
+TABLE_BORDER = "grey46"
+TABLE_KEY = "grey35"
 TABLE_VALUE = "bold"
 
 # Permission colors
-PERM_ALLOW = SUCCESS
-PERM_DENY = ERROR
-PERM_ASK = WARNING
-PERM_SESSION = ACCENT
+PERM_ALLOW = "green"
+PERM_DENY = "red"
+PERM_ASK = "yellow"
+PERM_SESSION = "cyan"
 
 # Context usage thresholds
-CTX_OK = SUCCESS
-CTX_WARN = WARNING
-CTX_CRITICAL = ERROR
+CTX_OK = "green"
+CTX_WARN = "yellow"
+CTX_CRITICAL = "red"
 
 # =============================================================================
 # Branded strings
 # =============================================================================
 
-PROMPT_ICON = "\u26a1"  # Lightning bolt
+PROMPT_ICON = "\u2694"  # ⚔ — crossed swords (builder's mark)
 PROMPT_TEXT = "godspeed"
-BRAND_TAGLINE = "Security-first coding agent"
+BRAND_TAGLINE = "Security-first — Build with blessing"
 
-# Syntax theme for all code blocks
-SYNTAX_THEME = "one-dark"
+# Syntax theme
+SYNTAX_THEME = "monokai"
 
 # =============================================================================
-# Unicode markers — consistent iconography
+# Unicode markers — Claude Code inspired
 # =============================================================================
 
-MARKER_SUCCESS = "\u2713"  # ✓
-MARKER_ERROR = "\u2717"  # ✗
-MARKER_WARNING = "\u26a0"  # ⚠
-MARKER_TOOL = "\u25b8"  # ▸
-MARKER_INFO = "\u25cf"  # ●
-MARKER_PARALLEL = "\u26a1"  # ⚡ — parallel tool execution
+MARKER_SUCCESS = "\u2713"  # ✓ check
+MARKER_ERROR = "\u2717"  # ✗ cross
+MARKER_WARNING = "\u26a0"  # ⚠ warning
+MARKER_TOOL = "\u25b8"  # ▸ tool execution
+MARKER_INFO = "\u25cf"  # ● info
+MARKER_PARALLEL = "\u26a1"  # ⚡
 SEPARATOR_DOT = "\u00b7"  # ·
 
-# Structural characters — Crush-inspired decorative elements
-DECORATOR = "\u2571"  # diagonal slash for branding
-RULE_CHAR = "\u2500"  # ─ — horizontal rule
-GUTTER = "\u2502"  # │ — thin gutter for tool content
+# Structural
+DECORATOR = "\u2571"  # ╲
+RULE_CHAR = "\u2500"  # ─
+GUTTER = "\u2502"  # │
 GUTTER_STYLE = MUTED
 
 # =============================================================================

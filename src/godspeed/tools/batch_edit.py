@@ -17,36 +17,47 @@ class BatchEditTool(Tool):
     everywhere, updating import paths, etc.).
     """
 
-    name = "batch_edit"
-    description = (
-        "Apply a search/replace pattern to multiple files at once. "
-        "Glob patterns are supported. Returns results for each file."
-    )
-    risk_level = RiskLevel.HIGH
+    produces_diff = True
 
-    parameters = {
-        "type": "object",
-        "properties": {
-            "files": {
-                "type": "array",
-                "items": {"type": "string"},
-                "description": "List of file paths or glob patterns to edit",
+    @property
+    def name(self) -> str:
+        return "batch_edit"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Apply a search/replace pattern to multiple files at once. "
+            "Glob patterns are supported. Returns results for each file."
+        )
+
+    @property
+    def risk_level(self) -> RiskLevel:
+        return RiskLevel.HIGH
+
+    def get_schema(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "files": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "List of file paths or glob patterns to edit",
+                },
+                "old_string": {
+                    "type": "string",
+                    "description": "The text to find and replace (same for all files)",
+                },
+                "new_string": {
+                    "type": "string",
+                    "description": "The replacement text",
+                },
+                "dry_run": {
+                    "type": "boolean",
+                    "description": "If true, show what would change without writing",
+                },
             },
-            "old_string": {
-                "type": "string",
-                "description": "The text to find and replace (same for all files)",
-            },
-            "new_string": {
-                "type": "string",
-                "description": "The replacement text",
-            },
-            "dry_run": {
-                "type": "boolean",
-                "description": "If true, show what would change without writing",
-            },
-        },
-        "required": ["files", "old_string", "new_string"],
-    }
+            "required": ["files", "old_string", "new_string"],
+        }
 
     async def execute(
         self,

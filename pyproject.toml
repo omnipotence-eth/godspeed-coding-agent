@@ -74,7 +74,7 @@ dev = [
 ]
 context = [
     "tree-sitter>=0.25.2,<1.0",
-    "tree-sitter-language-pack>=1.6.2,<2.0",
+    "tree-sitter-language-pack>=0.5.0,<1.0",
     "grep-ast>=0.9.0,<1.0",
 ]
 mcp = [

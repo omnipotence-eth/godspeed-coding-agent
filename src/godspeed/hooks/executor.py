@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import logging
+import shlex
 import subprocess
+import sys
 from pathlib import Path
 
 from godspeed.hooks.config import HookDefinition
@@ -108,9 +110,11 @@ class HookExecutor:
         )
 
         try:
-            result = subprocess.run(  # noqa: S602  # nosec B602
-                command,
-                shell=True,
+            use_shell = sys.platform == "win32"
+            cmd_args = command if use_shell else shlex.split(command)
+            result = subprocess.run(
+                cmd_args,
+                shell=use_shell,  # nosec: shell=True only used on Windows where subprocess requires it
                 cwd=self._cwd,
                 timeout=hook.timeout,
                 capture_output=True,
@@ -121,6 +125,13 @@ class HookExecutor:
             if result.stderr:
                 logger.debug("Hook stderr: %s", result.stderr.strip())
             return result.returncode
+        except ValueError as exc:
+            logger.warning(
+                "Hook command parse error command=%s error=%s",
+                command,
+                exc,
+            )
+            return 1
         except subprocess.TimeoutExpired:
             logger.warning(
                 "Hook timed out event=%s command=%s timeout=%ds",

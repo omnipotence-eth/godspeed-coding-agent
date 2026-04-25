@@ -13,6 +13,7 @@ import json
 import logging
 import time
 from collections.abc import Callable
+from dataclasses import dataclass, field
 from typing import Any
 
 from godspeed.agent.conversation import Conversation
@@ -55,6 +56,19 @@ OnParallelComplete = Callable[[list[tuple[str, str, bool]]], None]
 OnThinking = Callable[[str], None]
 
 
+@dataclass
+class _LoopState:
+    """Mutable state shared across helper functions during the agent loop."""
+
+    consecutive_writes: int = 0
+    consecutive_successful_edits: int = 0
+    recent_change_descriptions: list[str] = field(default_factory=list)
+    auto_stashed: bool = False
+    must_fix_injections: int = 0
+    recent_error_hashes: list[str] = field(default_factory=list)
+    speculative_cache: dict[str, asyncio.Task[ToolResult]] = field(default_factory=dict)
+
+
 async def agent_loop(
     user_input: str,
     conversation: Conversation,
@@ -75,6 +89,10 @@ async def agent_loop(
     auto_fix_retries: int = 3,
     auto_commit: bool = False,
     auto_commit_threshold: int = 5,
+    max_retries: int | None = None,
+    stuck_loop_threshold: int | None = None,
+    auto_stash_threshold: int | None = None,
+    must_fix_cap: int | None = None,
     on_parallel_start: OnParallelStart | None = None,
     on_parallel_complete: OnParallelComplete | None = None,
     on_thinking: OnThinking | None = None,
@@ -102,6 +120,10 @@ async def agent_loop(
         on_assistant_chunk: Callback(text) for streaming chunks. When provided,
             uses streaming LLM calls instead of batch calls.
         max_iterations: Override the default iteration limit (MAX_ITERATIONS).
+        max_retries: Override MAX_RETRIES for malformed tool calls.
+        stuck_loop_threshold: Override effective_stuck_threshold for stuck detection.
+        auto_stash_threshold: Override effective_stash_threshold for auto-stash.
+        must_fix_cap: Override effective_must_fix_cap for must-fix injections.
         pause_event: Optional asyncio.Event for pause/resume. When cleared,
             the loop waits at the top of each iteration until set again.
         cancel_event: Optional asyncio.Event for mid-turn cancellation.
@@ -117,6 +139,16 @@ async def agent_loop(
         The final assistant text response.
     """
     iteration_limit = max_iterations if max_iterations is not None else MAX_ITERATIONS
+    # Use configurable values or fall back to constants
+    effective_max_retries = max_retries if max_retries is not None else MAX_RETRIES
+    effective_stuck_threshold = (
+        stuck_loop_threshold if stuck_loop_threshold is not None else STUCK_LOOP_THRESHOLD
+    )
+    effective_stash_threshold = (
+        auto_stash_threshold if auto_stash_threshold is not None else AUTO_STASH_THRESHOLD
+    )
+    effective_must_fix_cap = must_fix_cap if must_fix_cap is not None else MUST_FIX_CAP
+
     if not skip_user_message and user_input:
         conversation.add_user_message(user_input)
     tool_schemas = tool_registry.get_schemas()
@@ -247,7 +279,7 @@ async def agent_loop(
             _check_cancel(cancel_event)
             if tool_call is None:
                 retries += 1
-                if retries > MAX_RETRIES:
+                if retries > effective_max_retries:
                     if metrics is not None:
                         metrics.iterations_used = iteration + 1
                         metrics.finalize(ExitReason.TOOL_ERROR)
@@ -441,6 +473,7 @@ async def agent_loop(
                             verify_text,
                             must_fix_injections,
                             metrics,
+                            effective_must_fix_cap,
                         )
 
             # Auto-stash: count writes in batch
@@ -469,7 +502,7 @@ async def agent_loop(
                 consecutive_writes += batch_writes
 
             if (
-                consecutive_writes >= AUTO_STASH_THRESHOLD
+                consecutive_writes >= effective_stash_threshold
                 and not auto_stashed
                 and tool_registry.has_tool("git")
             ):
@@ -522,21 +555,21 @@ async def agent_loop(
                 if result.is_error:
                     error_hash = hashlib.sha256((result_content or "").encode()).hexdigest()
                     recent_error_hashes.append(error_hash)
-                    if len(recent_error_hashes) > STUCK_LOOP_THRESHOLD:
+                    if len(recent_error_hashes) > effective_stuck_threshold:
                         recent_error_hashes.pop(0)
                 else:
                     recent_error_hashes.clear()
 
             if (
-                len(recent_error_hashes) == STUCK_LOOP_THRESHOLD
+                len(recent_error_hashes) == effective_stuck_threshold
                 and len(set(recent_error_hashes)) == 1
             ):
                 logger.warning(
                     "Stuck loop detected: %d identical errors",
-                    STUCK_LOOP_THRESHOLD,
+                    effective_stuck_threshold,
                 )
                 conversation.add_user_message(
-                    f"You have failed {STUCK_LOOP_THRESHOLD} times with the same error. "
+                    f"You have failed {effective_stuck_threshold} times with the same error. "
                     "Stop, explain what is wrong, and try a completely "
                     "different approach."
                 )
@@ -628,6 +661,7 @@ async def agent_loop(
                             verify_text,
                             must_fix_injections,
                             metrics,
+                            effective_must_fix_cap,
                         )
 
                 # Auto-stash: track consecutive write operations
@@ -637,7 +671,7 @@ async def agent_loop(
                 ):
                     consecutive_writes += 1
                     if (
-                        consecutive_writes >= AUTO_STASH_THRESHOLD
+                        consecutive_writes >= effective_stash_threshold
                         and not auto_stashed
                         and tool_registry.has_tool("git")
                     ):
@@ -689,22 +723,22 @@ async def agent_loop(
                 if result.is_error:
                     error_hash = hashlib.sha256((result_content or "").encode()).hexdigest()
                     recent_error_hashes.append(error_hash)
-                    if len(recent_error_hashes) > STUCK_LOOP_THRESHOLD:
+                    if len(recent_error_hashes) > effective_stuck_threshold:
                         recent_error_hashes.pop(0)
 
                     if (
-                        len(recent_error_hashes) == STUCK_LOOP_THRESHOLD
+                        len(recent_error_hashes) == effective_stuck_threshold
                         and len(set(recent_error_hashes)) == 1
                     ):
                         logger.warning(
                             "Stuck loop detected: %d identical errors hash=%s",
-                            STUCK_LOOP_THRESHOLD,
+                            effective_stuck_threshold,
                             error_hash[:12],
                         )
                         conversation.add_user_message(
-                            f"You have failed {STUCK_LOOP_THRESHOLD} times with the same error. "
-                            "Stop, explain what is wrong, and try a completely "
-                            "different approach."
+                            f"You have failed {effective_stuck_threshold} times "
+                            "with the same error. Stop, explain what is wrong, "
+                            "and try a completely different approach."
                         )
                         recent_error_hashes.clear()
                 else:
@@ -714,6 +748,469 @@ async def agent_loop(
         metrics.iterations_used = iteration_limit
         metrics.finalize(ExitReason.MAX_ITERATIONS)
     return "Error: Reached maximum iterations. The task may be too complex for a single turn."
+
+
+async def _dispatch_parallel(
+    permitted: list[ToolCall],
+    tool_registry: ToolRegistry,
+    tool_context: ToolContext,
+    hook_executor: Any | None,
+    on_tool_result: OnToolResult | None,
+    on_parallel_start: OnParallelStart | None,
+    on_parallel_complete: OnParallelComplete | None,
+    metrics: AgentMetrics | None,
+    state: _LoopState,
+    conversation: Conversation,
+    cancel_event: asyncio.Event | None,
+    auto_fix_retries: int,
+    llm_client: LLMClient,
+    auto_commit: bool,
+    auto_commit_threshold: int,
+    effective_stuck_threshold: int,
+    effective_stash_threshold: int,
+    effective_must_fix_cap: int,
+) -> None:
+    """Execute tools in parallel (read-only) and sequential (write) batches.
+
+    Handles auto-verify, auto-stash, auto-commit, and stuck-loop detection.
+    """
+    from godspeed.tools.base import RiskLevel
+
+    # Partition into read-only (parallel-safe) and write (serial) groups
+    read_only_calls: list[ToolCall] = []
+    write_calls: list[ToolCall] = []
+    for tc in permitted:
+        tool = tool_registry.get(tc.tool_name)
+        if tool is not None and tool.risk_level == RiskLevel.READ_ONLY:
+            read_only_calls.append(tc)
+        else:
+            write_calls.append(tc)
+
+    all_calls = read_only_calls + write_calls
+    if on_parallel_start:
+        on_parallel_start([(tc.tool_name, tc.arguments) for tc in all_calls])
+
+    t0 = time.monotonic()
+    parallel_results: list[ToolResult] = []
+    if read_only_calls:
+        coros = []
+        for tc in read_only_calls:
+            cached_task = state.speculative_cache.pop(tc.call_id, None)
+            if cached_task is not None:
+                logger.debug("Speculative hit tool=%s call_id=%s", tc.tool_name, tc.call_id)
+                coros.append(cached_task)
+            else:
+                coros.append(asyncio.create_task(tool_registry.dispatch(tc, tool_context)))
+        parallel_results = await asyncio.gather(*coros)
+
+    serial_results: list[ToolResult] = []
+    for tc in write_calls:
+        _check_cancel(cancel_event)
+        result = await tool_registry.dispatch(tc, tool_context)
+        serial_results.append(result)
+
+    results = parallel_results + serial_results
+    permitted_ordered = all_calls
+    batch_latency_ms = (time.monotonic() - t0) * 1000
+    logger.info(
+        "Parallel dispatch completed tools=%d latency_ms=%.1f",
+        len(permitted_ordered),
+        batch_latency_ms,
+    )
+
+    # Process results
+    for tool_call, result in zip(permitted_ordered, results, strict=True):
+        _check_cancel(cancel_event)
+        if hook_executor is not None:
+            await asyncio.get_running_loop().run_in_executor(
+                None, hook_executor.run_post_tool, tool_call.tool_name
+            )
+        if on_tool_result:
+            on_tool_result(tool_call.tool_name, result)
+        if metrics is not None:
+            metrics.record_tool_call(tool_call.tool_name, result.is_error)
+        if tool_context.audit is not None:
+            tool_context.audit.record(
+                event_type="tool_call",
+                detail={
+                    "tool": tool_call.tool_name,
+                    "arguments": tool_call.arguments,
+                    "output_length": len(result.output),
+                    "is_error": result.is_error,
+                    "latency_ms": round(batch_latency_ms / len(permitted_ordered), 1),
+                    "parallel": True,
+                },
+                outcome="error" if result.is_error else "success",
+            )
+        result_content = result.error if result.is_error else result.output
+        conversation.add_tool_result(
+            tool_call_id=tool_call.call_id,
+            content=result_content or "",
+        )
+
+    # Post-processing: auto-verify, auto-stash, auto-commit, stuck-loop
+    _post_process_results(
+        permitted_ordered,
+        results,
+        state,
+        conversation,
+        tool_registry,
+        tool_context,
+        llm_client,
+        metrics,
+        auto_fix_retries,
+        auto_commit,
+        auto_commit_threshold,
+        effective_stuck_threshold,
+        effective_stash_threshold,
+        effective_must_fix_cap,
+    )
+
+    if on_parallel_complete:
+        on_parallel_complete(
+            [
+                (tc.tool_name, str(r.error) if r.is_error else str(r.output), r.is_error)
+                for tc, r in zip(permitted_ordered, results, strict=True)
+            ]
+        )
+
+
+async def _dispatch_sequential(
+    permitted: list[ToolCall],
+    tool_registry: ToolRegistry,
+    tool_context: ToolContext,
+    hook_executor: Any | None,
+    on_tool_result: OnToolResult | None,
+    metrics: AgentMetrics | None,
+    state: _LoopState,
+    conversation: Conversation,
+    cancel_event: asyncio.Event | None,
+    auto_fix_retries: int,
+    llm_client: LLMClient,
+    auto_commit: bool,
+    auto_commit_threshold: int,
+    effective_stuck_threshold: int,
+    effective_stash_threshold: int,
+    effective_must_fix_cap: int,
+) -> None:
+    """Execute tools sequentially, one at a time."""
+    for tool_call in permitted:
+        _check_cancel(cancel_event)
+        t0 = time.monotonic()
+        cached_task = state.speculative_cache.pop(tool_call.call_id, None)
+        if cached_task is not None:
+            logger.debug(
+                "Speculative hit (sequential) tool=%s call_id=%s",
+                tool_call.tool_name,
+                tool_call.call_id,
+            )
+            result = await cached_task
+        else:
+            result = await tool_registry.dispatch(tool_call, tool_context)
+        latency_ms = (time.monotonic() - t0) * 1000
+
+        if hook_executor is not None:
+            await asyncio.get_running_loop().run_in_executor(
+                None, hook_executor.run_post_tool, tool_call.tool_name
+            )
+        if on_tool_result:
+            on_tool_result(tool_call.tool_name, result)
+        if metrics is not None:
+            metrics.record_tool_call(tool_call.tool_name, result.is_error)
+        if tool_context.audit is not None:
+            tool_context.audit.record(
+                event_type="tool_call",
+                detail={
+                    "tool": tool_call.tool_name,
+                    "arguments": tool_call.arguments,
+                    "output_length": len(result.output),
+                    "is_error": result.is_error,
+                    "latency_ms": round(latency_ms, 1),
+                },
+                outcome="error" if result.is_error else "success",
+            )
+        result_content = result.error if result.is_error else result.output
+        conversation.add_tool_result(
+            tool_call_id=tool_call.call_id,
+            content=result_content or "",
+        )
+        _post_process_single_result(
+            tool_call,
+            result,
+            state,
+            conversation,
+            tool_registry,
+            tool_context,
+            llm_client,
+            metrics,
+            auto_fix_retries,
+            auto_commit,
+            auto_commit_threshold,
+            effective_stuck_threshold,
+            effective_stash_threshold,
+            effective_must_fix_cap,
+        )
+
+
+def _post_process_results(
+    tool_calls: list[ToolCall],
+    results: list[ToolResult],
+    state: _LoopState,
+    conversation: Conversation,
+    tool_registry: ToolRegistry,
+    tool_context: ToolContext,
+    llm_client: LLMClient,
+    metrics: AgentMetrics | None,
+    auto_fix_retries: int,
+    auto_commit: bool,
+    auto_commit_threshold: int,
+    effective_stuck_threshold: int,
+    effective_stash_threshold: int,
+    effective_must_fix_cap: int,
+) -> None:
+    """Post-process a batch of tool results (auto-verify, auto-stash, etc.)."""
+    # Auto-verify
+    for tc, result in zip(tool_calls, results, strict=True):
+        if (
+            not result.is_error
+            and tc.tool_name in ("file_edit", "file_write")
+            and tool_registry.has_tool("verify")
+        ):
+            file_path = tc.arguments.get("file_path", "")
+            if file_path and file_path.endswith(VERIFIABLE_EXTENSIONS):
+                verify_result = asyncio.run_coroutine_threadsafe(
+                    _auto_verify_file(
+                        file_path, tc.call_id, tool_registry, tool_context, auto_fix_retries
+                    ),
+                    asyncio.get_event_loop(),
+                ).result()
+                conversation.add_tool_result(
+                    tool_call_id=f"{tc.call_id}_verify",
+                    content=verify_result.output or "",
+                )
+                verify_text = verify_result.error or verify_result.output or ""
+                state.must_fix_injections = _maybe_inject_must_fix(
+                    conversation,
+                    file_path,
+                    verify_text,
+                    state.must_fix_injections,
+                    metrics,
+                    effective_must_fix_cap,
+                )
+
+    # Auto-stash and edit tracking
+    batch_writes = sum(
+        1
+        for tc, r in zip(tool_calls, results, strict=True)
+        if not r.is_error and tc.tool_name in ("file_edit", "file_write")
+    )
+    batch_has_non_write = any(tc.tool_name not in ("file_edit", "file_write") for tc in tool_calls)
+    if batch_has_non_write:
+        state.consecutive_writes = batch_writes
+        state.consecutive_successful_edits = sum(
+            1
+            for tc, r in zip(tool_calls, results, strict=True)
+            if not r.is_error and tc.tool_name in ("file_edit", "file_write")
+        )
+        state.recent_change_descriptions = [
+            f"{tc.tool_name} {tc.arguments.get('file_path', '?')}"
+            for tc, r in zip(tool_calls, results, strict=True)
+            if not r.is_error and tc.tool_name in ("file_edit", "file_write")
+        ]
+    else:
+        state.consecutive_writes += batch_writes
+
+    if (
+        state.consecutive_writes >= effective_stash_threshold
+        and not state.auto_stashed
+        and tool_registry.has_tool("git")
+    ):
+        stash_call = ToolCall(
+            tool_name="git",
+            arguments={"action": "stash"},
+            call_id=f"{tool_calls[-1].call_id}_autostash",
+        )
+        stash_result = asyncio.run_coroutine_threadsafe(
+            tool_registry.dispatch(stash_call, tool_context),
+            asyncio.get_event_loop(),
+        ).result()
+        if (
+            not stash_result.is_error
+            and "nothing to stash" not in (stash_result.output or "").lower()
+        ):
+            state.auto_stashed = True
+            logger.info(
+                "Auto-stash triggered after %d consecutive writes", state.consecutive_writes
+            )
+            conversation.add_tool_result(
+                tool_call_id=stash_call.call_id,
+                content=(
+                    f"[Auto-stash] Saved working state after "
+                    f"{state.consecutive_writes} consecutive file edits. "
+                    "Use git stash_pop to restore if needed."
+                ),
+            )
+
+    # Auto-commit tracking
+    for tc, r in zip(tool_calls, results, strict=True):
+        if not r.is_error and tc.tool_name in ("file_edit", "file_write"):
+            state.consecutive_successful_edits += 1
+            desc = f"{tc.tool_name} {tc.arguments.get('file_path', '?')}"
+            state.recent_change_descriptions.append(desc)
+
+    if auto_commit and state.consecutive_successful_edits >= auto_commit_threshold:
+        committed = asyncio.run_coroutine_threadsafe(
+            _try_auto_commit(
+                list(state.recent_change_descriptions),
+                tool_context,
+                llm_client,
+                conversation,
+                tool_calls[-1].call_id,
+            ),
+            asyncio.get_event_loop(),
+        ).result()
+        if committed:
+            state.consecutive_successful_edits = 0
+            state.recent_change_descriptions.clear()
+
+    # Stuck-loop detection
+    for _tc, result in zip(tool_calls, results, strict=True):
+        if result.is_error:
+            error_hash = hashlib.sha256((result.error or "").encode()).hexdigest()
+            state.recent_error_hashes.append(error_hash)
+            if len(state.recent_error_hashes) > effective_stuck_threshold:
+                state.recent_error_hashes.pop(0)
+        else:
+            state.recent_error_hashes.clear()
+
+    if (
+        len(state.recent_error_hashes) == effective_stuck_threshold
+        and len(set(state.recent_error_hashes)) == 1
+    ):
+        logger.warning("Stuck loop detected: %d identical errors", effective_stuck_threshold)
+        conversation.add_user_message(
+            f"You have failed {effective_stuck_threshold} times with the same error. "
+            "Stop, explain what is wrong, and try a completely different approach."
+        )
+        state.recent_error_hashes.clear()
+
+
+def _post_process_single_result(
+    tool_call: ToolCall,
+    result: ToolResult,
+    state: _LoopState,
+    conversation: Conversation,
+    tool_registry: ToolRegistry,
+    tool_context: ToolContext,
+    llm_client: LLMClient,
+    metrics: AgentMetrics | None,
+    auto_fix_retries: int,
+    auto_commit: bool,
+    auto_commit_threshold: int,
+    effective_stuck_threshold: int,
+    effective_stash_threshold: int,
+    effective_must_fix_cap: int,
+) -> None:
+    """Post-process a single tool result."""
+    if (
+        not result.is_error
+        and tool_call.tool_name in ("file_edit", "file_write")
+        and tool_registry.has_tool("verify")
+    ):
+        file_path = tool_call.arguments.get("file_path", "")
+        if file_path and file_path.endswith(VERIFIABLE_EXTENSIONS):
+            verify_result = asyncio.run_coroutine_threadsafe(
+                _auto_verify_file(
+                    file_path, tool_call.call_id, tool_registry, tool_context, auto_fix_retries
+                ),
+                asyncio.get_event_loop(),
+            ).result()
+            conversation.add_tool_result(
+                tool_call_id=f"{tool_call.call_id}_verify",
+                content=verify_result.output or "",
+            )
+            verify_text = verify_result.error or verify_result.output or ""
+            state.must_fix_injections = _maybe_inject_must_fix(
+                conversation,
+                file_path,
+                verify_text,
+                state.must_fix_injections,
+                metrics,
+                effective_must_fix_cap,
+            )
+
+    if not result.is_error and tool_call.tool_name in ("file_edit", "file_write"):
+        state.consecutive_writes += 1
+        if (
+            state.consecutive_writes >= effective_stash_threshold
+            and not state.auto_stashed
+            and tool_registry.has_tool("git")
+        ):
+            stash_call = ToolCall(
+                tool_name="git",
+                arguments={"action": "stash"},
+                call_id=f"{tool_call.call_id}_autostash",
+            )
+            stash_result = asyncio.run_coroutine_threadsafe(
+                tool_registry.dispatch(stash_call, tool_context),
+                asyncio.get_event_loop(),
+            ).result()
+            if (
+                not stash_result.is_error
+                and "nothing to stash" not in (stash_result.output or "").lower()
+            ):
+                state.auto_stashed = True
+                logger.info(
+                    "Auto-stash triggered after %d consecutive writes", state.consecutive_writes
+                )
+                conversation.add_tool_result(
+                    tool_call_id=stash_call.call_id,
+                    content=(
+                        f"[Auto-stash] Saved working state after "
+                        f"{state.consecutive_writes} consecutive file edits. "
+                        "Use git stash_pop to restore if needed."
+                    ),
+                )
+        state.consecutive_successful_edits += 1
+        desc = f"{tool_call.tool_name} {tool_call.arguments.get('file_path', '?')}"
+        state.recent_change_descriptions.append(desc)
+        if auto_commit and state.consecutive_successful_edits >= auto_commit_threshold:
+            committed = asyncio.run_coroutine_threadsafe(
+                _try_auto_commit(
+                    list(state.recent_change_descriptions),
+                    tool_context,
+                    llm_client,
+                    conversation,
+                    tool_call.call_id,
+                ),
+                asyncio.get_event_loop(),
+            ).result()
+            if committed:
+                state.consecutive_successful_edits = 0
+                state.recent_change_descriptions.clear()
+    else:
+        state.consecutive_writes = 0
+        state.consecutive_successful_edits = 0
+        state.recent_change_descriptions = []
+
+    # Stuck-loop detection
+    if result.is_error:
+        error_hash = hashlib.sha256((result.error or "").encode()).hexdigest()
+        state.recent_error_hashes.append(error_hash)
+        if len(state.recent_error_hashes) > effective_stuck_threshold:
+            state.recent_error_hashes.pop(0)
+        if (
+            len(state.recent_error_hashes) == effective_stuck_threshold
+            and len(set(state.recent_error_hashes)) == 1
+        ):
+            logger.warning("Stuck loop detected: %d identical errors", effective_stuck_threshold)
+            conversation.add_user_message(
+                f"You have failed {effective_stuck_threshold} times with the same error. "
+                "Stop, explain what is wrong, and try a completely different approach."
+            )
+            state.recent_error_hashes.clear()
+    else:
+        state.recent_error_hashes.clear()
 
 
 async def _auto_verify_file(
@@ -760,7 +1257,8 @@ def _maybe_inject_must_fix(
     file_path: str,
     verify_output: str,
     injections: int,
-    metrics: AgentMetrics | None = None,
+    metrics: AgentMetrics | None,
+    effective_must_fix_cap: int,
 ) -> int:
     """Force the model to address unresolved lint errors after auto-verify.
 
@@ -771,7 +1269,7 @@ def _maybe_inject_must_fix(
     user-role message naming the file and errors so the constraint is
     in-conversation.
 
-    Caps at MUST_FIX_CAP injections per session. After the cap we log a
+    Caps at effective_must_fix_cap injections per session. After the cap we log a
     warning and fail open — better to let the agent try a different tack
     than to deadlock on a fundamentally unfixable error (broken ruff
     config, upstream dep bug, etc.).
@@ -783,7 +1281,7 @@ def _maybe_inject_must_fix(
 
     if REMAINING_ERRORS_FINGERPRINT not in (verify_output or ""):
         return injections
-    if injections >= MUST_FIX_CAP:
+    if injections >= effective_must_fix_cap:
         logger.warning(
             "MUST-FIX cap reached for file=%s; allowing agent to proceed",
             file_path,
@@ -798,7 +1296,7 @@ def _maybe_inject_must_fix(
         "MUST-FIX injected file=%s count=%d/%d",
         file_path,
         injections + 1,
-        MUST_FIX_CAP,
+        effective_must_fix_cap,
     )
     if metrics is not None:
         metrics.record_must_fix_injection()

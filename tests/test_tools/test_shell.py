@@ -136,3 +136,11 @@ class TestShellTool:
 
         assert not result.is_error
         assert "no output" in result.output.lower()
+
+    @pytest.mark.asyncio
+    async def test_command_length_limit(self, tool: ShellTool, tool_context: ToolContext) -> None:
+        """Test that commands exceeding MAX_COMMAND_LENGTH are rejected."""
+        long_command = "echo " + "x" * 10001  # Exceeds 10000 char limit
+        result = await tool.execute({"command": long_command}, tool_context)
+        assert result.is_error
+        assert "exceeds maximum length" in result.error.lower()

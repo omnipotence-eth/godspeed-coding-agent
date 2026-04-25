@@ -49,7 +49,9 @@ class TestMaybeInjectMustFix:
 
     def test_no_injection_on_clean_verify(self) -> None:
         convo = Conversation("sys", max_tokens=100_000)
-        out = _maybe_inject_must_fix(convo, "x.py", "Verification passed: x.py", 0)
+        out = _maybe_inject_must_fix(
+            convo, "x.py", "Verification passed: x.py", 0, None, MUST_FIX_CAP
+        )
         assert out == 0
         assert _count_must_fix_messages(convo) == 0
 
@@ -58,7 +60,7 @@ class TestMaybeInjectMustFix:
         verify_output = (
             "Auto-fixed 2 round(s) of issues, some remaining: app.py\nF401 unused import"
         )
-        out = _maybe_inject_must_fix(convo, "app.py", verify_output, 0)
+        out = _maybe_inject_must_fix(convo, "app.py", verify_output, 0, None, MUST_FIX_CAP)
         assert out == 1
         assert _count_must_fix_messages(convo) == 1
         must_fix = next(m for m in convo.messages if "MUST fix" in str(m.get("content", "")))
@@ -70,21 +72,23 @@ class TestMaybeInjectMustFix:
         verify_output = "Auto-fixed rounds, some remaining: app.py"
         counter = 0
         for _ in range(MUST_FIX_CAP + 2):
-            counter = _maybe_inject_must_fix(convo, "app.py", verify_output, counter)
+            counter = _maybe_inject_must_fix(
+                convo, "app.py", verify_output, counter, None, MUST_FIX_CAP
+            )
         assert counter == MUST_FIX_CAP
         assert _count_must_fix_messages(convo) == MUST_FIX_CAP
 
     def test_empty_output_never_injects(self) -> None:
         convo = Conversation("sys", max_tokens=100_000)
-        assert _maybe_inject_must_fix(convo, "x.py", "", 0) == 0
-        assert _maybe_inject_must_fix(convo, "x.py", None, 0) == 0  # type: ignore[arg-type]
+        assert _maybe_inject_must_fix(convo, "x.py", "", 0, None, MUST_FIX_CAP) == 0
+        assert _maybe_inject_must_fix(convo, "x.py", None, 0, None, MUST_FIX_CAP) == 0  # type: ignore[arg-type]
 
     def test_injection_records_on_metrics(self) -> None:
         """When metrics is provided, each injection bumps the counter."""
         convo = Conversation("sys", max_tokens=100_000)
         metrics = AgentMetrics()
         verify_output = "Auto-fixed 2 rounds, some remaining: app.py\nF401"
-        out = _maybe_inject_must_fix(convo, "app.py", verify_output, 0, metrics)
+        out = _maybe_inject_must_fix(convo, "app.py", verify_output, 0, metrics, MUST_FIX_CAP)
         assert out == 1
         assert metrics.must_fix_injections == 1
 
@@ -93,7 +97,7 @@ class TestMaybeInjectMustFix:
         convo = Conversation("sys", max_tokens=100_000)
         metrics = AgentMetrics()
         verify_output = "Auto-fixed rounds, some remaining: app.py"
-        _maybe_inject_must_fix(convo, "app.py", verify_output, MUST_FIX_CAP, metrics)
+        _maybe_inject_must_fix(convo, "app.py", verify_output, MUST_FIX_CAP, metrics, MUST_FIX_CAP)
         assert metrics.must_fix_injections == 0
 
 

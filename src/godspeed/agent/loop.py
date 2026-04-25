@@ -69,9 +69,6 @@ class _LoopState:
     speculative_cache: dict[str, asyncio.Task[ToolResult]] = field(default_factory=dict)
 
 
-from dataclasses import dataclass, field
-
-
 async def agent_loop(
     user_input: str,
     conversation: Conversation,
@@ -739,9 +736,9 @@ async def agent_loop(
                             error_hash[:12],
                         )
                         conversation.add_user_message(
-                            f"You have failed {effective_stuck_threshold} times with the same error. "
-                            "Stop, explain what is wrong, and try a completely "
-                            "different approach."
+                            f"You have failed {effective_stuck_threshold} times "
+                            "with the same error. Stop, explain what is wrong, "
+                            "and try a completely different approach."
                         )
                         recent_error_hashes.clear()
                 else:
@@ -1047,7 +1044,11 @@ def _post_process_results(
             )
             conversation.add_tool_result(
                 tool_call_id=stash_call.call_id,
-                content=f"[Auto-stash] Saved working state after {state.consecutive_writes} consecutive file edits. Use git stash_pop to restore if needed.",
+                content=(
+                    f"[Auto-stash] Saved working state after "
+                    f"{state.consecutive_writes} consecutive file edits. "
+                    "Use git stash_pop to restore if needed."
+                ),
             )
 
     # Auto-commit tracking
@@ -1073,7 +1074,7 @@ def _post_process_results(
             state.recent_change_descriptions.clear()
 
     # Stuck-loop detection
-    for tc, result in zip(tool_calls, results, strict=True):
+    for _tc, result in zip(tool_calls, results, strict=True):
         if result.is_error:
             error_hash = hashlib.sha256((result.error or "").encode()).hexdigest()
             state.recent_error_hashes.append(error_hash)
@@ -1164,7 +1165,11 @@ def _post_process_single_result(
                 )
                 conversation.add_tool_result(
                     tool_call_id=stash_call.call_id,
-                    content=f"[Auto-stash] Saved working state after {state.consecutive_writes} consecutive file edits. Use git stash_pop to restore if needed.",
+                    content=(
+                        f"[Auto-stash] Saved working state after "
+                        f"{state.consecutive_writes} consecutive file edits. "
+                        "Use git stash_pop to restore if needed."
+                    ),
                 )
         state.consecutive_successful_edits += 1
         desc = f"{tool_call.tool_name} {tool_call.arguments.get('file_path', '?')}"

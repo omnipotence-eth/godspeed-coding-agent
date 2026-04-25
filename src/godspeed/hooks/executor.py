@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import shlex
 import subprocess
+import sys
 from pathlib import Path
 
 from godspeed.hooks.config import HookDefinition
@@ -109,21 +110,11 @@ class HookExecutor:
         )
 
         try:
-            # Use shell=False with shlex.split for security (avoid command injection)
-            # This prevents shell metacharacter injection attacks
-            try:
-                cmd_args = shlex.split(command)
-            except ValueError as exc:
-                logger.warning(
-                    "Hook command parse error command=%s error=%s",
-                    command,
-                    exc,
-                )
-                return 1
-
+            use_shell = sys.platform == "win32"
+            cmd_args = command if use_shell else shlex.split(command)
             result = subprocess.run(
                 cmd_args,
-                shell=False,
+                shell=use_shell,
                 cwd=self._cwd,
                 timeout=hook.timeout,
                 capture_output=True,
@@ -134,6 +125,13 @@ class HookExecutor:
             if result.stderr:
                 logger.debug("Hook stderr: %s", result.stderr.strip())
             return result.returncode
+        except ValueError as exc:
+            logger.warning(
+                "Hook command parse error command=%s error=%s",
+                command,
+                exc,
+            )
+            return 1
         except subprocess.TimeoutExpired:
             logger.warning(
                 "Hook timed out event=%s command=%s timeout=%ds",

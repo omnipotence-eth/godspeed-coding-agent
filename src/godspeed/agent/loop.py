@@ -141,11 +141,15 @@ async def agent_loop(
     Returns:
         The final assistant text response.
     """
-     iteration_limit = max_iterations if max_iterations is not None else MAX_ITERATIONS
+    iteration_limit = max_iterations if max_iterations is not None else MAX_ITERATIONS
     # Use configurable values or fall back to constants
     effective_max_retries = max_retries if max_retries is not None else MAX_RETRIES
-    effective_stuck_threshold = stuck_loop_threshold if stuck_loop_threshold is not None else STUCK_LOOP_THRESHOLD
-    effective_stash_threshold = auto_stash_threshold if auto_stash_threshold is not None else AUTO_STASH_THRESHOLD
+    effective_stuck_threshold = (
+        stuck_loop_threshold if stuck_loop_threshold is not None else STUCK_LOOP_THRESHOLD
+    )
+    effective_stash_threshold = (
+        auto_stash_threshold if auto_stash_threshold is not None else AUTO_STASH_THRESHOLD
+    )
     effective_must_fix_cap = must_fix_cap if must_fix_cap is not None else MUST_FIX_CAP
 
     if not skip_user_message and user_input:
@@ -472,6 +476,7 @@ async def agent_loop(
                             verify_text,
                             must_fix_injections,
                             metrics,
+                            effective_must_fix_cap,
                         )
 
             # Auto-stash: count writes in batch
@@ -659,6 +664,7 @@ async def agent_loop(
                             verify_text,
                             must_fix_injections,
                             metrics,
+                            effective_must_fix_cap,
                         )
 
                 # Auto-stash: track consecutive write operations
@@ -763,6 +769,9 @@ async def _dispatch_parallel(
     llm_client: LLMClient,
     auto_commit: bool,
     auto_commit_threshold: int,
+    effective_stuck_threshold: int,
+    effective_stash_threshold: int,
+    effective_must_fix_cap: int,
 ) -> None:
     """Execute tools in parallel (read-only) and sequential (write) batches.
 
@@ -806,7 +815,11 @@ async def _dispatch_parallel(
     results = parallel_results + serial_results
     permitted_ordered = all_calls
     batch_latency_ms = (time.monotonic() - t0) * 1000
-    logger.info("Parallel dispatch completed tools=%d latency_ms=%.1f", len(permitted_ordered), batch_latency_ms)
+    logger.info(
+        "Parallel dispatch completed tools=%d latency_ms=%.1f",
+        len(permitted_ordered),
+        batch_latency_ms,
+    )
 
     # Process results
     for tool_call, result in zip(permitted_ordered, results, strict=True):
@@ -840,8 +853,20 @@ async def _dispatch_parallel(
 
     # Post-processing: auto-verify, auto-stash, auto-commit, stuck-loop
     _post_process_results(
-        permitted_ordered, results, state, conversation, tool_registry, tool_context,
-        llm_client, metrics, auto_fix_retries, auto_commit, auto_commit_threshold,
+        permitted_ordered,
+        results,
+        state,
+        conversation,
+        tool_registry,
+        tool_context,
+        llm_client,
+        metrics,
+        auto_fix_retries,
+        auto_commit,
+        auto_commit_threshold,
+        effective_stuck_threshold,
+        effective_stash_threshold,
+        effective_must_fix_cap,
     )
 
     if on_parallel_complete:
@@ -867,6 +892,9 @@ async def _dispatch_sequential(
     llm_client: LLMClient,
     auto_commit: bool,
     auto_commit_threshold: int,
+    effective_stuck_threshold: int,
+    effective_stash_threshold: int,
+    effective_must_fix_cap: int,
 ) -> None:
     """Execute tools sequentially, one at a time."""
     for tool_call in permitted:
@@ -874,7 +902,11 @@ async def _dispatch_sequential(
         t0 = time.monotonic()
         cached_task = state.speculative_cache.pop(tool_call.call_id, None)
         if cached_task is not None:
-            logger.debug("Speculative hit (sequential) tool=%s call_id=%s", tool_call.tool_name, tool_call.call_id)
+            logger.debug(
+                "Speculative hit (sequential) tool=%s call_id=%s",
+                tool_call.tool_name,
+                tool_call.call_id,
+            )
             result = await cached_task
         else:
             result = await tool_registry.dispatch(tool_call, tool_context)
@@ -906,8 +938,20 @@ async def _dispatch_sequential(
             content=result_content or "",
         )
         _post_process_single_result(
-            tool_call, result, state, conversation, tool_registry, tool_context,
-            llm_client, metrics, auto_fix_retries, auto_commit, auto_commit_threshold,
+            tool_call,
+            result,
+            state,
+            conversation,
+            tool_registry,
+            tool_context,
+            llm_client,
+            metrics,
+            auto_fix_retries,
+            auto_commit,
+            auto_commit_threshold,
+            effective_stuck_threshold,
+            effective_stash_threshold,
+            effective_must_fix_cap,
         )
 
 
@@ -923,6 +967,9 @@ def _post_process_results(
     auto_fix_retries: int,
     auto_commit: bool,
     auto_commit_threshold: int,
+    effective_stuck_threshold: int,
+    effective_stash_threshold: int,
+    effective_must_fix_cap: int,
 ) -> None:
     """Post-process a batch of tool results (auto-verify, auto-stash, etc.)."""
     # Auto-verify
@@ -935,7 +982,9 @@ def _post_process_results(
             file_path = tc.arguments.get("file_path", "")
             if file_path and file_path.endswith(VERIFIABLE_EXTENSIONS):
                 verify_result = asyncio.run_coroutine_threadsafe(
-                    _auto_verify_file(file_path, tc.call_id, tool_registry, tool_context, auto_fix_retries),
+                    _auto_verify_file(
+                        file_path, tc.call_id, tool_registry, tool_context, auto_fix_retries
+                    ),
                     asyncio.get_event_loop(),
                 ).result()
                 conversation.add_tool_result(
@@ -944,19 +993,26 @@ def _post_process_results(
                 )
                 verify_text = verify_result.error or verify_result.output or ""
                 state.must_fix_injections = _maybe_inject_must_fix(
-                    conversation, file_path, verify_text, state.must_fix_injections, metrics,
+                    conversation,
+                    file_path,
+                    verify_text,
+                    state.must_fix_injections,
+                    metrics,
+                    effective_must_fix_cap,
                 )
 
     # Auto-stash and edit tracking
     batch_writes = sum(
-        1 for tc, r in zip(tool_calls, results, strict=True)
+        1
+        for tc, r in zip(tool_calls, results, strict=True)
         if not r.is_error and tc.tool_name in ("file_edit", "file_write")
     )
     batch_has_non_write = any(tc.tool_name not in ("file_edit", "file_write") for tc in tool_calls)
     if batch_has_non_write:
         state.consecutive_writes = batch_writes
         state.consecutive_successful_edits = sum(
-            1 for tc, r in zip(tool_calls, results, strict=True)
+            1
+            for tc, r in zip(tool_calls, results, strict=True)
             if not r.is_error and tc.tool_name in ("file_edit", "file_write")
         )
         state.recent_change_descriptions = [
@@ -986,7 +1042,9 @@ def _post_process_results(
             and "nothing to stash" not in (stash_result.output or "").lower()
         ):
             state.auto_stashed = True
-            logger.info("Auto-stash triggered after %d consecutive writes", state.consecutive_writes)
+            logger.info(
+                "Auto-stash triggered after %d consecutive writes", state.consecutive_writes
+            )
             conversation.add_tool_result(
                 tool_call_id=stash_call.call_id,
                 content=f"[Auto-stash] Saved working state after {state.consecutive_writes} consecutive file edits. Use git stash_pop to restore if needed.",
@@ -1002,8 +1060,11 @@ def _post_process_results(
     if auto_commit and state.consecutive_successful_edits >= auto_commit_threshold:
         committed = asyncio.run_coroutine_threadsafe(
             _try_auto_commit(
-                list(state.recent_change_descriptions), tool_context, llm_client,
-                conversation, tool_calls[-1].call_id,
+                list(state.recent_change_descriptions),
+                tool_context,
+                llm_client,
+                conversation,
+                tool_calls[-1].call_id,
             ),
             asyncio.get_event_loop(),
         ).result()
@@ -1045,6 +1106,9 @@ def _post_process_single_result(
     auto_fix_retries: int,
     auto_commit: bool,
     auto_commit_threshold: int,
+    effective_stuck_threshold: int,
+    effective_stash_threshold: int,
+    effective_must_fix_cap: int,
 ) -> None:
     """Post-process a single tool result."""
     if (
@@ -1055,7 +1119,9 @@ def _post_process_single_result(
         file_path = tool_call.arguments.get("file_path", "")
         if file_path and file_path.endswith(VERIFIABLE_EXTENSIONS):
             verify_result = asyncio.run_coroutine_threadsafe(
-                _auto_verify_file(file_path, tool_call.call_id, tool_registry, tool_context, auto_fix_retries),
+                _auto_verify_file(
+                    file_path, tool_call.call_id, tool_registry, tool_context, auto_fix_retries
+                ),
                 asyncio.get_event_loop(),
             ).result()
             conversation.add_tool_result(
@@ -1064,7 +1130,12 @@ def _post_process_single_result(
             )
             verify_text = verify_result.error or verify_result.output or ""
             state.must_fix_injections = _maybe_inject_must_fix(
-                conversation, file_path, verify_text, state.must_fix_injections, metrics,
+                conversation,
+                file_path,
+                verify_text,
+                state.must_fix_injections,
+                metrics,
+                effective_must_fix_cap,
             )
 
     if not result.is_error and tool_call.tool_name in ("file_edit", "file_write"):
@@ -1088,7 +1159,9 @@ def _post_process_single_result(
                 and "nothing to stash" not in (stash_result.output or "").lower()
             ):
                 state.auto_stashed = True
-                logger.info("Auto-stash triggered after %d consecutive writes", state.consecutive_writes)
+                logger.info(
+                    "Auto-stash triggered after %d consecutive writes", state.consecutive_writes
+                )
                 conversation.add_tool_result(
                     tool_call_id=stash_call.call_id,
                     content=f"[Auto-stash] Saved working state after {state.consecutive_writes} consecutive file edits. Use git stash_pop to restore if needed.",
@@ -1099,8 +1172,11 @@ def _post_process_single_result(
         if auto_commit and state.consecutive_successful_edits >= auto_commit_threshold:
             committed = asyncio.run_coroutine_threadsafe(
                 _try_auto_commit(
-                    list(state.recent_change_descriptions), tool_context, llm_client,
-                    conversation, tool_call.call_id,
+                    list(state.recent_change_descriptions),
+                    tool_context,
+                    llm_client,
+                    conversation,
+                    tool_call.call_id,
                 ),
                 asyncio.get_event_loop(),
             ).result()
@@ -1176,7 +1252,8 @@ def _maybe_inject_must_fix(
     file_path: str,
     verify_output: str,
     injections: int,
-    metrics: AgentMetrics | None = None,
+    metrics: AgentMetrics | None,
+    effective_must_fix_cap: int,
 ) -> int:
     """Force the model to address unresolved lint errors after auto-verify.
 

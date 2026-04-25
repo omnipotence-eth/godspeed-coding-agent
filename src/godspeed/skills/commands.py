@@ -6,7 +6,7 @@ import logging
 from typing import Any
 
 from godspeed.skills.loader import SkillDefinition
-from godspeed.tui.output import console
+from godspeed.tui import output as _output
 from godspeed.tui.theme import BOLD_PRIMARY, DIM, MUTED, TABLE_BORDER
 
 logger = logging.getLogger(__name__)
@@ -40,7 +40,7 @@ def register_skill_commands(
                 content = f"[Skill: {s.name}]\n{s.content}"
                 conversation.add_user_message(content)
                 logger.info("Skill activated name=%s trigger=%s", s.name, s.trigger)
-                console.print(
+                _output.console.print(
                     f"  [{DIM}]Activated skill:[/{DIM}] [{BOLD_PRIMARY}]{s.name}[/{BOLD_PRIMARY}]"
                 )
                 # handled=False so the TUI runs agent_loop with the injected message
@@ -54,8 +54,8 @@ def register_skill_commands(
     # Register /skills listing command
     def _cmd_skills(_args: str = "") -> CommandResult:
         if not skills:
-            console.print(f"  [{MUTED}]No skills installed.[/{MUTED}]")
-            console.print(
+            _output.console.print(f"  [{MUTED}]No skills installed.[/{MUTED}]")
+            _output.console.print(
                 f"  [{DIM}]Add .md files to ~/.godspeed/skills/ or .godspeed/skills/[/{DIM}]"
             )
             return CommandResult()
@@ -70,7 +70,7 @@ def register_skill_commands(
         for s in sorted(skills, key=lambda x: x.trigger):
             table.add_row(f"/{s.trigger}", s.name, s.description)
 
-        console.print(table)
+        _output.console.print(table)
         return CommandResult()
 
     commands.register("/skills", _cmd_skills)

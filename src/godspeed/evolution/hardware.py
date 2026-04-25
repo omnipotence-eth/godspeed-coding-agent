@@ -135,7 +135,7 @@ def _detect_jetson() -> int | None:
                     # Jetson shares RAM — use 60% of available as VRAM budget
                     return int((kb / 1024) * 0.6)
     except (OSError, ValueError, IndexError):
-        pass
+        logger.debug("Could not read /proc/meminfo for VRAM estimate")
 
     return None
 
@@ -257,7 +257,7 @@ def scan_machine() -> MachineSpecs:
 
         ram_gb = psutil.virtual_memory().total / (1024**3)
     except ImportError:
-        pass
+        logger.debug("psutil not available for RAM detection")
 
     cpu_cores = _os.cpu_count() or 1
 
@@ -283,7 +283,7 @@ def _detect_gpu_name() -> str:
             if result.returncode == 0:
                 return result.stdout.strip().splitlines()[0].strip()
         except (subprocess.TimeoutExpired, OSError):
-            pass
+            logger.debug("nvidia-smi not available for GPU detection")
     return ""
 
 

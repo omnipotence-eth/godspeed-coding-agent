@@ -83,7 +83,7 @@ def list_models() -> list[OllamaModelInfo]:
                     elif part.endswith("MB"):
                         info.size_bytes = int(float(part[:-2]) * 1024**2)
                 except ValueError:
-                    pass
+                    logger.debug("Could not parse model size from listing")
             elif "ago" in part and i + 1 < len(parts):
                 info.modified_at = part + " " + parts[i + 1]
                 break
@@ -170,7 +170,7 @@ async def pull_model_async(
                         else:
                             on_progress(status)
             except (json.JSONDecodeError, UnicodeDecodeError):
-                pass
+                logger.debug("Could not decode progress JSON from ollama pull")
 
         await proc.wait()
         return proc.returncode == 0

@@ -11,8 +11,8 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 from godspeed.config import append_permission_rule
+from godspeed.tui import output as _output
 from godspeed.tui.output import (
-    console,
     format_error,
     format_info,
     format_stats,
@@ -158,9 +158,9 @@ class Commands:
     def _cmd_help(self, _args: str = "") -> CommandResult:
         """Show available commands — grouped by category."""
         rule = styled(RULE_CHAR * 40, MUTED)
-        console.print()
-        console.print(f"  {styled('Commands', BOLD_PRIMARY)}")
-        console.print(f"  {rule}")
+        _output.console.print()
+        _output.console.print(f"  {styled('Commands', BOLD_PRIMARY)}")
+        _output.console.print(f"  {rule}")
 
         groups: list[tuple[str, list[tuple[str, str]]]] = [
             (
@@ -212,12 +212,14 @@ class Commands:
         ]
 
         for group_name, cmds in groups:
-            console.print()
-            console.print(f"  {styled(group_name, MUTED)}")
+            _output.console.print()
+            _output.console.print(f"  {styled(group_name, MUTED)}")
             for cmd_name, desc in cmds:
-                console.print(f"    {styled(cmd_name, BOLD_PRIMARY):28s} {styled(desc, DIM)}")
+                _output.console.print(
+                    f"    {styled(cmd_name, BOLD_PRIMARY):28s} {styled(desc, DIM)}"
+                )
 
-        console.print()
+        _output.console.print()
         return CommandResult(handled=True)
 
     def _cmd_model(self, args: str = "") -> CommandResult:
@@ -286,8 +288,8 @@ class Commands:
                 format_info(f"Active model: [{BOLD_PRIMARY}]{model}[/{BOLD_PRIMARY}]")
             if self._llm_client.fallback_models:
                 fallbacks = ", ".join(self._llm_client.fallback_models)
-                console.print(f"    [{DIM}]Fallbacks: {fallbacks}[/{DIM}]")
-            console.print(f"    [{DIM}]Presets: {', '.join(presets.keys())}[/{DIM}]")
+                _output.console.print(f"    [{DIM}]Fallbacks: {fallbacks}[/{DIM}]")
+            _output.console.print(f"    [{DIM}]Presets: {', '.join(presets.keys())}[/{DIM}]")
         return CommandResult(handled=True)
 
     def _cmd_clear(self, _args: str = "") -> CommandResult:
@@ -347,7 +349,7 @@ class Commands:
         table.add_row("Records", str(self._audit_trail.record_count))
         table.add_row("Log file", str(self._audit_trail.log_path))
 
-        console.print(table)
+        _output.console.print(table)
 
         # Verify chain integrity
         is_valid, message = self._audit_trail.verify_chain()
@@ -381,7 +383,7 @@ class Commands:
         for grant in self._permission_engine.session_grants:
             table.add_row(f"[{PERM_SESSION}]SESSION[/{PERM_SESSION}]", grant)
 
-        console.print(table)
+        _output.console.print(table)
         return CommandResult(handled=True)
 
     # Map user-friendly action aliases to the canonical rule tier.
@@ -646,7 +648,7 @@ class Commands:
 
             spent_str = format_cost(spent)
             if limit > 0:
-                pct = (spent / limit * 100) if limit > 0 else 0
+                pct = spent / limit * 100
                 format_info(
                     f"Cost: [{BOLD_PRIMARY}]{spent_str}[/{BOLD_PRIMARY}]"
                     f" / ${limit:.2f} ({pct:.0f}%)"
@@ -656,7 +658,7 @@ class Commands:
                     f"Cost: [{BOLD_PRIMARY}]{spent_str}[/{BOLD_PRIMARY}]"
                     f" [{DIM}](no budget limit)[/{DIM}]"
                 )
-            console.print(
+            _output.console.print(
                 f"    [{DIM}]{input_tokens:,} input + {output_tokens:,} output tokens"
                 f" ({model})[/{DIM}]"
             )
@@ -804,9 +806,11 @@ class Commands:
         else:
             color = CTX_CRITICAL
 
-        console.print(f"  [{color}]tokens: {tokens:,} / {max_tokens:,} ({pct:.0f}%)[/{color}]")
+        _output.console.print(
+            f"  [{color}]tokens: {tokens:,} / {max_tokens:,} ({pct:.0f}%)[/{color}]"
+        )
         msg_count = len(self._conversation.messages)
-        console.print(f"  [{DIM}]messages: {msg_count}[/{DIM}]")
+        _output.console.print(f"  [{DIM}]messages: {msg_count}[/{DIM}]")
         return CommandResult(handled=True)
 
     def _cmd_checkpoint(self, args: str = "") -> CommandResult:
@@ -843,7 +847,7 @@ class Commands:
                     str(cp["message_count"]),
                 )
 
-            console.print(table)
+            _output.console.print(table)
             return CommandResult(handled=True)
 
         # Save checkpoint
@@ -972,14 +976,14 @@ class Commands:
                 status_style = f"[{MUTED}]{t.status}[/{MUTED}]"
             table.add_row(str(t.id), t.title, status_style)
 
-        console.print(table)
+        _output.console.print(table)
         return CommandResult()
 
     def _cmd_reindex(self, _args: str = "") -> CommandResult:
         """Rebuild the codebase search index."""
         if self._codebase_index is None:
             format_info("Codebase index not available.")
-            console.print(f"  [{DIM}]Install with: pip install godspeed[index][/{DIM}]")
+            _output.console.print(f"  [{DIM}]Install with: pip install godspeed[index][/{DIM}]")
             return CommandResult()
 
         if not self._codebase_index.is_available:
@@ -1130,7 +1134,7 @@ class Commands:
                 )
                 table.add_row(filepath, status_icon)
 
-            console.print(table)
+            _output.console.print(table)
 
             # Show diff summary
             diff_result = subprocess.run(
@@ -1182,7 +1186,7 @@ class Commands:
 
             table.add_row(name[:12], when, str(count))
 
-        console.print(table)
+        _output.console.print(table)
         return CommandResult(handled=True)
 
     def _cmd_skill(self, args: str = "") -> CommandResult:
@@ -1213,7 +1217,7 @@ class Commands:
             for s in skills:
                 table.add_row(s.name, s.trigger, s.description[:50])
 
-            console.print(table)
+            _output.console.print(table)
             return CommandResult(handled=True)
 
         if action == "add":
@@ -1294,7 +1298,7 @@ Describe what this skill does here.
                 if len(parts) >= 3:
                     table.add_row(parts[0], parts[1], " ".join(parts[2:]))
 
-            console.print(table)
+            _output.console.print(table)
 
         except (subprocess.SubprocessError, FileNotFoundError) as e:
             format_error(f"Failed to list workflows: {e}")
@@ -1307,7 +1311,7 @@ Describe what this skill does here.
         from godspeed.evolution.hardware import format_machine_report
 
         report = format_machine_report()
-        console.print(report)
+        _output.console.print(report)
         return CommandResult(handled=True)
 
     def _cmd_models(self, _args: str = "") -> CommandResult:
@@ -1336,11 +1340,11 @@ Describe what this skill does here.
             desc = preset_descriptions.get(name, "")
             table.add_row(name, model, desc)
 
-        console.print(table)
+        _output.console.print(table)
 
         installed = list_models()
         if installed:
-            console.print()
+            _output.console.print()
             inst_table = Table(
                 title="Installed Ollama Models",
                 border_style=TABLE_BORDER,
@@ -1352,10 +1356,12 @@ Describe what this skill does here.
             for m in sorted(installed, key=lambda x: x.name):
                 inst_table.add_row(m.name, f"{m.size_gb:.1f} GB")
 
-            console.print(inst_table)
+            _output.console.print(inst_table)
         else:
-            console.print(f"\n  [{DIM}]No local Ollama models found.[/{DIM}]")
-            console.print(f"  [{DIM}]Pull one with: godspeed ollama pull rnj-1:8b[/{DIM}]")
+            _output.console.print(f"\n  [{DIM}]No local Ollama models found.[/{DIM}]")
+            _output.console.print(f"  [{DIM}]Pull one with: godspeed ollama pull rnj-1:8b[/{DIM}]")
 
-        console.print(f"\n  [{DIM}]Switch with /model <preset> or /model <model_name>[/{DIM}]")
+        _output.console.print(
+            f"\n  [{DIM}]Switch with /model <preset> or /model <model_name>[/{DIM}]"
+        )
         return CommandResult(handled=True)

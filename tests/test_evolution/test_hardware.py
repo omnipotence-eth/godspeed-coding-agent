@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
+import godspeed.evolution.hardware as hw_module
 from godspeed.evolution.hardware import (
     FALLBACK_MODEL,
     detect_vram_mb,
@@ -19,13 +20,11 @@ from godspeed.evolution.hardware import (
 @pytest.fixture(autouse=True)
 def _reset_vram_cache():
     """Reset the VRAM cache before and after each test."""
-    import godspeed.evolution.hardware as hw
-
-    hw._cached_vram = None
-    hw._cached_vram_checked = False
+    hw_module._cached_vram = None
+    hw_module._cached_vram_checked = False
     yield
-    hw._cached_vram = None
-    hw._cached_vram_checked = False
+    hw_module._cached_vram = None
+    hw_module._cached_vram_checked = False
 
 
 # ---------------------------------------------------------------------------

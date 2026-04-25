@@ -341,35 +341,35 @@ def _build_tool_registry(tool_set: str = "full") -> tuple:
 
         tools.append(ImageReadTool())
     except ImportError:
-        pass
+        logger.debug("image_read not available")
 
     try:
         from godspeed.tools.pdf_read import PdfReadTool
 
         tools.append(PdfReadTool())
     except ImportError:
-        pass
+        logger.debug("pdf_read not available")
 
     try:
         from godspeed.tools.github import GithubTool
 
         tools.append(GithubTool())
     except ImportError:
-        pass
+        logger.debug("github not available")
 
     try:
         from godspeed.tools.diff_apply import DiffApplyTool
 
         tools.append(DiffApplyTool())
     except ImportError:
-        pass
+        logger.debug("diff_apply not available")
 
     try:
         from godspeed.tools.ollama_manager import OllamaTool
 
         tools.append(OllamaTool())
     except ImportError:
-        pass
+        logger.debug("ollama_manager not available")
 
     for tool in tools:
         if allowed is not None and tool.name not in allowed:

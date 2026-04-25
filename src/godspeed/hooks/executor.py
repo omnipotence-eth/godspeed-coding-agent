@@ -114,7 +114,7 @@ class HookExecutor:
             cmd_args = command if use_shell else shlex.split(command)
             result = subprocess.run(
                 cmd_args,
-                shell=use_shell,
+                shell=use_shell,  # nosec: shell=True only used on Windows where subprocess requires it
                 cwd=self._cwd,
                 timeout=hook.timeout,
                 capture_output=True,

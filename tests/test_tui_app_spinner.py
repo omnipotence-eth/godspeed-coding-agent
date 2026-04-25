@@ -12,14 +12,14 @@ class TestThinkingSpinner:
 
     def test_start_creates_status(self) -> None:
         spinner = _ThinkingSpinner()
-        with patch("godspeed.tui.app.console"):
+        with patch("godspeed.tui.app._output.console"):
             spinner.start()
             assert spinner._started is True
             spinner.stop()
 
     def test_stop_clears_started(self) -> None:
         spinner = _ThinkingSpinner()
-        with patch("godspeed.tui.app.console"):
+        with patch("godspeed.tui.app._output.console"):
             spinner.start()
             spinner.stop()
             assert spinner._started is False
@@ -31,7 +31,7 @@ class TestThinkingSpinner:
 
     def test_start_idempotent(self) -> None:
         spinner = _ThinkingSpinner()
-        with patch("godspeed.tui.app.console"):
+        with patch("godspeed.tui.app._output.console"):
             spinner.start()
             spinner.start()  # Should not create a second spinner
             assert spinner._started is True
@@ -39,7 +39,7 @@ class TestThinkingSpinner:
 
     def test_update_changes_status_text(self) -> None:
         spinner = _ThinkingSpinner()
-        with patch("godspeed.tui.app.console"):
+        with patch("godspeed.tui.app._output.console"):
             spinner.start()
             mock_status = MagicMock()
             spinner._status = mock_status
@@ -74,7 +74,7 @@ class TestThinkingSpinner:
             calls.append("called")
 
         wrapped = spinner.wrap(my_fn)
-        with patch("godspeed.tui.app.console"):
+        with patch("godspeed.tui.app._output.console"):
             spinner.start()
             wrapped()
             assert calls == ["called"]

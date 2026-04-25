@@ -144,7 +144,7 @@ class ConversationLogger:
                 self._file.flush()
                 self._file.close()
             except OSError:
-                pass
+                logger.debug("Could not flush/close conversation log file")
             finally:
                 self._file = None
 

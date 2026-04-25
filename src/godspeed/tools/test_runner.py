@@ -108,7 +108,7 @@ def detect_framework(cwd: Path) -> str:
                 if "pytest" in content:
                     return "pytest"
             except OSError:
-                pass
+                logger.debug("Could not read pyproject.toml for test detection")
         return "pytest"  # Default for Python projects
 
     # JavaScript/TypeScript: jest or vitest
@@ -125,7 +125,7 @@ def detect_framework(cwd: Path) -> str:
                     return "vitest"
                 return "jest"
         except (OSError, json.JSONDecodeError):
-            pass
+            logger.debug("Could not read package.json for test detection")
 
     # Go
     if (cwd / "go.mod").exists():

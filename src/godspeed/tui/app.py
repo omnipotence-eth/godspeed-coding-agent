@@ -20,10 +20,10 @@ from godspeed.llm.client import LLMClient
 from godspeed.security.permissions import ALLOW, ASK, PermissionDecision, PermissionEngine
 from godspeed.tools.base import ToolContext
 from godspeed.tools.registry import ToolRegistry
+from godspeed.tui import output as _output
 from godspeed.tui.commands import Commands
 from godspeed.tui.completions import GodspeedCompleter
 from godspeed.tui.output import (
-    console,
     format_assistant_text,
     format_diff_review_prompt,
     format_error,
@@ -226,7 +226,7 @@ class TUIApp:
             )
         except Exception as exc:
             # prompt-toolkit fails in non-TTY contexts (piped input, CI, etc.)
-            console.print(
+            _output.console.print(
                 f"\n[{ERROR}]  Cannot create interactive session: {exc}[/{ERROR}]\n"
                 f"  [{DIM}]Godspeed requires a real terminal. Run it directly in your"
                 f" terminal, not through a pipe or non-interactive shell.[/{DIM}]"
@@ -242,7 +242,7 @@ class TUIApp:
                     ),
                 )
             except KeyboardInterrupt:
-                console.print(f"\n  [{DIM}]Interrupted. Type /quit to exit.[/{DIM}]")
+                _output.console.print(f"\n  [{DIM}]Interrupted. Type /quit to exit.[/{DIM}]")
                 continue
             except EOFError:
                 break
@@ -259,8 +259,8 @@ class TUIApp:
 
             # Echo user message with turn marker
             self._turn_count += 1
-            console.print()
-            console.print(
+            _output.console.print()
+            _output.console.print(
                 f"  {styled(str(self._turn_count), MUTED)}"
                 f" {styled(PROMPT_ICON, BOLD_PRIMARY)}"
                 f" {user_input.strip()}"
@@ -398,14 +398,16 @@ class TUIApp:
                     on_parallel_complete=_track_parallel_complete,
                     on_thinking=_on_thinking,
                 )
-                console.print()  # End streaming output with newline
+                _output.console.print()  # End streaming output with newline
             except AgentCancelledError:
-                console.print(f"\n  [{DIM}]Agent cancelled. Send another prompt or /quit.[/{DIM}]")
+                _output.console.print(
+                    f"\n  [{DIM}]Agent cancelled. Send another prompt or /quit.[/{DIM}]"
+                )
             except KeyboardInterrupt:
                 # Hard interrupt: user pressed Ctrl+C twice (or the loop-level
                 # signal handler wasn't installed on this platform). Treat
                 # same as cancel for display, but surface the distinct reason.
-                console.print(f"\n  [{DIM}]Agent interrupted.[/{DIM}]")
+                _output.console.print(f"\n  [{DIM}]Agent interrupted.[/{DIM}]")
             except Exception as exc:
                 logger.error("Agent loop error: %s", exc, exc_info=True)
                 format_error(f"Agent error: {exc}")
@@ -420,7 +422,7 @@ class TUIApp:
 
                         running_loop.remove_signal_handler(_signal.SIGINT)
                     except (NotImplementedError, RuntimeError, ValueError):
-                        pass
+                        logger.debug("Could not remove SIGINT handler")
 
                 # Per-turn status HUD: compact one-line summary of tokens,
                 # cost, model, and turn count. Prints after spinner + output
@@ -514,7 +516,7 @@ class _ThinkingSpinner:
 
         self._status = Status(
             self._make_label("Thinking..."),
-            console=console,
+            console=_output.console,
             spinner="dots",
             spinner_style=MUTED,
         )
@@ -556,7 +558,7 @@ class _ThinkingSpinner:
 
 def _on_assistant_chunk(text: str) -> None:
     """Callback: display streaming text chunk as it arrives."""
-    console.print(text, end="")
+    _output.console.print(text, end="")
 
 
 def _on_assistant_text(text: str) -> None:
@@ -592,7 +594,7 @@ class _InteractivePermissionProxy:
         args = getattr(tool_call, "arguments", None) or {}
         format_permission_prompt(tool_call.tool_name, decision.reason, arguments=args)
         try:
-            answer = console.input(f"[{BOLD_WARNING}]  > [/{BOLD_WARNING}]").strip().lower()
+            answer = _output.console.input(f"[{BOLD_WARNING}]  > [/{BOLD_WARNING}]").strip().lower()
         except (KeyboardInterrupt, EOFError):
             answer = "n"
 
@@ -620,13 +622,13 @@ class _InteractivePermissionProxy:
 
         from godspeed.tui.theme import ACCENT, SUCCESS
 
-        console.print(
+        _output.console.print(
             f"\n  [{ACCENT}]You've approved [{SUCCESS}]{pattern}"
             f"[/{SUCCESS}] multiple times.[/{ACCENT}]"
         )
-        console.print(f"  [{ACCENT}]Add to permanent allow rules? (y/n)[/{ACCENT}]")
+        _output.console.print(f"  [{ACCENT}]Add to permanent allow rules? (y/n)[/{ACCENT}]")
         try:
-            answer = console.input(f"[{BOLD_WARNING}]  > [/{BOLD_WARNING}]").strip().lower()
+            answer = _output.console.input(f"[{BOLD_WARNING}]  > [/{BOLD_WARNING}]").strip().lower()
         except (KeyboardInterrupt, EOFError):
             answer = "n"
 
@@ -637,11 +639,11 @@ class _InteractivePermissionProxy:
             if success:
                 # Also update engine in-memory
                 self._engine.add_rule(pattern, "allow")
-                console.print(f"  [{SUCCESS}]Added to allow rules.[/{SUCCESS}]")
+                _output.console.print(f"  [{SUCCESS}]Added to allow rules.[/{SUCCESS}]")
             else:
                 from godspeed.tui.theme import WARNING
 
-                console.print(
+                _output.console.print(
                     f"  [{WARNING}]Could not persist rule. Added for this session only.[/{WARNING}]"
                 )
                 self._engine.grant_session_permission(pattern)
@@ -674,12 +676,14 @@ class _InteractiveDiffReviewer:
         if self._always_accept:
             return "accept"
 
-        # Render the diff (Rich `console.input` is sync; run in a thread so
+        # Render the diff (Rich `_output.console.input` is sync; run in a thread so
         # we don't block the asyncio loop while waiting for keystrokes).
         format_diff_review_prompt(tool_name, path, before, after)
         try:
             answer = await asyncio.to_thread(
-                lambda: console.input(f"[{BOLD_WARNING}]  > [/{BOLD_WARNING}]").strip().lower()
+                lambda: (
+                    _output.console.input(f"[{BOLD_WARNING}]  > [/{BOLD_WARNING}]").strip().lower()
+                )
             )
         except (KeyboardInterrupt, EOFError):
             answer = "n"

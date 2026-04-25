@@ -7,6 +7,7 @@ from io import StringIO
 
 from rich.console import Console
 
+from godspeed.tui import output as _output
 from godspeed.tui.output import (
     format_assistant_text,
     format_error,
@@ -26,15 +27,13 @@ _ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 
 def _capture(fn, *args, **kwargs) -> str:
     """Run a formatting function and capture its Rich console output (ANSI stripped)."""
-    import godspeed.tui.output as mod
-
     buf = StringIO()
-    original = mod.console
-    mod.console = Console(file=buf, force_terminal=True, width=120)
+    original = _output.console
+    _output.console = Console(file=buf, force_terminal=True, width=120)
     try:
         fn(*args, **kwargs)
     finally:
-        mod.console = original
+        _output.console = original
     return _ANSI_RE.sub("", buf.getvalue())
 
 

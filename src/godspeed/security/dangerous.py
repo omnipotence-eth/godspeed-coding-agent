@@ -12,7 +12,7 @@ import re
 # Compiled patterns for dangerous commands
 DANGEROUS_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     # Filesystem destruction
-    (re.compile(r"rm\s+(-[a-zA-Z]*[rf][a-zA-Z]*\s+)*[/~]"), "recursive delete from root/home"),
+    (re.compile(r"rm\s+(?:-[a-zA-Z]{1,20}\s+){0,5}[/~]"), "recursive delete from root/home"),
     (re.compile(r"rm\s+-[a-zA-Z]*[rf]"), "recursive/force delete"),
     (re.compile(r"rm\s+(?:--recursive|--force|--dir)"), "recursive/force delete (long flags)"),
     (re.compile(r"rm\s+-r\s+-f\b"), "recursive force delete (separate flags)"),

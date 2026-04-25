@@ -35,11 +35,13 @@ class TestPreferences:
 
     def test_delete_existing(self, memory: UserMemory) -> None:
         memory.set("key", "value")
-        assert memory.delete("key") is True
+        deleted = memory.delete("key")
+        assert deleted is True
         assert memory.get("key") is None
 
     def test_delete_missing(self, memory: UserMemory) -> None:
-        assert memory.delete("nonexistent") is False
+        deleted = memory.delete("nonexistent")
+        assert deleted is False
 
     def test_list_preferences(self, memory: UserMemory) -> None:
         memory.set("a", "1")

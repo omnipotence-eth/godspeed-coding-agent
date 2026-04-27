@@ -1,0 +1,160 @@
+/* Godspeed Textual TUI — professional layout */
+
+Screen {
+    layout: grid;
+    grid-size: 3 3;
+    grid-columns: 20fr 60fr 20fr;
+    grid-rows: 3 1fr 3;
+}
+
+HeaderBar {
+    column-span: 3;
+    height: 3;
+    background: $surface;
+    color: $text;
+    content-align: center middle;
+    border-bottom: solid $primary;
+}
+
+Sidebar {
+    row-span: 1;
+    background: $surface-darken-1;
+    color: $text;
+    border-right: solid $primary-darken-2;
+    padding: 0 1;
+}
+
+Sidebar .title {
+    text-style: bold;
+    color: $primary;
+    padding: 1 0;
+}
+
+Sidebar ListView {
+    height: 1fr;
+    background: $surface-darken-1;
+    border: none;
+}
+
+Sidebar ListItem {
+    padding: 0 1;
+}
+
+Sidebar ListItem:hover {
+    background: $primary-darken-3;
+}
+
+ChatPanel {
+    row-span: 1;
+    background: $surface;
+    color: $text;
+    padding: 0 1;
+}
+
+ChatPanel RichLog {
+    height: 1fr;
+    background: $surface;
+    border: none;
+}
+
+ContextPanel {
+    row-span: 1;
+    background: $surface-darken-1;
+    color: $text;
+    border-left: solid $primary-darken-2;
+    padding: 0 1;
+}
+
+ContextPanel .title {
+    text-style: bold;
+    color: $primary;
+    padding: 1 0;
+}
+
+InputBar {
+    column-span: 3;
+    height: 3;
+    background: $surface;
+    color: $text;
+    border-top: solid $primary;
+    padding: 0 1;
+}
+
+InputBar Input {
+    width: 1fr;
+    background: $surface-darken-1;
+    color: $text;
+    border: solid $primary-darken-2;
+}
+
+InputBar Button {
+    width: auto;
+    margin-left: 1;
+}
+
+/* Modal screens */
+PermissionScreen, DiffReviewScreen {
+    align: center middle;
+}
+
+PermissionScreen .dialog, DiffReviewScreen .dialog {
+    width: 80;
+    height: auto;
+    background: $surface;
+    border: solid $primary;
+    padding: 1 2;
+}
+
+PermissionScreen .title, DiffReviewScreen .title {
+    text-style: bold;
+    color: $primary;
+    margin: 1 0;
+}
+
+PermissionScreen .buttons, DiffReviewScreen .buttons {
+    height: auto;
+    margin-top: 1;
+}
+
+PermissionScreen Button, DiffReviewScreen Button {
+    margin-right: 1;
+}
+
+/* Status indicators */
+.status-ok {
+    color: $success;
+}
+
+.status-warn {
+    color: $warning;
+}
+
+.status-error {
+    color: $error;
+}
+
+/* Message styling */
+.user-message {
+    color: $primary;
+    text-style: bold;
+}
+
+.assistant-message {
+    color: $text;
+}
+
+.tool-call-message {
+    color: $warning;
+}
+
+.tool-result-message {
+    color: $success;
+}
+
+.error-message {
+    color: $error;
+}
+
+.system-message {
+    color: $text-muted;
+}

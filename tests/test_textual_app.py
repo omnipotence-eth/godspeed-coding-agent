@@ -162,6 +162,7 @@ class TestWidgets:
             await pilot.app.mount(sidebar)
             await pilot.pause()
             from textual.widgets import ListView
+
             lv = sidebar.query_one("#tool-list", ListView)
             assert lv is not None
 

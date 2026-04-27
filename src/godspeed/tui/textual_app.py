@@ -98,6 +98,7 @@ _COMMANDS: list[tuple[str, str, str]] = [
 # Sidebar Widgets
 # ---------------------------------------------------------------------------
 
+
 class StatusBar(Static):
     """Top status bar — minimal, info-dense (Claude Code style)."""
 
@@ -121,13 +122,7 @@ class StatusBar(Static):
             "plan": "cyan",
             "yolo": "yellow",
         }.get(self.permission_mode, "white")
-        ctx_color = (
-            "red"
-            if self.context_pct > 90
-            else "yellow"
-            if self.context_pct > 70
-            else "dim"
-        )
+        ctx_color = "red" if self.context_pct > 90 else "yellow" if self.context_pct > 70 else "dim"
         running_indicator = "[blink]●[/] " if self.is_running else ""
         parts = [
             f"[bold cyan]{running_indicator}Godspeed[/]",
@@ -245,6 +240,7 @@ class ContextSidebar(Static):
 # ---------------------------------------------------------------------------
 # Chat Components
 # ---------------------------------------------------------------------------
+
 
 class UserMessage(Static):
     """A user message bubble."""
@@ -385,6 +381,7 @@ class StreamingIndicator(Static):
 # Chat Panel
 # ---------------------------------------------------------------------------
 
+
 class ChatPanel(Static):
     """Main chat area with scrollable message widgets."""
 
@@ -431,6 +428,7 @@ class ChatPanel(Static):
 # Input Bar
 # ---------------------------------------------------------------------------
 
+
 class InputBar(Horizontal):
     """Bottom input bar with submit button and hints."""
 
@@ -455,6 +453,7 @@ class InputBar(Horizontal):
 # ---------------------------------------------------------------------------
 # Modal Screens
 # ---------------------------------------------------------------------------
+
 
 class PermissionScreen(Screen[str]):
     """Modal screen for interactive permission decisions."""
@@ -593,10 +592,7 @@ class CommandPaletteScreen(Screen[str | None]):
             if query in cmd.lower() or query in desc.lower():
                 lv.append(
                     ListItem(
-                        Label(
-                            f"[bold cyan]{cmd}[/]  "
-                            f"[dim]{desc}[/]"
-                        ),
+                        Label(f"[bold cyan]{cmd}[/]  [dim]{desc}[/]"),
                     )
                 )
         if lv.children:
@@ -635,18 +631,15 @@ class WelcomeScreen(Screen[None]):
                 classes="welcome-subtitle",
             )
             yield Static(
-                f"[dim]Model:[/]     "
-                f"[b]{self._model}[/]",
+                f"[dim]Model:[/]     [b]{self._model}[/]",
                 classes="welcome-info",
             )
             yield Static(
-                f"[dim]Project:[/]   "
-                f"[b]{self._project_dir}[/]",
+                f"[dim]Project:[/]   [b]{self._project_dir}[/]",
                 classes="welcome-info",
             )
             yield Static(
-                f"[dim]Tools:[/]     "
-                f"[b]{self._tool_count}[/]",
+                f"[dim]Tools:[/]     [b]{self._tool_count}[/]",
                 classes="welcome-info",
             )
             yield Static(
@@ -664,6 +657,7 @@ class WelcomeScreen(Screen[None]):
 # ---------------------------------------------------------------------------
 # Interactive Proxies
 # ---------------------------------------------------------------------------
+
 
 class _TextualPermissionProxy:
     """Wraps PermissionEngine to intercept ASK decisions via modal screen."""
@@ -734,6 +728,7 @@ class _TextualDiffReviewer:
 # ---------------------------------------------------------------------------
 # Main App
 # ---------------------------------------------------------------------------
+
 
 class GodspeedTextualApp(App[None]):
     """Textual-based TUI for Godspeed.
@@ -823,9 +818,7 @@ class GodspeedTextualApp(App[None]):
 
     def _wire_permissions(self) -> None:
         if self._permission_engine is not None:
-            self._tool_context.permissions = _TextualPermissionProxy(
-                self._permission_engine, self
-            )
+            self._tool_context.permissions = _TextualPermissionProxy(self._permission_engine, self)
         self._tool_context.diff_reviewer = _TextualDiffReviewer(self)
 
     def _update_status(self) -> None:
@@ -977,14 +970,10 @@ class GodspeedTextualApp(App[None]):
                 cancel_event=self._cancel_event,
                 hook_executor=self._hook_executor,
                 on_parallel_start=lambda calls: self.call_from_thread(
-                    lambda c=calls: chat.write_system(
-                        f"⚡ Running {len(c)} tools in parallel..."
-                    )
+                    lambda c=calls: chat.write_system(f"⚡ Running {len(c)} tools in parallel...")
                 ),
                 on_parallel_complete=lambda _results: None,
-                on_thinking=lambda t: self.call_from_thread(
-                    lambda txt=t: self._on_thinking(txt)
-                ),
+                on_thinking=lambda t: self.call_from_thread(lambda txt=t: self._on_thinking(txt)),
             )
         except AgentCancelledError:
             chat.write_system("⏹ Agent cancelled.")
@@ -1046,13 +1035,9 @@ class GodspeedTextualApp(App[None]):
     def _on_thinking(self, text: str) -> None:
         chat = self.query_one("#chat-panel", ChatPanel)
         if self._current_streaming_indicator is None:
-            self._current_streaming_indicator = chat.add_streaming_indicator(
-                f"Thinking: {text}"
-            )
+            self._current_streaming_indicator = chat.add_streaming_indicator(f"Thinking: {text}")
         else:
-            self._current_streaming_indicator.update(
-                f"[blink bold cyan]Thinking: {text}[/]"
-            )
+            self._current_streaming_indicator.update(f"[blink bold cyan]Thinking: {text}[/]")
 
     def action_cancel(self) -> None:
         self._cancel_event.set()

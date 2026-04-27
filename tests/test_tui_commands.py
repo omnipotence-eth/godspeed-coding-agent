@@ -32,6 +32,7 @@ def commands(conversation: Conversation, tmp_path: Path) -> Commands:
         audit_trail=None,
         session_id="test-session",
         cwd=tmp_path,
+        tool_registry=None,
     )
 
 
@@ -146,6 +147,7 @@ class TestPlanCommand:
             audit_trail=None,
             session_id="test-session",
             cwd=tmp_path,
+            tool_registry=None,
         )
 
     def test_plan_toggles_on(self, commands_with_perms: Commands) -> None:
@@ -188,6 +190,7 @@ class TestPauseResumeCommands:
             session_id="test-session",
             cwd=tmp_path,
             pause_event=pause_event,
+            tool_registry=None,
         )
 
     def test_pause_clears_event(self, commands_with_pause: Commands) -> None:

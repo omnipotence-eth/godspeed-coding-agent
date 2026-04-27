@@ -94,6 +94,8 @@ class TUIApp:
         hook_executor: Any | None = None,
         task_store: Any | None = None,
         codebase_index: Any | None = None,
+        correction_tracker: Any | None = None,
+        session_memory: Any | None = None,
     ) -> None:
         self._llm_client = llm_client
         self._tool_registry = tool_registry
@@ -102,6 +104,8 @@ class TUIApp:
         self._permission_engine = permission_engine
         self._audit_trail = audit_trail
         self._session_id = session_id
+        self._correction_tracker = correction_tracker
+        self._session_memory = session_memory
 
         # Pause/resume event for human-in-the-loop
         self._pause_event = asyncio.Event()
@@ -123,6 +127,7 @@ class TUIApp:
             session_id=session_id,
             cwd=tool_context.cwd,
             pause_event=self._pause_event,
+            tool_registry=tool_registry,
         )
 
         # Wire task store and codebase index for commands
@@ -256,6 +261,10 @@ class TUIApp:
                 if cmd_result.should_quit:
                     break
                 continue
+
+            # Memory: detect and store user corrections
+            if self._correction_tracker is not None:
+                self._correction_tracker.check_for_correction(user_input)
 
             # Echo user message with turn marker
             self._turn_count += 1
@@ -474,6 +483,11 @@ class TUIApp:
             session_id=self._session_id,
         )
 
+        if self._session_memory is not None:
+            self._session_memory.end_session(
+                self._session_id,
+                summary=f"turns={self._turn_count} tools={tool_calls} errors={tool_errors}",
+            )
         if self._audit_trail is not None:
             self._audit_trail.record(
                 event_type="session_end",

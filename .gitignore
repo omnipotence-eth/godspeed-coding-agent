@@ -96,6 +96,9 @@ logs/run_evaluation/
 experiments/bench_*/
 experiments/qwen3.6-smoke/
 experiments/phase0_*/
+# All benchmark run artifacts (auto-generated; keep structure with .gitkeep)
+experiments/*/
+!experiments/.gitkeep
 
 # Session logs (from Windows bash) that sometimes land in the repo tree
 experiments/swebench_lite/*.log

@@ -456,6 +456,34 @@ async def _run_app(
         )
         logger.info("Conversation logging enabled output_dir=%s", training_dir)
 
+    # Memory — load preferences and corrections for system prompt injection
+    memory_hints = ""
+    user_memory = None
+    correction_tracker = None
+    session_memory = None
+    if settings.memory_enabled:
+        from godspeed.memory.corrections import CorrectionTracker
+        from godspeed.memory.session import SessionMemory
+        from godspeed.memory.user_memory import UserMemory
+
+        db_path = settings.global_dir / "memory.db"
+        user_memory = UserMemory(db_path=db_path)
+        correction_tracker = CorrectionTracker(user_memory)
+        session_memory = SessionMemory(db_path=db_path)
+        session_memory.start_session(session_id, effective_model, str(effective_project_dir))
+
+        prefs = user_memory.list_preferences()
+        corrections = correction_tracker.format_for_system_prompt(n=5)
+        if prefs or corrections:
+            parts: list[str] = []
+            if prefs:
+                parts.append("User preferences:")
+                for p in prefs:
+                    parts.append(f"- {p['key']}: {p['value']}")
+            if corrections:
+                parts.append(corrections)
+            memory_hints = "\n".join(parts)
+
     # System prompt
     project_instructions = load_project_instructions(
         effective_project_dir,
@@ -465,6 +493,7 @@ async def _run_app(
         tools=registry.list_tools(),
         project_instructions=project_instructions,
         cwd=effective_project_dir,
+        memory_hints=memory_hints or None,
     )
 
     # Auto-start Ollama if the model needs it
@@ -602,6 +631,8 @@ async def _run_app(
         hook_executor=hook_executor,
         task_store=task_store,
         codebase_index=codebase_index,
+        correction_tracker=correction_tracker,
+        session_memory=session_memory,
     )
     await app.run()
 

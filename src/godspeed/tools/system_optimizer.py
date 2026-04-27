@@ -5,42 +5,17 @@ see what's consuming CPU, memory, GPU VRAM, and disk on the host. The
 productized version of what a human would do with ``Task Manager``,
 ``htop``, and ``nvidia-smi`` — but structured for an agent.
 
-This commit ships the READ_ONLY ``inspect`` mode only. The ``recommend``
-(READ_ONLY) and ``act`` (DESTRUCTIVE) modes land in follow-up commits
-once the inspect output format is battle-tested.
-
-Safety guarantees on this initial commit:
+Safety guarantees:
   - RiskLevel.READ_ONLY — no process kills, no config changes
   - No shell execution of user-supplied commands
   - GPU introspection via pynvml (in-process, no subprocess) when
     available; falls back to nvidia-smi subprocess if not
-  - Hard cap on returned rows (configurable, default 15) — agent can't
+  - Hard cap on returned rows (configurable, default 10) — agent can't
     consume megabytes of context with a large process table
 
 Usage from the agent:
 
     {"tool": "system_optimizer", "arguments": {"mode": "inspect", "top": 10}}
-
-Returns a structured report:
-
-    Mode: inspect (READ_ONLY)
-    Platform: win32
-    CPU: 28.5% avg over 0.5s (16 logical cores)
-    Memory: 42.3 GB / 95.6 GB used (44.2%)
-    Swap: 0 B / 0 B used
-    GPU 0: NVIDIA RTX 5070 Ti
-      Utilization: 73% GPU, 6517 / 16303 MiB VRAM (40.0%)
-      Temperature: 63 C
-    Disk C:/: 247 GB / 931 GB used (26.5%)
-
-    Top 10 processes by memory:
-      PID     MEM        CPU%   NAME
-      12345   1234 MB    45.2%  python.exe (experiments/swebench_lite/run.py ...)
-      ...
-
-Deny-list design (for future ``act`` mode) is documented in
-``_SYSTEM_CRITICAL_NAMES`` below but is NOT enforced yet — there is
-nothing to deny in ``inspect``.
 """
 
 from __future__ import annotations
@@ -61,8 +36,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_TOP = 10
 MAX_TOP = 25
 
-# Per-OS process names that must never be killed by the future ``act`` mode.
-# Enforced later; documented here so reviewers see the safety surface up front.
+# Per-OS process names flagged as system-critical in inspect output.
 _SYSTEM_CRITICAL_NAMES: dict[str, frozenset[str]] = {
     "win32": frozenset(
         {
@@ -388,9 +362,8 @@ def _build_recommend(psutil: Any, *, top: int) -> str:
 
     READ_ONLY — only *suggests* actions; doesn't execute them. Each
     recommendation carries a severity (HIGH / MEDIUM / LOW), a short
-    rationale, and an ``action_id`` that the future ``act`` mode will
-    use to dispatch. Recommendations that would touch a system-critical
-    process are omitted.
+    rationale, and an ``action_id``. Recommendations that would touch
+    a system-critical process are omitted.
     """
     recs: list[tuple[str, str, str, str]] = []  # (severity, title, rationale, action_id)
 
@@ -549,8 +522,7 @@ def _check_ollama_vram() -> list[tuple[str, str, str, str]]:
         name = parts[0]
         size = " ".join(parts[2:4]) if len(parts) >= 4 else "?"
         # Heuristic: any loaded model is a candidate for unload when user
-        # reports slowness. Phase 7 part 3's 'act' mode can dispatch the
-        # actual 'ollama stop' call.
+        # reports slowness. Recommend only — agent must execute manually.
         recs.append(
             (
                 "MEDIUM",

@@ -76,6 +76,7 @@ class Commands:
         session_id: str,
         cwd: Path,
         pause_event: Any | None = None,
+        tool_registry: Any | None = None,
     ) -> None:
         self._conversation = conversation
         self._llm_client = llm_client
@@ -84,15 +85,14 @@ class Commands:
         self._session_id = session_id
         self._cwd = cwd
         self._pause_event = pause_event
-        self._handlers: dict[str, CommandHandler] = {}
+        self._tool_registry = tool_registry
+
         self.max_iterations: int | None = None  # None = use default
         self.auto_commit: bool = False
         self.auto_commit_threshold: int = 5
         self.architect_mode: bool = False
-        self._register_builtins()
 
-    def _register_builtins(self) -> None:
-        """Register all built-in slash commands."""
+        self._handlers: dict[str, CommandHandler] = {}
         self._handlers["/help"] = self._cmd_help
         self._handlers["/model"] = self._cmd_model
         self._handlers["/clear"] = self._cmd_clear
@@ -125,6 +125,8 @@ class Commands:
         self._handlers["/actions"] = self._cmd_actions
         self._handlers["/scan"] = self._cmd_scan
         self._handlers["/models"] = self._cmd_models
+        self._handlers["/correct"] = self._cmd_correct
+        self._handlers["/preferences"] = self._cmd_preferences
 
     # External references — set after Commands init
     _task_store: Any | None = None
@@ -172,6 +174,8 @@ class Commands:
                     ("/clear", "Clear conversation history"),
                     ("/stats", "Show token usage and estimated cost"),
                     ("/export [name]", "Export conversation as markdown"),
+                    ("/correct <msg>", "Record a correction for future sessions"),
+                    ("/preferences", "Show stored user preferences"),
                     ("/quit, /exit", "Exit Godspeed"),
                 ],
             ),
@@ -776,17 +780,53 @@ class Commands:
             return CommandResult(handled=True)
 
         if subcmd == "run":
-            format_info(
-                f"[{BOLD_PRIMARY}]Evolution run[/{BOLD_PRIMARY}] — analyzing traces...\n"
-                f"  [{DIM}]This runs asynchronously. Results will appear when complete.[/{DIM}]"
-            )
-            # The actual run is kicked off by the agent loop when it sees this message
-            return CommandResult(
-                handled=True,
-                message=(
-                    "Run evolution cycle: analyze traces → mutate → evaluate → apply improvements."
-                ),
-            )
+            if self._tool_registry is None:
+                format_error("Tool registry not available.")
+                return CommandResult(handled=True)
+
+            audit_dir = None
+            if self._audit_trail is not None:
+                audit_dir = getattr(self._audit_trail, "_log_dir", None)
+            if audit_dir is None:
+                format_error("Audit trail not available — evolution requires audit logs.")
+                return CommandResult(handled=True)
+
+            format_info(f"[{BOLD_PRIMARY}]Evolution run[/{BOLD_PRIMARY}] — analyzing traces...")
+
+            import asyncio
+
+            from godspeed.evolution.orchestrator import EvolutionOrchestrator
+            from godspeed.tools.registry import ToolRegistry
+
+            registry = self._tool_registry
+            if registry is None or not isinstance(registry, ToolRegistry):
+                format_error("Tool registry not available for evolution.")
+                return CommandResult(handled=True)
+
+            async def _run() -> None:
+                orch = EvolutionOrchestrator(
+                    tool_registry=registry,
+                    audit_dir=audit_dir,
+                    evolution_model=getattr(self._llm_client, "model", ""),
+                    llm_client=self._llm_client,
+                )
+                report = await orch.run_cycle()
+                if report.get("skipped"):
+                    format_info(f"Evolution skipped: {report.get('reason', 'unknown')}")
+                    return
+                format_success(
+                    f"Evolution complete: generated={report['mutations_generated']} "
+                    f"applied={report['mutations_applied']} "
+                    f"rejected={report['mutations_rejected']} "
+                    f"cost=${report.get('cost_usd_delta', 0):.4f}"
+                )
+                if report.get("errors"):
+                    for err in report["errors"]:
+                        format_warning(f"  error: {err}")
+
+            # Schedule in background so TUI stays responsive
+            _evo_task = asyncio.create_task(_run())  # noqa: RUF006
+            return CommandResult(handled=True)
 
         format_error(
             f"Unknown subcommand: {subcmd}\n  Usage: /evolve [status|run|history|rollback|review]"
@@ -1364,4 +1404,53 @@ Describe what this skill does here.
         _output.console.print(
             f"\n  [{DIM}]Switch with /model <preset> or /model <model_name>[/{DIM}]"
         )
+        return CommandResult(handled=True)
+
+    def _cmd_correct(self, args: str = "") -> CommandResult:
+        """Record an explicit user correction in memory."""
+        if not args.strip():
+            format_error("Usage: /correct <instruction>  (e.g. /correct always use Path objects)")
+            return CommandResult(handled=True)
+
+        from godspeed.memory.user_memory import UserMemory
+
+        db_path = Path.home() / ".godspeed" / "memory.db"
+        user_memory = UserMemory(db_path=db_path)
+        user_memory.record_correction(
+            original="(explicit /correct command)",
+            corrected=args.strip(),
+            context="user-command",
+        )
+        format_success("Correction recorded. It will appear in future session system prompts.")
+        return CommandResult(handled=True)
+
+    def _cmd_preferences(self, _args: str = "") -> CommandResult:
+        """Show stored user preferences and corrections."""
+        from godspeed.memory.user_memory import UserMemory
+
+        db_path = Path.home() / ".godspeed" / "memory.db"
+        user_memory = UserMemory(db_path=db_path)
+        prefs = user_memory.list_preferences()
+        corrections = user_memory.get_corrections(limit=10)
+
+        from rich.table import Table
+
+        if prefs:
+            table = Table(title="Preferences", border_style=TABLE_BORDER, expand=False)
+            table.add_column("Key", style=BOLD_PRIMARY)
+            table.add_column("Value")
+            for p in prefs:
+                table.add_row(p["key"], p["value"])
+            _output.console.print(table)
+        else:
+            format_info("No preferences stored yet.")
+
+        if corrections:
+            ctable = Table(title="Recent Corrections", border_style=TABLE_BORDER, expand=False)
+            ctable.add_column("ID", style=BOLD_PRIMARY)
+            ctable.add_column("Correction")
+            for c in corrections:
+                ctable.add_row(str(c["id"]), c["corrected"][:60])
+            _output.console.print(ctable)
+
         return CommandResult(handled=True)

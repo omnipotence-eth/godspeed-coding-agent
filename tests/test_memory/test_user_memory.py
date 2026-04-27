@@ -157,3 +157,30 @@ class TestDatabaseLifecycle:
         mem2 = UserMemory(db_path=db_path)
         assert mem2.get("persist") == "yes"
         mem2.close()
+
+
+class TestEdgeCases:
+    """Test edge cases and error paths."""
+
+    def test_default_db_path(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        mem = UserMemory()
+        assert mem.db_path == tmp_path / ".godspeed" / "memory.db"
+        mem.close()
+
+    def test_double_close_is_safe(self, tmp_path: Path) -> None:
+        mem = UserMemory(db_path=tmp_path / "double.db")
+        mem.close()
+        mem.close()  # should not raise
+
+    def test_get_after_close_raises(self, tmp_path: Path) -> None:
+        mem = UserMemory(db_path=tmp_path / "closed.db")
+        mem.close()
+        with pytest.raises(RuntimeError, match="closed"):
+            mem.get("key")
+
+    def test_set_after_close_raises(self, tmp_path: Path) -> None:
+        mem = UserMemory(db_path=tmp_path / "closed.db")
+        mem.close()
+        with pytest.raises(RuntimeError, match="closed"):
+            mem.set("key", "value")

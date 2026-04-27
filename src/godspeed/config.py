@@ -236,6 +236,8 @@ class GodspeedSettings(BaseSettings):
     # Self-evolution — learn from execution traces to improve prompts/tools
     evolution_enabled: bool = False  # enable with /evolve or config
     evolution_model: str = ""  # model for mutations/judging; empty = auto-detect
+    evolution_max_cost_usd: float = 0.50  # hard cap per evolution cycle
+    evolution_min_sessions: int = 10  # sessions between auto-runs
 
     # Training data — log full conversations for fine-tuning
     log_conversations: bool = True

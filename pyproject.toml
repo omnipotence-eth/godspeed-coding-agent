@@ -122,7 +122,7 @@ select = [
 ignore = ["S603", "S607"]  # subprocess calls are intentional for a coding agent
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**/*.py" = ["S101", "S105", "S106"]  # assert and hardcoded passwords OK in tests
+"tests/**/*.py" = ["S101", "S105", "S106", "SIM117"]  # assert and hardcoded passwords OK in tests; nested with OK for mocks
 "src/godspeed/security/secrets.py" = ["S106"]  # secret_type= is a label, not a password
 "scripts/**/*.py" = ["T201"]  # print() is fine in CLI scripts
 "experiments/**/*.py" = ["S311", "N818", "SIM103"]  # jitter/naming/style nits in research code

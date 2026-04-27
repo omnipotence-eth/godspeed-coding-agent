@@ -217,7 +217,7 @@ class PermissionScreen(Screen[str]):
                 yield Button("Always (a)", id="perm-always")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        mapping = {
+        mapping: dict[str | None, str] = {
             "perm-yes": "allow",
             "perm-no": "deny",
             "perm-always": "always",
@@ -255,7 +255,7 @@ class DiffReviewScreen(Screen[str]):
                 yield Button("Always (a)", id="diff-always")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        mapping = {
+        mapping: dict[str | None, str] = {
             "diff-yes": "accept",
             "diff-no": "reject",
             "diff-always": "always",
@@ -350,7 +350,7 @@ class GodspeedTextualApp(App[None]):
     """
 
     CSS_PATH = "textual_app.css"
-    BINDINGS: ClassVar[list[Binding]] = [
+    BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = [
         Binding("ctrl+c", "quit", "Quit"),
         Binding("ctrl+q", "quit", "Quit"),
     ]
@@ -575,7 +575,7 @@ class GodspeedTextualApp(App[None]):
         chat = self.query_one("#chat", ChatPanel)
         chat.write_tool_result(name, display, is_error=is_error)
 
-    def action_quit(self) -> None:
+    async def action_quit(self) -> None:
         duration = time.monotonic() - self._start_time
         chat = self.query_one("#chat", ChatPanel)
         chat.write_system(
@@ -592,4 +592,4 @@ class GodspeedTextualApp(App[None]):
                 event_type="session_end",
                 detail={"reason": "user_quit"},
             )
-        super().action_quit()
+        await super().action_quit()

@@ -128,7 +128,7 @@ def resolve_profile(model: str) -> ProfileName:
             raw,
         )
         return "default"
-    return raw  # type: ignore[return-value]
+    return raw
 
 
 def preamble_for(profile: ProfileName) -> str:

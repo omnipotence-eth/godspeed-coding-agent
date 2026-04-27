@@ -160,7 +160,7 @@ class SystemOptimizerTool(Tool):
             sort_by = "memory"
 
         try:
-            import psutil  # type: ignore[import-not-found]
+            import psutil
         except ImportError:
             return ToolResult.failure(
                 "psutil is not installed. Add the [system] optional dependency: "
@@ -214,7 +214,7 @@ def _gpu_summary() -> list[str]:
 
 def _gpu_via_pynvml() -> list[str] | None:
     try:
-        import pynvml  # type: ignore[import-not-found]
+        import pynvml
     except ImportError:
         return None
     try:

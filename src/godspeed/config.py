@@ -99,13 +99,13 @@ class PermissionSettings(BaseSettings):
     )
     allow: list[str] = Field(
         default_factory=lambda: [
-            "Bash(git *)",
-            "Bash(ruff *)",
-            "Bash(pytest *)",
-            "Bash(make *)",
+            "shell(git *)",
+            "shell(ruff *)",
+            "shell(pytest *)",
+            "shell(make *)",
         ]
     )
-    ask: list[str] = Field(default_factory=lambda: ["Bash(*)"])
+    ask: list[str] = Field(default_factory=lambda: ["shell(*)"])
 
     model_config = SettingsConfigDict(extra="ignore")
 

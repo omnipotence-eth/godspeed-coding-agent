@@ -47,7 +47,7 @@ client or by setting the NVIDIA_NIM_API_KEY environment variable
 saved to `~/.godspeed/.env.local` but nothing had loaded that file
 into the process environment before LiteLLM ran.
 
-**Fix (v3.5.0+):** Godspeed auto-loads env files on CLI startup in
+**Fix (v3.4.0+):** Godspeed auto-loads env files on CLI startup in
 this priority order (later wins, shell env always wins overall):
 
 1. `~/.godspeed/.env`

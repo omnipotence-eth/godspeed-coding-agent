@@ -130,13 +130,13 @@ permissions:
     - "FileWrite(.aws/*)"
   allow:
     # Safe dev commands — auto-approved
-    - "Bash(git *)"
-    - "Bash(ruff *)"
-    - "Bash(pytest *)"
-    - "Bash(make *)"
+    - "shell(git *)"
+    - "shell(ruff *)"
+    - "shell(pytest *)"
+    - "shell(make *)"
   ask:
     # Everything else requires confirmation
-    - "Bash(*)"
+    - "shell(*)"
 
 # ─── Audit ──────────────────────────────────────────────────────────────
 audit:

@@ -300,11 +300,12 @@ permissions:
     - "FileRead(*.pem)"
     - "FileRead(.ssh/*)"
   allow:
-    - "Bash(git *)"
-    - "Bash(ruff *)"
-    - "Bash(pytest *)"
+    - "shell(git *)"
+    - "shell(ruff *)"
+    - "shell(pytest *)"
+    - "shell(make *)"
   ask:
-    - "Bash(*)"
+    - "shell(*)"
 
 audit:
   enabled: true
@@ -330,33 +331,18 @@ Permission rules use glob-style matching against `ToolName(argument)` strings. D
 | `GEMINI_API_KEY` | Gemini access |
 | `GODSPEED_MODEL` | Override default model |
 
-## How Godspeed Compares
+## Inspiration & Attribution
 
-| Feature | Godspeed | Claude Code | Cursor | Aider | OpenCode |
-|---------|----------|-------------|--------|-------|----------|
-| Deny-first permission engine | **Yes** (4-tier, 71 dangerous patterns) | Proprietary | No | No | No |
-| Hash-chained audit trail | **Yes** (SHA-256 JSONL, verifiable) | No | No | No | No |
-| Secret protection | **4 layers** (deny, context clean, output filter, audit redact) | Limited | No | No | No |
-| Parallel tool execution | **Yes** (READ_ONLY parallel, write serial) | Yes | No | No | No |
-| Speculative tool dispatch | **Yes** (READ_ONLY pre-dispatched during streaming) | No | No | No | No |
-| Extended thinking | **Yes** (configurable budget, Claude models) | Yes | No | No | No |
-| Self-evolution | **Yes** (trace analysis → GEPA mutations → LLM judge → safety gate) | No | No | No | No |
-| Cost budgets | **Yes** (hard limit, `/budget` command) | No | No | No | No |
-| Architect mode | **Yes** (plan-then-execute, two-model) | No | No | Yes | No |
-| Multi-language verify | **6 languages** (Python, JS/TS, Go, Rust, C/C++) | Python | No | Python | LSP |
-| Test runner (auto-detect) | **5 frameworks** (pytest, jest, vitest, go, cargo) | Yes | No | Yes | No |
-| Web search & fetch | **Yes** (DuckDuckGo, no API key) | Yes | No | No | No |
-| Headless/CI mode | **Yes** (JSON output, auto-approve) | Yes | No | No | Yes |
-| Token cost tracking | **Yes** (20+ models, per-session) | No | No | No | No |
-| Cross-agent config | **Yes** (GODSPEED.md, AGENTS.md, CLAUDE.md, .cursorrules) | CLAUDE.md only | .cursorrules only | No | AGENTS.md |
-| Prompt caching | **Yes** (Anthropic/OpenAI) | Yes | No | No | No |
-| Sub-agents | **Yes** (isolated, parallel, depth 3) | Yes | No | No | No |
-| MCP support | **Yes** (stdio + SSE transport) | Yes | Yes | No | No |
-| Free by default | **Yes** (Ollama, zero API cost) | No (paid API) | No (subscription) | Yes | Yes |
-| 200+ LLM providers | **Yes** (LiteLLM) | Claude only | OpenAI/Claude | ~75 | 75+ |
-| Open source | **MIT** | No | No | Apache 2.0 | MIT |
+Godspeed stands on the shoulders of excellent prior work:
 
-Godspeed is the only open-source coding agent that ships with production security primitives, speculative tool dispatch, self-evolution, and multi-language verification out of the box.
+- **Agent loop pattern** — Inspired by the hand-rolled ReAct loops in [mini-swe-agent](https://github.com/SWE-agent/SWE-agent) and [Claude Code](https://docs.anthropic.com/en/docs/agents/claude-code). The core insight that the LLM decides when to stop, combined with permission gating at every tool call, is borrowed from these systems.
+- **Dangerous command detection** — Inspired by [Hermes Agent's Tirith security scanner](https://github.com/monocle-ai/tirith). The regex-based approach to blocking destructive shell commands follows their design.
+- **LiteLLM** — Unified provider access via the [LiteLLM](https://github.com/BerriAI/litellm) library. Godspeed would not support 200+ providers without it.
+- **Prompt-toolkit + Rich** — The TUI is built on [prompt-toolkit](https://github.com/prompt-toolkit/python-prompt-toolkit) for input handling and [Rich](https://github.com/Textualize/rich) for output rendering.
+- **SWE-Bench** — Benchmark methodology and harness from [SWE-bench](https://github.com/SWE-bench/SWE-bench). All published numbers use their evaluation protocol.
+- **AGENTS.md / CLAUDE.md** — Cross-agent config file idea from the [Linux Foundation's AGENTS.md proposal](https://github.com/LinusDierheimer/.agents.md) and Anthropic's CLAUDE.md convention.
+
+Security-first design, speculative tool dispatch, self-evolution, and multi-language verification are original contributions.
 
 ## Development
 

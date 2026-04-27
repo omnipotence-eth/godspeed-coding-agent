@@ -1,13 +1,15 @@
-"""Professional Textual TUI for Godspeed — Claude Code x OpenCode inspired.
+"""Professional Textual TUI for Godspeed — OpenCode-inspired.
 
-Architecture:
-- 3-pane layout: tool sidebar | chat panel | context sidebar
-- Top status bar with live metrics
-- Bottom input bar with command hints
-- Collapsible tool call blocks with timing
-- Modal screens: permission, diff review, command palette
-- Welcome screen on first launch
-- Keyboard shortcuts throughout
+Layout:
+- Left: Chat panel (messages, tool calls, streaming)
+- Right: Info panel (session, usage, tools, mode, footer)
+- Bottom: Input bar
+
+Design principles:
+- No emojis. Clean text-only indicators.
+- Every element on screen has a function.
+- Right panel shows live operational data.
+- Minimal chrome, maximum information density.
 """
 
 from __future__ import annotations
@@ -23,15 +25,9 @@ from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.reactive import reactive
 from textual.screen import Screen
-from textual.widgets import (
-    Button,
-    Input,
-    Label,
-    ListItem,
-    ListView,
-    Static,
-)
+from textual.widgets import Button, Input, Label, ListItem, ListView, Static
 
+from godspeed import __version__
 from godspeed.agent.conversation import Conversation
 from godspeed.agent.loop import agent_loop
 from godspeed.agent.result import AgentCancelledError
@@ -46,22 +42,8 @@ from godspeed.tui.output import capture_output
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Design constants
+# Tool labels (text only, no emojis)
 # ---------------------------------------------------------------------------
-
-_TOOL_ICONS: dict[str, str] = {
-    "file_read": "📄",
-    "file_write": "✏️",
-    "file_edit": "📝",
-    "shell": "⚡",
-    "grep_search": "🔍",
-    "glob_search": "📁",
-    "git": "🌿",
-    "repo_map": "🗺️",
-    "complexity": "📊",
-    "system_optimizer": "🔧",
-    "default": "🔧",
-}
 
 _TOOL_LABELS: dict[str, str] = {
     "file_read": "Read",
@@ -98,146 +80,145 @@ _COMMANDS: list[tuple[str, str, str]] = [
 
 
 # ---------------------------------------------------------------------------
-# Sidebar Widgets
+# Info Panel (right side)
 # ---------------------------------------------------------------------------
 
 
-class StatusBar(Static):
-    """Top status bar — minimal, info-dense (Claude Code style)."""
+class InfoPanel(Static):
+    """Right-side panel showing live operational data."""
 
-    model: reactive[str] = reactive("unknown")
-    cost_usd: reactive[float] = reactive(0.0)
-    turns: reactive[int] = reactive(0)
-    permission_mode: reactive[str] = reactive("normal")
-    context_pct: reactive[float] = reactive(0.0)
+    # Reactive fields bound from the main app
+    session_id: reactive[str] = reactive("")
+    model: reactive[str] = reactive("")
+    project_dir: reactive[str] = reactive("")
     input_tokens: reactive[int] = reactive(0)
     output_tokens: reactive[int] = reactive(0)
-    is_running: reactive[bool] = reactive(False)
-
-    def compose(self) -> ComposeResult:
-        yield Static(id="status-content")
-
-    def _watch_all(self) -> None:
-        content = self.query_one("#status-content", Static)
-        mode_color = {
-            "normal": "green",
-            "strict": "red",
-            "plan": "cyan",
-            "yolo": "yellow",
-        }.get(self.permission_mode, "white")
-        ctx_color = "red" if self.context_pct > 90 else "yellow" if self.context_pct > 70 else "dim"
-        running_indicator = "[blink]●[/] " if self.is_running else ""
-        parts = [
-            f"[bold cyan]{running_indicator}Godspeed[/]",
-            f"model=[b]{self.model}[/]",
-            f"cost=${self.cost_usd:.4f}",
-            f"turns={self.turns}",
-            f"tok={self.input_tokens}/{self.output_tokens}",
-            f"ctx=[{ctx_color}]{self.context_pct:.0f}%[/]",
-            f"mode=[{mode_color}]{self.permission_mode}[/]",
-        ]
-        content.update("  ·  ".join(parts))
-
-    def watch_model(self, _value: str) -> None:
-        self._watch_all()
-
-    def watch_cost_usd(self, _value: float) -> None:
-        self._watch_all()
-
-    def watch_turns(self, _value: int) -> None:
-        self._watch_all()
-
-    def watch_permission_mode(self, _value: str) -> None:
-        self._watch_all()
-
-    def watch_context_pct(self, _value: float) -> None:
-        self._watch_all()
-
-    def watch_input_tokens(self, _value: int) -> None:
-        self._watch_all()
-
-    def watch_output_tokens(self, _value: int) -> None:
-        self._watch_all()
-
-    def watch_is_running(self, _value: bool) -> None:
-        self._watch_all()
-
-
-class ToolSidebar(Static):
-    """Left sidebar — tool inventory (OpenCode style)."""
-
-    def __init__(self, tool_registry: ToolRegistry) -> None:
-        super().__init__()
-        self._tool_registry = tool_registry
-
-    def compose(self) -> ComposeResult:
-        yield Static("Tools", classes="section-title")
-        yield ListView(id="tool-list")
-
-    def on_mount(self) -> None:
-        lv = self.query_one("#tool-list", ListView)
-        for tool in self._tool_registry.list_tools():
-            icon = _TOOL_ICONS.get(tool.name, _TOOL_ICONS["default"])
-            label = _TOOL_LABELS.get(tool.name, tool.name)
-            lv.append(
-                ListItem(
-                    Label(f"{icon} {label}"),
-                    id=f"tool-{tool.name}",
-                )
-            )
-
-
-class ContextSidebar(Static):
-    """Right sidebar — session telemetry."""
-
-    session_id: reactive[str] = reactive("")
-    tool_count: reactive[int] = reactive(0)
+    context_pct: reactive[float] = reactive(0.0)
+    cost_usd: reactive[float] = reactive(0.0)
     tool_calls: reactive[int] = reactive(0)
     tool_errors: reactive[int] = reactive(0)
     tool_denied: reactive[int] = reactive(0)
-    project_dir: reactive[str] = reactive("")
+    permission_mode: reactive[str] = reactive("normal")
+    is_running: reactive[bool] = reactive(False)
+    duration_sec: reactive[int] = reactive(0)
 
     def compose(self) -> ComposeResult:
         yield Static("Session", classes="section-title")
-        yield Static(id="ctx-stats")
+        yield Static("", id="info-session")
 
-    def _update(self) -> None:
-        panel = self.query_one("#ctx-stats", Static)
-        err_color = "red" if self.tool_errors > 0 else "green"
-        deny_color = "yellow" if self.tool_denied > 0 else "white"
-        sid = self.session_id[:8]
-        pdir = self.project_dir[:20]
-        tc = self.tool_count
-        tcalls = self.tool_calls
-        terr = self.tool_errors
-        tden = self.tool_denied
+        yield Static("Usage", classes="section-title")
+        yield Static("", id="info-usage")
+
+        yield Static("Tools", classes="section-title")
+        yield Static("", id="info-tools")
+
+        yield Static("Mode", classes="section-title")
+        yield Static("", id="info-mode")
+
+        yield Static(f"Godspeed v{__version__}", classes="info-footer")
+
+    def on_mount(self) -> None:
+        self._update_all()
+
+    def _update_all(self) -> None:
+        self._update_session()
+        self._update_usage()
+        self._update_tools()
+        self._update_mode()
+
+    def _update_session(self) -> None:
+        widget = self.query_one("#info-session", Static)
+        sid = self.session_id[:10] if len(self.session_id) > 10 else self.session_id
         lines = [
-            f"[dim]ID:[/]    [b]{sid}[/]",
-            f"[dim]Dir:[/]   [b]{pdir}[/]",
-            f"[dim]Tools:[/] [b]{tc}[/]",
-            f"[dim]Calls:[/] [b]{tcalls}[/]",
-            f"[dim]Errors:[/] [{err_color}]{terr}[/]",
-            f"[dim]Denied:[/] [{deny_color}]{tden}[/]",
+            f"[info-label]ID:[/]     [info-value]{sid}[/]",
+            f"[info-label]Model:[/]   [info-value]{self.model[:22]}[/]",
+            f"[info-label]Dir:[/]     [info-value]{self.project_dir[:22]}[/]",
         ]
-        panel.update("\n".join(lines))
+        widget.update("\n".join(lines))
+
+    def _update_usage(self) -> None:
+        widget = self.query_one("#info-usage", Static)
+        total = self.input_tokens + self.output_tokens
+        if self.context_pct < 50:
+            ctx_color = "info-value-success"
+        elif self.context_pct < 80:
+            ctx_color = "info-value-warn"
+        else:
+            ctx_color = "info-value-error"
+        lines = [
+            f"[info-label]In:[/]      [info-value]{self.input_tokens:,}[/]",
+            f"[info-label]Out:[/]     [info-value]{self.output_tokens:,}[/]",
+            f"[info-label]Total:[/]   [info-value]{total:,}[/]",
+            f"[info-label]Context:[/]  [{ctx_color}]{self.context_pct:.0f}%[/]",
+            f"[info-label]Cost:[/]     [info-value]${self.cost_usd:.4f}[/]",
+        ]
+        widget.update("\n".join(lines))
+
+    def _update_tools(self) -> None:
+        widget = self.query_one("#info-tools", Static)
+        err_color = "info-value-error" if self.tool_errors > 0 else "info-value"
+        deny_color = "info-value-warn" if self.tool_denied > 0 else "info-value"
+        lines = [
+            f"[info-label]Calls:[/]   [info-value]{self.tool_calls}[/]",
+            f"[info-label]Errors:[/]  [{err_color}]{self.tool_errors}[/]",
+            f"[info-label]Denied:[/]  [{deny_color}]{self.tool_denied}[/]",
+        ]
+        widget.update("\n".join(lines))
+
+    def _update_mode(self) -> None:
+        widget = self.query_one("#info-mode", Static)
+        mode_color = {
+            "normal": "info-value-success",
+            "strict": "info-value-error",
+            "plan": "info-value-accent",
+            "yolo": "info-value-warn",
+        }.get(self.permission_mode, "info-value")
+        status = "running" if self.is_running else "idle"
+        lines = [
+            f"[info-label]Mode:[/]    [{mode_color}]{self.permission_mode}[/]",
+            f"[info-label]Status:[/]  [info-value]{status}[/]",
+            f"[info-label]Time:[/]    [info-value]{self.duration_sec}s[/]",
+        ]
+        widget.update("\n".join(lines))
 
     def watch_session_id(self, _value: str) -> None:
-        self._update()
+        self._update_session()
 
-    def watch_tool_count(self, _value: int) -> None:
-        self._update()
-
-    def watch_tool_calls(self, _value: int) -> None:
-        self._update()
-
-    def watch_tool_errors(self, _value: int) -> None:
-        self._update()
-
-    def watch_tool_denied(self, _value: int) -> None:
-        self._update()
+    def watch_model(self, _value: str) -> None:
+        self._update_session()
 
     def watch_project_dir(self, _value: str) -> None:
-        self._update()
+        self._update_session()
+
+    def watch_input_tokens(self, _value: int) -> None:
+        self._update_usage()
+
+    def watch_output_tokens(self, _value: int) -> None:
+        self._update_usage()
+
+    def watch_context_pct(self, _value: float) -> None:
+        self._update_usage()
+
+    def watch_cost_usd(self, _value: float) -> None:
+        self._update_usage()
+
+    def watch_tool_calls(self, _value: int) -> None:
+        self._update_tools()
+
+    def watch_tool_errors(self, _value: int) -> None:
+        self._update_tools()
+
+    def watch_tool_denied(self, _value: int) -> None:
+        self._update_tools()
+
+    def watch_permission_mode(self, _value: str) -> None:
+        self._update_mode()
+
+    def watch_is_running(self, _value: bool) -> None:
+        self._update_mode()
+
+    def watch_duration_sec(self, _value: int) -> None:
+        self._update_mode()
 
 
 # ---------------------------------------------------------------------------
@@ -246,27 +227,27 @@ class ContextSidebar(Static):
 
 
 class UserMessage(Static):
-    """A user message bubble."""
+    """A user message."""
 
     def __init__(self, text: str) -> None:
         super().__init__()
         self._text = text
 
     def compose(self) -> ComposeResult:
-        yield Static("You", classes="message-header")
-        yield Static(self._text)
+        yield Static("You", classes="msg-label")
+        yield Static(self._text, classes="msg-body")
 
 
 class AssistantMessage(Static):
-    """An assistant message bubble."""
+    """An assistant message."""
 
     def __init__(self, text: str) -> None:
         super().__init__()
         self._text = text
 
     def compose(self) -> ComposeResult:
-        yield Static("Assistant", classes="message-header")
-        yield Static(self._text)
+        yield Static("Assistant", classes="msg-label")
+        yield Static(self._text, classes="msg-body")
 
 
 class SystemMessage(Static):
@@ -277,7 +258,7 @@ class SystemMessage(Static):
         self._text = text
 
     def compose(self) -> ComposeResult:
-        yield Static(self._text)
+        yield Static(self._text, classes="msg-body")
 
 
 class ErrorMessage(Static):
@@ -288,11 +269,12 @@ class ErrorMessage(Static):
         self._text = text
 
     def compose(self) -> ComposeResult:
-        yield Static(self._text)
+        yield Static("Error", classes="msg-label")
+        yield Static(self._text, classes="msg-body")
 
 
 class ToolCallBlock(Static):
-    """Collapsible tool call display with timing (Claude Code style)."""
+    """Collapsible tool call display with timing."""
 
     expanded: reactive[bool] = reactive(False)
 
@@ -311,10 +293,9 @@ class ToolCallBlock(Static):
         self._is_error = False
 
     def compose(self) -> ComposeResult:
-        icon = _TOOL_ICONS.get(self._tool_name, _TOOL_ICONS["default"])
         label = _TOOL_LABELS.get(self._tool_name, self._tool_name)
         args_str = self._format_args()
-        header_text = f"{icon} {label} {args_str}"
+        header_text = f"{label} {args_str}"
         yield Static(header_text, classes="tool-header")
         yield Static("", classes="tool-body")
         yield Static("", classes="tool-result")
@@ -327,8 +308,8 @@ class ToolCallBlock(Static):
             or ""
         )
         if primary:
-            if len(primary) > 40:
-                primary = "..." + primary[-37:]
+            if len(primary) > 35:
+                primary = "..." + primary[-32:]
             return f"  {primary}"
         return ""
 
@@ -355,16 +336,15 @@ class ToolCallBlock(Static):
         result_widget = self.query_one(".tool-result", Static)
         result_class = "tool-result-error" if is_error else "tool-result"
         result_widget.set_class(True, result_class)
-        result_widget.update(
-            f"{'Error' if is_error else 'Result'} ({elapsed:.0f}ms): {result[:200]}"
-        )
+        status = "ERR" if is_error else "OK"
+        result_widget.update(f"{status}  {elapsed:.0f}ms  {result[:120]}")
         if self.expanded:
             body = self.query_one(".tool-body", Static)
             body.update(result)
 
 
 class StreamingIndicator(Static):
-    """Animated thinking indicator."""
+    """Animated thinking indicator (text only)."""
 
     def __init__(self, text: str = "Thinking") -> None:
         super().__init__()
@@ -377,7 +357,7 @@ class StreamingIndicator(Static):
     def _tick(self) -> None:
         self._dot_count = (self._dot_count + 1) % 4
         dots = "." * self._dot_count
-        self.update(f"[blink bold cyan]{self._base_text}{dots}[/]")
+        self.update(f"{self._base_text}{dots}")
 
 
 # ---------------------------------------------------------------------------
@@ -433,12 +413,12 @@ class ChatPanel(Static):
 
 
 class InputBar(Horizontal):
-    """Bottom input bar with submit button and hints."""
+    """Bottom input bar."""
 
     def compose(self) -> ComposeResult:
         yield Input(placeholder="Ask Godspeed anything...", id="user-input")
         yield Button("Send", id="submit-btn", variant="primary")
-        yield Static("Ctrl+K palette · Ctrl+C cancel", classes="hint")
+        yield Static("Ctrl+K  Ctrl+C", classes="hint")
 
     def on_mount(self) -> None:
         self.query_one("#user-input", Input).focus()
@@ -569,7 +549,7 @@ class DiffReviewScreen(Screen[str]):
 
 
 class CommandPaletteScreen(Screen[str | None]):
-    """Command palette with fuzzy search (OpenCode Ctrl+K style)."""
+    """Command palette with fuzzy search (Ctrl+K)."""
 
     def compose(self) -> ComposeResult:
         with Vertical(classes="dialog"):
@@ -603,7 +583,6 @@ class CommandPaletteScreen(Screen[str | None]):
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:
         text = str(event.item.render())
-        # Extract command from markup
         cmd = text.split()[0] if text else None
         self.dismiss(cmd)
 
@@ -628,7 +607,7 @@ class WelcomeScreen(Screen[None]):
 
     def compose(self) -> ComposeResult:
         with Vertical(classes="welcome-container"):
-            yield Static("⚡ Godspeed", classes="welcome-title")
+            yield Static("Godspeed", classes="welcome-title")
             yield Static(
                 "Security-first AI coding agent",
                 classes="welcome-subtitle",
@@ -646,7 +625,7 @@ class WelcomeScreen(Screen[None]):
                 classes="welcome-info",
             )
             yield Static(
-                "Press Enter or any key to start · Ctrl+K for commands",
+                "Press Enter to start  ·  Ctrl+K for commands",
                 classes="welcome-hint",
             )
 
@@ -796,7 +775,7 @@ class GodspeedTextualApp(App[None]):
         self._current_streaming_indicator: StreamingIndicator | None = None
         self._current_tool_block: ToolCallBlock | None = None
 
-        # Slash command registry (shared with legacy command library)
+        # Slash command registry
         self._commands = Commands(
             conversation=conversation,
             llm_client=llm_client,
@@ -817,17 +796,14 @@ class GodspeedTextualApp(App[None]):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="main-grid"):
-            yield StatusBar(id="status-bar")
-            yield ToolSidebar(self._tool_registry)
             yield ChatPanel(id="chat-panel")
-            yield ContextSidebar(id="context-sidebar")
+            yield InfoPanel(id="info-panel")
             yield InputBar(id="input-bar")
 
     def on_mount(self) -> None:
         self.title = "Godspeed"
         self.sub_title = self._llm_client.model
-        self._update_status()
-        self._update_context()
+        self._update_info_panel()
         self._wire_permissions()
         # Show welcome screen on first mount
         self.push_screen(
@@ -837,35 +813,36 @@ class GodspeedTextualApp(App[None]):
                 tool_count=len(self._tool_registry.list_tools()),
             )
         )
+        # Start duration timer
+        self.set_interval(1.0, self._tick_duration)
+
+    def _tick_duration(self) -> None:
+        panel = self.query_one("#info-panel", InfoPanel)
+        panel.duration_sec = int(time.monotonic() - self._start_time)
 
     def _wire_permissions(self) -> None:
         if self._permission_engine is not None:
             self._tool_context.permissions = _TextualPermissionProxy(self._permission_engine, self)
         self._tool_context.diff_reviewer = _TextualDiffReviewer(self)
 
-    def _update_status(self) -> None:
-        bar = self.query_one("#status-bar", StatusBar)
-        bar.model = self._llm_client.model
-        bar.cost_usd = self._llm_client.total_cost_usd
-        bar.turns = self.turn_count
-        bar.permission_mode = self._get_permission_mode()
-        bar.context_pct = (
+    def _update_info_panel(self) -> None:
+        panel = self.query_one("#info-panel", InfoPanel)
+        panel.session_id = self._session_id
+        panel.model = self._llm_client.model
+        panel.project_dir = str(self._tool_context.cwd)
+        panel.input_tokens = self._llm_client.total_input_tokens
+        panel.output_tokens = self._llm_client.total_output_tokens
+        panel.context_pct = (
             self._conversation.token_count / self._conversation.max_tokens * 100
             if self._conversation.max_tokens > 0
             else 0.0
         )
-        bar.input_tokens = self._llm_client.total_input_tokens
-        bar.output_tokens = self._llm_client.total_output_tokens
-        bar.is_running = self.running
-
-    def _update_context(self) -> None:
-        ctx = self.query_one("#context-sidebar", ContextSidebar)
-        ctx.session_id = self._session_id
-        ctx.project_dir = str(self._tool_context.cwd)
-        ctx.tool_count = len(self._tool_registry.list_tools())
-        ctx.tool_calls = self._tool_calls_total
-        ctx.tool_errors = self._tool_errors_total
-        ctx.tool_denied = self._tool_denied_total
+        panel.cost_usd = self._llm_client.total_cost_usd
+        panel.tool_calls = self._tool_calls_total
+        panel.tool_errors = self._tool_errors_total
+        panel.tool_denied = self._tool_denied_total
+        panel.permission_mode = self._get_permission_mode()
+        panel.is_running = self.running
 
     def _get_permission_mode(self) -> str:
         if self._permission_engine is None:
@@ -904,7 +881,7 @@ class GodspeedTextualApp(App[None]):
             return
 
         self.turn_count += 1
-        self._update_status()
+        self._update_info_panel()
 
         chat = self.query_one("#chat-panel", ChatPanel)
         chat.write_user(text)
@@ -920,7 +897,7 @@ class GodspeedTextualApp(App[None]):
         # Textual-specific commands not in the shared Commands library
         if text == "/cancel":
             self._cancel_event.set()
-            chat.write_system("⏹ Cancelling current operation...")
+            chat.write_system("Cancelling current operation...")
             return
 
         # Dispatch via Commands library, capturing Rich console output
@@ -945,7 +922,7 @@ class GodspeedTextualApp(App[None]):
 
     async def _agent_worker(self, user_input: str) -> None:
         self.running = True
-        self._update_status()
+        self._update_info_panel()
         chat = self.query_one("#chat-panel", ChatPanel)
         self._cancel_event.clear()
 
@@ -979,20 +956,19 @@ class GodspeedTextualApp(App[None]):
                 cancel_event=self._cancel_event,
                 hook_executor=self._hook_executor,
                 on_parallel_start=lambda calls: self.call_from_thread(
-                    lambda c=calls: chat.write_system(f"⚡ Running {len(c)} tools in parallel...")
+                    lambda c=calls: chat.write_system(f"Running {len(c)} tools in parallel...")
                 ),
                 on_parallel_complete=lambda _results: None,
                 on_thinking=lambda t: self.call_from_thread(lambda txt=t: self._on_thinking(txt)),
             )
         except AgentCancelledError:
-            chat.write_system("⏹ Agent cancelled.")
+            chat.write_system("Agent cancelled.")
         except Exception as exc:
             logger.error("Agent loop error: %s", exc, exc_info=True)
             chat.write_error(str(exc))
         finally:
             self.running = False
-            self._update_status()
-            self._update_context()
+            self._update_info_panel()
             # Remove streaming indicator
             if self._current_streaming_indicator is not None:
                 self._current_streaming_indicator.remove()
@@ -1008,8 +984,6 @@ class GodspeedTextualApp(App[None]):
         chat.write_assistant(text)
 
     def _on_assistant_chunk(self, chunk: str) -> None:
-        # For streaming, we could append to a mutable message widget.
-        # For now, write each chunk as it arrives.
         chat = self.query_one("#chat-panel", ChatPanel)
         chat.write_assistant(chunk)
 
@@ -1020,7 +994,7 @@ class GodspeedTextualApp(App[None]):
             self._current_streaming_indicator = None
         self._current_tool_block = chat.add_tool_call(name, args)
         self._tool_calls_total += 1
-        self._update_context()
+        self._update_info_panel()
 
     def _on_tool_result(self, name: str, result: Any) -> None:
         is_error = getattr(result, "is_error", False)
@@ -1033,25 +1007,25 @@ class GodspeedTextualApp(App[None]):
         if self._current_tool_block is not None:
             self._current_tool_block.set_result(display, is_error)
             self._current_tool_block = None
-        self._update_context()
+        self._update_info_panel()
 
     def _on_permission_denied(self, name: str, reason: str) -> None:
         self._tool_denied_total += 1
         chat = self.query_one("#chat-panel", ChatPanel)
-        chat.write_system(f"🚫 Permission denied: {name} ({reason})")
-        self._update_context()
+        chat.write_system(f"Permission denied: {name} ({reason})")
+        self._update_info_panel()
 
     def _on_thinking(self, text: str) -> None:
         chat = self.query_one("#chat-panel", ChatPanel)
         if self._current_streaming_indicator is None:
             self._current_streaming_indicator = chat.add_streaming_indicator(f"Thinking: {text}")
         else:
-            self._current_streaming_indicator.update(f"[blink bold cyan]Thinking: {text}[/]")
+            self._current_streaming_indicator.update(f"Thinking: {text}")
 
     def action_cancel(self) -> None:
         self._cancel_event.set()
         chat = self.query_one("#chat-panel", ChatPanel)
-        chat.write_system("⏹ Cancelling...")
+        chat.write_system("Cancelling...")
 
     def action_command_palette(self) -> None:
         self.push_screen(CommandPaletteScreen(), callback=self._on_palette_result)
@@ -1069,21 +1043,20 @@ class GodspeedTextualApp(App[None]):
 
     def action_new_session(self) -> None:
         chat = self.query_one("#chat-panel", ChatPanel)
-        chat.write_system("🔄 New session started.")
+        chat.write_system("New session started.")
         self.turn_count = 0
         self._tool_calls_total = 0
         self._tool_errors_total = 0
         self._tool_denied_total = 0
         self._start_time = time.monotonic()
-        self._update_status()
-        self._update_context()
+        self._update_info_panel()
 
     async def action_quit(self) -> None:
         duration = time.monotonic() - self._start_time
         chat = self.query_one("#chat-panel", ChatPanel)
         chat.write_system(
-            f"Session ended · {duration:.0f}s · "
-            f"{self._tool_calls_total} calls · "
+            f"Session ended  {duration:.0f}s  "
+            f"{self._tool_calls_total} calls  "
             f"${self._llm_client.total_cost_usd:.4f}"
         )
         if self._session_memory is not None:

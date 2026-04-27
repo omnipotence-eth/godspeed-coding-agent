@@ -15,15 +15,13 @@ from textual.widgets import Button
 from godspeed.tui.textual_app import (
     ChatPanel,
     CommandPaletteScreen,
-    ContextSidebar,
     DiffReviewScreen,
     GodspeedTextualApp,
+    InfoPanel,
     InputBar,
     PermissionScreen,
-    StatusBar,
     StreamingIndicator,
     ToolCallBlock,
-    ToolSidebar,
     UserMessage,
     WelcomeScreen,
 )
@@ -84,34 +82,25 @@ class TestWidgets:
     """Unit tests for individual widgets."""
 
     @pytest.mark.asyncio
-    async def test_status_bar_reactive(self):
-        bar = StatusBar()
+    async def test_info_panel_reactive(self):
+        panel = InfoPanel()
         async with App().run_test() as pilot:
-            await pilot.app.mount(bar)
+            await pilot.app.mount(panel)
             await pilot.pause()
-            bar.model = "claude-sonnet"
-            bar.cost_usd = 0.1234
-            bar.turns = 5
-            bar.permission_mode = "strict"
-            bar.context_pct = 42.0
-            bar.input_tokens = 100
-            bar.output_tokens = 200
-            bar.is_running = True
-            assert bar.model == "claude-sonnet"
-
-    @pytest.mark.asyncio
-    async def test_context_sidebar_reactive(self):
-        ctx = ContextSidebar()
-        async with App().run_test() as pilot:
-            await pilot.app.mount(ctx)
-            await pilot.pause()
-            ctx.session_id = "abc123"
-            ctx.tool_count = 10
-            ctx.tool_calls = 5
-            ctx.tool_errors = 1
-            ctx.tool_denied = 0
-            ctx.project_dir = "C:\\Users\\test"
-            assert ctx.session_id == "abc123"
+            panel.session_id = "abc123"
+            panel.model = "gpt-4"
+            panel.project_dir = "C:\\Users\\test"
+            panel.input_tokens = 100
+            panel.output_tokens = 200
+            panel.context_pct = 42.0
+            panel.cost_usd = 0.05
+            panel.tool_calls = 5
+            panel.tool_errors = 1
+            panel.tool_denied = 0
+            panel.permission_mode = "strict"
+            panel.is_running = True
+            panel.duration_sec = 60
+            assert panel.session_id == "abc123"
 
     @pytest.mark.asyncio
     async def test_chat_panel_messages(self):
@@ -154,17 +143,6 @@ class TestWidgets:
             assert bar.get_value() == "hello"
             bar.clear()
             assert bar.get_value() == ""
-
-    @pytest.mark.asyncio
-    async def test_tool_sidebar_lists_tools(self, fake_registry):
-        sidebar = ToolSidebar(fake_registry)
-        async with App().run_test() as pilot:
-            await pilot.app.mount(sidebar)
-            await pilot.pause()
-            from textual.widgets import ListView
-
-            lv = sidebar.query_one("#tool-list", ListView)
-            assert lv is not None
 
     @pytest.mark.asyncio
     async def test_tool_call_block_expands(self):
@@ -254,24 +232,22 @@ class TestAppCompose:
             await pilot.pause()
             app.screen.dismiss()  # Dismiss welcome screen
             await pilot.pause()
-            assert app.query_one("#status-bar", StatusBar) is not None
             assert app.query_one("#chat-panel", ChatPanel) is not None
-            assert app.query_one("#context-sidebar", ContextSidebar) is not None
+            assert app.query_one("#info-panel", InfoPanel) is not None
             assert app.query_one("#input-bar", InputBar) is not None
 
     @pytest.mark.asyncio
-    async def test_header_reactive_updates(self, mock_deps):
+    async def test_info_panel_reactive_updates(self, mock_deps):
         app = GodspeedTextualApp(**mock_deps)
         async with app.run_test() as pilot:
             await pilot.pause()
             app.screen.dismiss()  # Dismiss welcome screen
             await pilot.pause()
-            bar = app.query_one("#status-bar", StatusBar)
-            bar.model = "gpt-4o"
-            bar.turns = 3
+            panel = app.query_one("#info-panel", InfoPanel)
+            panel.model = "gpt-4o"
+            panel.turns = 3
             await pilot.pause()
-            assert bar.model == "gpt-4o"
-            assert bar.turns == 3
+            assert panel.model == "gpt-4o"
 
     @pytest.mark.asyncio
     async def test_dispatch_command_help(self, mock_deps):

@@ -220,3 +220,51 @@ class Tool(abc.ABC):
             ToolResult with output or error.
         """
         ...
+
+
+def run_external_tool(
+    cmd: list[str],
+    *,
+    cwd: Path,
+    timeout: int = 60,
+    max_output_chars: int = 5000,
+    check_binary: str = "",
+) -> ToolResult:
+    """Run an external CLI tool and return a formatted ToolResult.
+
+    Checks that the binary exists, runs the command with a timeout,
+    truncates output, and returns success or failure.
+
+    This is a shared helper used by complexity, coverage, dep_audit,
+    and security_scan tools to avoid repeating the same boilerplate.
+    """
+    import shutil
+    import subprocess
+
+    if check_binary and not shutil.which(check_binary):
+        return ToolResult.failure(f"{check_binary} is not installed. Install it to use this tool.")
+
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            cwd=str(cwd),
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return ToolResult.failure(f"Command timed out after {timeout}s: {' '.join(cmd)}")
+    except FileNotFoundError:
+        return ToolResult.failure(f"Command not found: {cmd[0]}")
+
+    output = result.stdout
+    if result.stderr and result.returncode != 0:
+        output += f"\n[stderr]\n{result.stderr}"
+
+    if len(output) > max_output_chars:
+        output = output[: max_output_chars - 3] + "..."
+
+    if result.returncode != 0:
+        return ToolResult.failure(output)
+    return ToolResult.success(output)

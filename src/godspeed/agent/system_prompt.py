@@ -120,14 +120,16 @@ def build_system_prompt(
     project_instructions: str | None = None,
     cwd: Path | None = None,
     plan_mode: bool = False,
+    memory_hints: str | None = None,
 ) -> str:
     """Assemble the full system prompt.
 
     Combines:
     1. Core agent prompt (role, guidelines, safety)
     2. Project instructions from GODSPEED.md (if present)
-    3. Available tool descriptions
-    4. Working directory context
+    3. Memory hints (user preferences and corrections)
+    4. Available tool descriptions
+    5. Working directory context
     """
     parts = [CORE_PROMPT, WORKFLOW_PROMPT, QUALITY_PROMPT]
 
@@ -139,6 +141,9 @@ def build_system_prompt(
 
     if project_instructions:
         parts.append(f"\n## Project Instructions\n{project_instructions}\n")
+
+    if memory_hints:
+        parts.append(f"\n## Memory\n{memory_hints}\n")
 
     if tools:
         tool_descriptions = "\n## Available Tools\n"

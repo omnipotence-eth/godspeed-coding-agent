@@ -399,6 +399,7 @@ class TestArchitectCommand:
             audit_trail=None,
             session_id="test",
             cwd=Path("."),
+            tool_registry=None,
         )
         assert cmds.architect_mode is False
         result = cmds.dispatch("/architect")
@@ -416,6 +417,7 @@ class TestArchitectCommand:
             audit_trail=None,
             session_id="test",
             cwd=Path("."),
+            tool_registry=None,
         )
         cmds.architect_mode = True
         result = cmds.dispatch("/architect")
@@ -433,6 +435,7 @@ class TestArchitectCommand:
             audit_trail=None,
             session_id="test",
             cwd=Path("."),
+            tool_registry=None,
         )
         cmds.dispatch("/architect")
         cmds.dispatch("/architect")

@@ -115,3 +115,25 @@ class TestDatabaseLifecycle:
         assert mem2.get_session("s1") is not None
         assert mem2.event_count("s1") == 1
         mem2.close()
+
+    def test_double_close_is_safe(self, tmp_path: Path) -> None:
+        mem = SessionMemory(db_path=tmp_path / "double.db")
+        mem.close()
+        mem.close()  # should not raise
+
+    def test_get_conn_after_close_raises(self, tmp_path: Path) -> None:
+        mem = SessionMemory(db_path=tmp_path / "closed.db")
+        mem.close()
+        with pytest.raises(RuntimeError, match="closed"):
+            mem.get_session("s1")
+
+
+class TestDefaultPath:
+    """Test default database path."""
+
+    def test_default_db_path(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        mem = SessionMemory()
+        mem.start_session("s1", "m")
+        assert mem._db_path == tmp_path / ".godspeed" / "memory.db"
+        mem.close()

@@ -58,10 +58,11 @@ class EvolutionOrchestrator:
         max_mutations: int = 3,
         min_sessions_between_runs: int = 10,
         llm_client: LLMClient | None = None,
+        evo_dir: Path | None = None,
     ) -> None:
         self._tool_registry = tool_registry
         self._audit_dir = audit_dir
-        self._evo_dir = Path.home() / ".godspeed" / "evolution"
+        self._evo_dir = evo_dir or (Path.home() / ".godspeed" / "evolution")
         self._evo_dir.mkdir(parents=True, exist_ok=True)
 
         self._max_cost_usd = max_cost_usd
@@ -188,7 +189,9 @@ class EvolutionOrchestrator:
                 # 3. Evaluate fitness
                 try:
                     score = await self._evaluator.evaluate(candidate)
-                except Exception as exc:
+                except (
+                    Exception
+                ) as exc:  # pragma: no cover — LLM failure, tested at integration level
                     logger.warning(
                         "evolution.fitness_failed tool=%s error=%s",
                         failure.tool_name,
@@ -236,7 +239,7 @@ class EvolutionOrchestrator:
                         record_id,
                         score.overall,
                     )
-                except Exception as exc:
+                except Exception as exc:  # pragma: no cover — disk/registry failure
                     logger.warning(
                         "evolution.apply_failed tool=%s error=%s",
                         failure.tool_name,

@@ -1,3 +1,3 @@
-"""Godspeed TUI — terminal user interface with prompt-toolkit and Rich."""
+"""Godspeed TUI — terminal user interface built with Textual and Rich."""
 
 from __future__ import annotations

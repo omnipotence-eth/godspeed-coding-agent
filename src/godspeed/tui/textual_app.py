@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from pathlib import Path
 from typing import Any, ClassVar
 
 from textual.app import App, ComposeResult
@@ -39,6 +40,8 @@ from godspeed.llm.client import LLMClient
 from godspeed.security.permissions import ALLOW, ASK, PermissionDecision, PermissionEngine
 from godspeed.tools.base import ToolContext
 from godspeed.tools.registry import ToolRegistry
+from godspeed.tui.commands import Commands
+from godspeed.tui.output import capture_output
 
 logger = logging.getLogger(__name__)
 
@@ -793,6 +796,25 @@ class GodspeedTextualApp(App[None]):
         self._current_streaming_indicator: StreamingIndicator | None = None
         self._current_tool_block: ToolCallBlock | None = None
 
+        # Slash command registry (shared with legacy command library)
+        self._commands = Commands(
+            conversation=conversation,
+            llm_client=llm_client,
+            permission_engine=permission_engine,
+            audit_trail=audit_trail,
+            session_id=session_id,
+            cwd=tool_context.cwd if tool_context else Path.cwd(),
+            pause_event=self._pause_event,
+            tool_registry=tool_registry,
+        )
+        Commands._task_store = task_store
+        Commands._codebase_index = codebase_index
+
+        if skills:
+            from godspeed.skills.commands import register_skill_commands
+
+            register_skill_commands(self._commands, conversation, skills)
+
     def compose(self) -> ComposeResult:
         with Vertical(id="main-grid"):
             yield StatusBar(id="status-bar")
@@ -894,45 +916,32 @@ class GodspeedTextualApp(App[None]):
 
     def _dispatch_command(self, text: str) -> None:
         chat = self.query_one("#chat-panel", ChatPanel)
-        if text in ("/quit", "/exit"):
-            chat.write_system("Goodbye. 👋")
-            self.exit()
-        elif text == "/help":
-            lines = [
-                "[b]Available Commands[/b]",
-                "",
-                "[bold cyan]/quit[/]      Exit Godspeed",
-                "[bold cyan]/pause[/]     Pause agent loop",
-                "[bold cyan]/resume[/]    Resume agent loop",
-                "[bold cyan]/cancel[/]    Cancel current operation",
-                "[bold cyan]/clear[/]     Clear chat history",
-                "[bold cyan]/cost[/]      Show session cost",
-                "[bold cyan]/tokens[/]    Show token usage",
-                "",
-                "[dim]Keyboard: Ctrl+K palette · Ctrl+C cancel · Ctrl+L clear[/dim]",
-            ]
-            chat.write_system("\n".join(lines))
-        elif text == "/pause":
-            self._pause_event.clear()
-            chat.write_system("⏸ Agent loop paused.")
-        elif text == "/resume":
-            self._pause_event.set()
-            chat.write_system("▶ Agent loop resumed.")
-        elif text == "/cancel":
+
+        # Textual-specific commands not in the shared Commands library
+        if text == "/cancel":
             self._cancel_event.set()
             chat.write_system("⏹ Cancelling current operation...")
-        elif text == "/clear":
+            return
+
+        # Dispatch via Commands library, capturing Rich console output
+        with capture_output() as sio:
+            result = self._commands.dispatch(text)
+
+        output = sio.getvalue()
+        if output:
+            chat.write_system(output)
+
+        if result is None:
+            chat.write_system(f"Unknown command: {text}. Type /help for available commands.")
+            return
+
+        if result.should_quit:
+            self.exit()
+
+        # Textual-specific UI side effects
+        if text == "/clear":
             scroll = self.query_one("#messages-scroll", VerticalScroll)
             scroll.remove_children()
-            chat.write_system("Chat cleared.")
-        elif text in ("/cost", "/tokens"):
-            chat.write_system(
-                f"Cost: ${self._llm_client.total_cost_usd:.4f}  ·  "
-                f"Tokens: {self._llm_client.total_input_tokens} in / "
-                f"{self._llm_client.total_output_tokens} out"
-            )
-        else:
-            chat.write_system(f"Unknown command: {text}. Type /help for available commands.")
 
     async def _agent_worker(self, user_input: str) -> None:
         self.running = True

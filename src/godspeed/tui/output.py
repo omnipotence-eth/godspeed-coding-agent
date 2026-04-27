@@ -6,8 +6,10 @@ restraint in color, information density that respects the developer's attention.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
+from io import StringIO
 from typing import Any
 
 from rich.console import Console
@@ -52,6 +54,33 @@ from godspeed.tui.theme import (
 logger = logging.getLogger(__name__)
 
 console = Console()
+
+
+@contextlib.contextmanager
+def capture_output(width: int = 120) -> Any:
+    """Temporarily redirect Rich console output to a StringIO buffer.
+
+    Usage::
+
+        with capture_output() as sio:
+            format_success("Hello")
+        captured = sio.getvalue()
+
+    Args:
+        width: Terminal width for the capture console.
+
+    Yields:
+        StringIO buffer containing rendered output.
+    """
+    global console
+    old_console = console
+    sio = StringIO()
+    console = Console(file=sio, force_terminal=True, width=width)
+    try:
+        yield sio
+    finally:
+        console = old_console
+
 
 # Max lines for inline tool result display
 _RESULT_MAX_LINES = 10

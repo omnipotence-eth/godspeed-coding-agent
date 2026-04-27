@@ -385,9 +385,8 @@ async def _run_app(
     project_dir: Path,
     verbose: bool,
     audit_dir: Path | None,
-    classic: bool = False,
 ) -> None:
-    """Wire up all components and launch the TUI."""
+    """Wire up all components and launch the Textual TUI."""
     from godspeed.agent.conversation import Conversation
     from godspeed.agent.system_prompt import build_system_prompt
     from godspeed.audit.trail import AuditTrail
@@ -396,7 +395,6 @@ async def _run_app(
     from godspeed.llm.client import LLMClient
     from godspeed.security.permissions import PermissionEngine
     from godspeed.tools.base import ToolContext
-    from godspeed.tui.app import TUIApp
 
     # Load config
     overrides: dict = {}
@@ -618,47 +616,28 @@ async def _run_app(
         )
         hook_executor.run_pre_session()
 
-    # Launch TUI (Textual is the default; --classic for legacy prompt-toolkit)
-    if classic:
-        app = TUIApp(
-            llm_client=llm_client,
-            tool_registry=registry,
-            tool_context=tool_context,
-            conversation=conversation,
-            permission_engine=permission_engine,
-            audit_trail=audit_trail,
-            session_id=session_id,
-            skills=skills,
-            extra_completions=skill_completions,
-            hook_executor=hook_executor,
-            task_store=task_store,
-            codebase_index=codebase_index,
-            correction_tracker=correction_tracker,
-            session_memory=session_memory,
-        )
-        await app.run()
-    else:
-        from godspeed.tui.textual_app import GodspeedTextualApp
+    # Launch Textual TUI
+    from godspeed.tui.textual_app import GodspeedTextualApp
 
-        textual_app = GodspeedTextualApp(
-            llm_client=llm_client,
-            tool_registry=registry,
-            tool_context=tool_context,
-            conversation=conversation,
-            permission_engine=permission_engine,
-            audit_trail=audit_trail,
-            session_id=session_id,
-            skills=skills,
-            extra_completions=skill_completions,
-            hook_executor=hook_executor,
-            task_store=task_store,
-            codebase_index=codebase_index,
-            correction_tracker=correction_tracker,
-            session_memory=session_memory,
-        )
-        # Textual manages its own event loop; run in a thread so we don't
-        # block the caller's async loop.
-        await asyncio.to_thread(textual_app.run)
+    textual_app = GodspeedTextualApp(
+        llm_client=llm_client,
+        tool_registry=registry,
+        tool_context=tool_context,
+        conversation=conversation,
+        permission_engine=permission_engine,
+        audit_trail=audit_trail,
+        session_id=session_id,
+        skills=skills,
+        extra_completions=skill_completions,
+        hook_executor=hook_executor,
+        task_store=task_store,
+        codebase_index=codebase_index,
+        correction_tracker=correction_tracker,
+        session_memory=session_memory,
+    )
+    # Textual manages its own event loop; run in a thread so we don't
+    # block the caller's async loop.
+    await asyncio.to_thread(textual_app.run)
 
     # Close conversation logger
     if conversation_logger is not None:
@@ -686,11 +665,6 @@ async def _run_app(
     help="Directory for audit logs (default: ~/.godspeed/audit).",
 )
 @click.option(
-    "--classic",
-    is_flag=True,
-    help="Use the legacy prompt-toolkit TUI instead of the default Textual interface.",
-)
-@click.option(
     "--textual",
     is_flag=True,
     hidden=True,
@@ -703,7 +677,6 @@ def main(
     project_dir: Path,
     verbose: bool,
     audit_dir: Path | None,
-    classic: bool,
     textual: bool,
 ) -> None:
     """Godspeed -- Security-first open-source coding agent."""
@@ -721,12 +694,11 @@ def main(
     ctx.obj["project_dir"] = project_dir
     ctx.obj["verbose"] = verbose
     ctx.obj["audit_dir"] = audit_dir
-    ctx.obj["classic"] = classic
 
     # If no subcommand, launch the TUI
     if ctx.invoked_subcommand is None:
         with contextlib.suppress(KeyboardInterrupt):
-            asyncio.run(_run_app(model, project_dir, verbose, audit_dir, classic))
+            asyncio.run(_run_app(model, project_dir, verbose, audit_dir))
 
 
 @main.command()

@@ -42,11 +42,11 @@ permissions:
     - "FileRead(.ssh/*)"
     - "FileWrite(.env*)"
   allow:
-    - "Bash(git *)"
-    - "Bash(pytest *)"
-    - "Bash(make *)"
+    - "shell(git *)"
+    - "shell(pytest *)"
+    - "shell(make *)"
   ask:
-    - "Bash(*)"
+    - "shell(*)"
 ```
 
 Pattern format is `Tool(glob)` — fnmatch globbing on the argument.
@@ -89,7 +89,7 @@ Accepted action words: `approve` (alias for `allow`), `allow`, `deny`,
 During a session you see the ASK prompt:
 
 ```
-[?] Bash(pytest tests/test_foo.py -xvs)
+[?] shell(pytest tests/test_foo.py -xvs)
     Allow (a)lways · this-session (s) · just-this-time (y) · deny (n)
 ```
 

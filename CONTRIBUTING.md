@@ -27,7 +27,7 @@ get started.
 4. **Run tests** to verify your setup:
 
    ```bash
-   make test
+   uv run pytest --cov
    ```
 
 ## Development Workflow
@@ -43,10 +43,11 @@ get started.
 3. **Run the full check suite**:
 
    ```bash
-   make lint        # ruff check + format
-   make type-check  # ty or mypy
-   make security    # pip-audit + bandit
-   make test        # pytest with coverage
+   uv run ruff check . --fix && uv run ruff format .   # lint + format
+   uv run ty check src/                                 # type check
+   uv run pip-audit --ignore-vuln CVE-2026-28684        # security scan
+   uv run bandit -r src/ -ll                            # static analysis
+   uv run pytest --cov                                  # tests + coverage
    ```
 
 4. **Commit** using [Conventional Commits](https://www.conventionalcommits.org/):

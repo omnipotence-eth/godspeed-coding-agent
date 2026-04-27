@@ -59,7 +59,7 @@ Open `~/.godspeed/settings.yaml` and either:
 1. **Add an API key** for a paid provider (recommended for sustained
    use — NIM free tier is 40 RPM shared across all users):
    ```yaml
-   model: anthropic/claude-opus-4-7
+    model: claude-sonnet-4-5-20250929
    ```
    Set the env var:
    ```powershell
@@ -72,7 +72,7 @@ Open `~/.godspeed/settings.yaml` and either:
    ollama serve
    ollama pull qwen3:4b
    ```
-   Godspeed will auto-start Ollama on first launch if it's installed.
+   Godspeed will detect a running Ollama instance automatically. Start Ollama first with `ollama serve`.
 
 ---
 

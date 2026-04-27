@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+import godspeed.config as _config_module
 from godspeed.config import GodspeedSettings
 from godspeed.llm.client import ChatResponse, LLMClient, ModelRouter
 from godspeed.llm.router import (
@@ -18,6 +19,12 @@ from godspeed.llm.router import (
     TASK_TYPES,
     classify_task_type,
 )
+
+
+@pytest.fixture(autouse=True)
+def _isolate_config(tmp_path, monkeypatch):
+    """Prevent GodspeedSettings from loading the user's real global config."""
+    monkeypatch.setattr(_config_module, "DEFAULT_GLOBAL_DIR", tmp_path)
 
 
 def _assistant(*tool_names: str) -> dict[str, object]:

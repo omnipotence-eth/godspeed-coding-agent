@@ -65,12 +65,12 @@ class TestPermissionSettings:
 
     def test_default_allow_rules(self) -> None:
         p = PermissionSettings()
-        assert "Bash(git *)" in p.allow
-        assert "Bash(pytest *)" in p.allow
+        assert "shell(git *)" in p.allow
+        assert "shell(pytest *)" in p.allow
 
     def test_default_ask_rules(self) -> None:
         p = PermissionSettings()
-        assert "Bash(*)" in p.ask
+        assert "shell(*)" in p.ask
 
 
 class TestMergeConfigs:

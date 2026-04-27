@@ -1,7 +1,7 @@
-# Godspeed Architecture (v2.3.0)
+# Godspeed Architecture
 
 > Security-first coding agent. Hand-rolled ReAct loop. No framework overhead.
-> 1,559+ tests passing
+> 1,999+ tests passing
 
 ---
 

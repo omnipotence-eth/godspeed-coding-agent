@@ -385,6 +385,7 @@ async def _run_app(
     project_dir: Path,
     verbose: bool,
     audit_dir: Path | None,
+    textual: bool = False,
 ) -> None:
     """Wire up all components and launch the TUI."""
     from godspeed.agent.conversation import Conversation
@@ -618,23 +619,46 @@ async def _run_app(
         hook_executor.run_pre_session()
 
     # Launch TUI
-    app = TUIApp(
-        llm_client=llm_client,
-        tool_registry=registry,
-        tool_context=tool_context,
-        conversation=conversation,
-        permission_engine=permission_engine,
-        audit_trail=audit_trail,
-        session_id=session_id,
-        skills=skills,
-        extra_completions=skill_completions,
-        hook_executor=hook_executor,
-        task_store=task_store,
-        codebase_index=codebase_index,
-        correction_tracker=correction_tracker,
-        session_memory=session_memory,
-    )
-    await app.run()
+    if textual:
+        from godspeed.tui.textual_app import GodspeedTextualApp
+
+        textual_app = GodspeedTextualApp(
+            llm_client=llm_client,
+            tool_registry=registry,
+            tool_context=tool_context,
+            conversation=conversation,
+            permission_engine=permission_engine,
+            audit_trail=audit_trail,
+            session_id=session_id,
+            skills=skills,
+            extra_completions=skill_completions,
+            hook_executor=hook_executor,
+            task_store=task_store,
+            codebase_index=codebase_index,
+            correction_tracker=correction_tracker,
+            session_memory=session_memory,
+        )
+        # Textual manages its own event loop; run in a thread so we don't
+        # block the caller's async loop.
+        await asyncio.to_thread(textual_app.run)
+    else:
+        app = TUIApp(
+            llm_client=llm_client,
+            tool_registry=registry,
+            tool_context=tool_context,
+            conversation=conversation,
+            permission_engine=permission_engine,
+            audit_trail=audit_trail,
+            session_id=session_id,
+            skills=skills,
+            extra_completions=skill_completions,
+            hook_executor=hook_executor,
+            task_store=task_store,
+            codebase_index=codebase_index,
+            correction_tracker=correction_tracker,
+            session_memory=session_memory,
+        )
+        await app.run()
 
     # Close conversation logger
     if conversation_logger is not None:
@@ -661,6 +685,11 @@ async def _run_app(
     default=None,
     help="Directory for audit logs (default: ~/.godspeed/audit).",
 )
+@click.option(
+    "--textual",
+    is_flag=True,
+    help="Use the experimental Textual-based TUI.",
+)
 @click.pass_context
 def main(
     ctx: click.Context,
@@ -668,6 +697,7 @@ def main(
     project_dir: Path,
     verbose: bool,
     audit_dir: Path | None,
+    textual: bool,
 ) -> None:
     """Godspeed -- Security-first open-source coding agent."""
     _setup_logging(verbose)
@@ -684,11 +714,12 @@ def main(
     ctx.obj["project_dir"] = project_dir
     ctx.obj["verbose"] = verbose
     ctx.obj["audit_dir"] = audit_dir
+    ctx.obj["textual"] = textual
 
     # If no subcommand, launch the TUI
     if ctx.invoked_subcommand is None:
         with contextlib.suppress(KeyboardInterrupt):
-            asyncio.run(_run_app(model, project_dir, verbose, audit_dir))
+            asyncio.run(_run_app(model, project_dir, verbose, audit_dir, textual))
 
 
 @main.command()

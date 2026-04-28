@@ -200,7 +200,7 @@ InputBar Input:focus {
 }
 
 InputBar Button {
-    width: auto;
+    width: 8;
     margin-left: 1;
     background: $accent;
     color: $bg-primary;
@@ -209,15 +209,7 @@ InputBar Button {
 }
 
 InputBar Button:hover {
-    background: $accent;
     text-style: bold underline;
-}
-
-InputBar .hint {
-    color: $fg-dim;
-    text-style: dim;
-    dock: right;
-    content-align: right middle;
 }
 
 /* Info Panel (right side) */

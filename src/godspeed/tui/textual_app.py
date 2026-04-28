@@ -362,7 +362,6 @@ class InputBar(Horizontal):
     def compose(self) -> ComposeResult:
         yield Input(placeholder="Ask Godspeed anything...", id="user-input")
         yield Button("Send", id="submit-btn", variant="primary")
-        yield Static("Ctrl+K  Ctrl+C", classes="hint")
 
     def on_mount(self) -> None:
         self.query_one("#user-input", Input).focus()

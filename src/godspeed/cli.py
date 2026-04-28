@@ -782,7 +782,7 @@ def init() -> None:
 
     from rich.console import Console as RichConsole
 
-    from godspeed.tui.theme import BOLD_PRIMARY, DIM, PRIMARY, SUCCESS
+    from godspeed.tui.theme import BOLD_PRIMARY, DIM, PRIMARY
 
     c = RichConsole()
     global_dir = DEFAULT_GLOBAL_DIR

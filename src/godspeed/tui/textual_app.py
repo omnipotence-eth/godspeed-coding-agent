@@ -817,7 +817,10 @@ class GodspeedTextualApp(App[None]):
         self.set_interval(1.0, self._tick_duration)
 
     def _tick_duration(self) -> None:
-        panel = self.query_one("#info-panel", InfoPanel)
+        try:
+            panel = self.query_one("#info-panel", InfoPanel)
+        except Exception:
+            return
         panel.duration_sec = int(time.monotonic() - self._start_time)
 
     def _wire_permissions(self) -> None:

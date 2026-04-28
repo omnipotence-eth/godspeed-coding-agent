@@ -6,6 +6,7 @@ import sqlite3
 from pathlib import Path
 
 import pytest
+
 from godspeed.tools.base import ToolContext
 from godspeed.tools.db_query import DbQueryTool
 

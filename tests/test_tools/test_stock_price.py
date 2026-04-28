@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-import pytest
+import asyncio
+from pathlib import Path
+
+from godspeed.tools.base import ToolContext
 from godspeed.tools.stock_price import StockPriceTool
 
 
@@ -20,9 +23,6 @@ class TestStockPriceTool:
 
     def test_missing_ticker(self) -> None:
         tool = StockPriceTool()
-        import asyncio
-        from pathlib import Path
-        from godspeed.tools.base import ToolContext
         ctx = ToolContext(cwd=Path.cwd(), session_id="test")
         result = asyncio.run(tool.execute({}, ctx))
         assert result.is_error
@@ -30,9 +30,6 @@ class TestStockPriceTool:
 
     def test_empty_ticker(self) -> None:
         tool = StockPriceTool()
-        import asyncio
-        from pathlib import Path
-        from godspeed.tools.base import ToolContext
         ctx = ToolContext(cwd=Path.cwd(), session_id="test")
         result = asyncio.run(tool.execute({"ticker": "   "}, ctx))
         assert result.is_error

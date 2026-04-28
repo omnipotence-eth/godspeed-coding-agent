@@ -107,8 +107,65 @@ class StockPriceTool(Tool):
                 hist = await asyncio.to_thread(
                     lambda t=ticker_obj, p=period: t.history(period=p)  # type: ignore[arg-type]
                 )
+            except Exception as exc:
+                logger.warning("yfinance failed for %s: %s", symbol, exc)
+                lines.append(f"## {symbol}\nError: {exc}\n")
+                continue
+
+            lines.append(f"## {symbol}")
+
+            # Company info
+            name = info.get("longName") or info.get("shortName") or info.get("symbol", symbol)
+            sector = info.get("sector", "")
+            industry = info.get("industry", "")
+            if sector:
+                name += f" ({sector}"
+                if industry:
+                    name += f" - {industry}"
+                name += ")"
+            lines.append(f"  {name}")
+
+            # Key metrics
+            metrics = []
+            if info.get("currentPrice"):
+                metrics.append(f"Price: ${info['currentPrice']:.2f}")
+            if info.get("regularMarketPrice"):
+                metrics.append(f"Market: ${info['regularMarketPrice']:.2f}")
+            if info.get("previousClose"):
+                metrics.append(f"Prev Close: ${info['previousClose']:.2f}")
+            if info.get("open"):
+                metrics.append(f"Open: ${info['open']:.2f}")
+            if info.get("dayHigh") and info.get("dayLow"):
+                metrics.append(f"Day: ${info['dayLow']:.2f}-${info['dayHigh']:.2f}")
+            if info.get("volume"):
+                vol = info["volume"]
+                if vol >= 1_000_000:
+                    metrics.append(f"Vol: {vol / 1_000_000:.1f}M")
+                elif vol >= 1_000:
+                    metrics.append(f"Vol: {vol / 1_000:.0f}K")
+                else:
+                    metrics.append(f"Vol: {vol:,}")
+            if metrics:
+                lines.append("  " + " | ".join(metrics))
+
+            # Extended metrics
+            extended = []
+            if info.get("marketCap"):
+                mc = info["marketCap"]
+                if mc >= 1e12:
+                    extended.append(f"MCap: ${mc / 1e12:.2f}T")
+                elif mc >= 1e9:
+                    extended.append(f"MCap: ${mc / 1e9:.2f}B")
+                elif mc >= 1e6:
+                    extended.append(f"MCap: ${mc / 1e6:.0f}M")
+            if info.get("trailingPE"):
+                extended.append(f"P/E: {info['trailingPE']:.1f}")
+            if info.get("fiftyTwoWeekLow") and info.get("fiftyTwoWeekHigh"):
+                extended.append(
+                    f"52w: ${info['fiftyTwoWeekLow']:.2f}-${info['fiftyTwoWeekHigh']:.2f}"
+                )
             if info.get("dividendYield"):
-                extended.append(f"Div Yield: {info['dividendYield'] * 100:.2f}%")
+                extended.append(f"Div: {info['dividendYield'] * 100:.2f}%")
             if extended:
                 lines.append("  " + " | ".join(extended))
 
@@ -117,8 +174,8 @@ class StockPriceTool(Tool):
                 lines.append("")
                 lines.append(f"  Historical ({period}):")
                 header = (
-                    f"  {'Date':<12} {'Open':>10} {'High':>10} "
-                    f"{'Low':>10} {'Close':>10} {'Volume':>12}"
+                    f"  {'Date':<12} {'Open':>10} {'High':>10}"
+                    f" {'Low':>10} {'Close':>10} {'Volume':>12}"
                 )
                 lines.append(header)
                 lines.append(f"  {'-' * 12} {'-' * 10} {'-' * 10} {'-' * 10} {'-' * 10} {'-' * 12}")

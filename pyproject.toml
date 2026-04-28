@@ -49,7 +49,7 @@ dependencies = [
     # System introspection for SystemOptimizerTool (inspect/recommend modes).
     # Cross-platform; ~800KB. Lighter than keeping it as an optional extra
     # because the tool is registered by default and CI needs it to test.
-    "psutil>=5.9,<8.0",
+    "psutil>=7.2.2,<8.0",
     # Transitive pin-up: aiohttp is pulled in via litellm; versions < 3.13.4
     # have 10 CVEs (CVE-2026-34513..34525, CVE-2026-22815). Pin-up ensures CI
     # and consumers get the patched release regardless of litellm's own bound.

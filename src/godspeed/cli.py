@@ -616,10 +616,10 @@ async def _run_app(
         )
         hook_executor.run_pre_session()
 
-    # Launch Textual TUI
-    from godspeed.tui.textual_app import GodspeedTextualApp
+    # Launch classic TUI (prompt-toolkit)
+    from godspeed.tui.app import TUIApp
 
-    textual_app = GodspeedTextualApp(
+    app = TUIApp(
         llm_client=llm_client,
         tool_registry=registry,
         tool_context=tool_context,
@@ -635,9 +635,7 @@ async def _run_app(
         correction_tracker=correction_tracker,
         session_memory=session_memory,
     )
-    # Textual manages its own event loop; run in a thread so we don't
-    # block the caller's async loop.
-    await asyncio.to_thread(textual_app.run)
+    await app.run()
 
     # Close conversation logger
     if conversation_logger is not None:
@@ -664,12 +662,6 @@ async def _run_app(
     default=None,
     help="Directory for audit logs (default: ~/.godspeed/audit).",
 )
-@click.option(
-    "--textual",
-    is_flag=True,
-    hidden=True,
-    help="Deprecated: Textual is now the default. This flag is ignored.",
-)
 @click.pass_context
 def main(
     ctx: click.Context,
@@ -677,7 +669,6 @@ def main(
     project_dir: Path,
     verbose: bool,
     audit_dir: Path | None,
-    textual: bool,
 ) -> None:
     """Godspeed -- Security-first open-source coding agent."""
     _setup_logging(verbose)

@@ -1,8 +1,4 @@
-"""Tests for the professional Textual-based TUI.
-
-Uses Textual's ``Pilot`` to exercise widget composition and
-screen transitions without a real terminal.
-"""
+"""Tests for the simplified Textual-based TUI."""
 
 from __future__ import annotations
 
@@ -23,7 +19,6 @@ from godspeed.tui.textual_app import (
     StreamingIndicator,
     ToolCallBlock,
     UserMessage,
-    WelcomeScreen,
 )
 
 
@@ -99,7 +94,6 @@ class TestWidgets:
             panel.tool_denied = 0
             panel.permission_mode = "strict"
             panel.is_running = True
-            panel.duration_sec = 60
             assert panel.session_id == "abc123"
 
     @pytest.mark.asyncio
@@ -161,7 +155,6 @@ class TestWidgets:
         async with App().run_test() as pilot:
             await pilot.app.mount(ind)
             await pilot.pause()
-            # Interval ticks are handled by Textual's clock; just verify mount
             assert ind._base_text == "Loading"
 
     @pytest.mark.asyncio
@@ -210,17 +203,6 @@ class TestScreens:
             lv = screen.query_one("#palette-list")
             assert lv is not None
 
-    @pytest.mark.asyncio
-    async def test_welcome_screen_dismiss(self):
-        screen = WelcomeScreen(
-            model="gpt-4",
-            project_dir="C:\\Users\\test\\project",
-            tool_count=25,
-        )
-        async with App().run_test() as pilot:
-            await pilot.app.push_screen(screen)
-            await pilot.pause()
-
 
 class TestAppCompose:
     """Integration-ish tests using Textual Pilot."""
@@ -229,8 +211,6 @@ class TestAppCompose:
     async def test_app_composes(self, mock_deps):
         app = GodspeedTextualApp(**mock_deps)
         async with app.run_test() as pilot:
-            await pilot.pause()
-            app.screen.dismiss()  # Dismiss welcome screen
             await pilot.pause()
             assert app.query_one("#chat-panel", ChatPanel) is not None
             assert app.query_one("#info-panel", InfoPanel) is not None
@@ -241,11 +221,8 @@ class TestAppCompose:
         app = GodspeedTextualApp(**mock_deps)
         async with app.run_test() as pilot:
             await pilot.pause()
-            app.screen.dismiss()  # Dismiss welcome screen
-            await pilot.pause()
             panel = app.query_one("#info-panel", InfoPanel)
             panel.model = "gpt-4o"
-            panel.turns = 3
             await pilot.pause()
             assert panel.model == "gpt-4o"
 
@@ -253,8 +230,6 @@ class TestAppCompose:
     async def test_dispatch_command_help(self, mock_deps):
         app = GodspeedTextualApp(**mock_deps)
         async with app.run_test() as pilot:
-            await pilot.pause()
-            app.screen.dismiss()  # Dismiss welcome screen
             await pilot.pause()
             app._dispatch_command("/help")
             assert app.turn_count == 0
@@ -264,8 +239,6 @@ class TestAppCompose:
         app = GodspeedTextualApp(**mock_deps)
         async with app.run_test() as pilot:
             await pilot.pause()
-            app.screen.dismiss()  # Dismiss welcome screen
-            await pilot.pause()
             app._dispatch_command("/unknown")
             assert app.turn_count == 0
 
@@ -273,8 +246,6 @@ class TestAppCompose:
     async def test_input_triggers_agent(self, mock_deps):
         app = GodspeedTextualApp(**mock_deps)
         async with app.run_test() as pilot:
-            await pilot.pause()
-            app.screen.dismiss()  # Dismiss welcome screen
             await pilot.pause()
             inp = app.query_one("#user-input")
             inp.value = "hello"
@@ -287,8 +258,6 @@ class TestAppCompose:
         app = GodspeedTextualApp(**mock_deps)
         async with app.run_test() as pilot:
             await pilot.pause()
-            app.screen.dismiss()  # Dismiss welcome screen
-            await pilot.pause()
             inp = app.query_one("#user-input")
             inp.value = "   "
             await pilot.press("enter")
@@ -300,30 +269,15 @@ class TestAppCompose:
         app = GodspeedTextualApp(**mock_deps)
         async with app.run_test() as pilot:
             await pilot.pause()
-            app.screen.dismiss()  # Dismiss welcome screen
-            await pilot.pause()
             chat = app.query_one("#chat-panel", ChatPanel)
             chat.write_user("test")
             app.action_clear_chat()
             await pilot.pause()
 
     @pytest.mark.asyncio
-    async def test_action_new_session(self, mock_deps):
-        app = GodspeedTextualApp(**mock_deps)
-        async with app.run_test() as pilot:
-            await pilot.pause()
-            app.screen.dismiss()  # Dismiss welcome screen
-            await pilot.pause()
-            app.turn_count = 5
-            app.action_new_session()
-            assert app.turn_count == 0
-
-    @pytest.mark.asyncio
     async def test_command_palette_opens(self, mock_deps):
         app = GodspeedTextualApp(**mock_deps)
         async with app.run_test() as pilot:
-            await pilot.pause()
-            app.screen.dismiss()  # Dismiss welcome screen
             await pilot.pause()
             app.action_command_palette()
             await pilot.pause()

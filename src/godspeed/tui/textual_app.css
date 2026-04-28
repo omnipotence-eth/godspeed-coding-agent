@@ -1,84 +1,60 @@
 /* ========================================================================
-   Godspeed Textual TUI — OpenCode-inspired Design System
-   Clean, functional, no emojis. Every element serves a purpose.
+   Godspeed Textual TUI — Simplified Design
    ======================================================================== */
 
-/* ------------------------------------------------------------------------
-   Design Tokens
-   ------------------------------------------------------------------------ */
+$bg-primary: #0d1117;
+$bg-secondary: #161b22;
+$bg-tertiary: #21262d;
 
-$gs-bg-primary: #0d1117;
-$gs-bg-secondary: #161b22;
-$gs-bg-tertiary: #21262d;
-$gs-bg-elevated: #1c2128;
-$gs-bg-overlay: rgba(13, 17, 23, 0.95);
+$fg-primary: #e6edf3;
+$fg-secondary: #8b949e;
+$fg-muted: #6e7681;
+$fg-dim: #484f58;
 
-$gs-fg-primary: #e6edf3;
-$gs-fg-secondary: #8b949e;
-$gs-fg-muted: #6e7681;
-$gs-fg-dim: #484f58;
+$border: #30363d;
+$border-active: #58a6ff;
 
-$gs-border: #30363d;
-$gs-border-subtle: #21262d;
-$gs-border-active: #58a6ff;
+$accent: #58a6ff;
+$success: #3fb950;
+$warning: #d29922;
+$error: #f85149;
 
-$gs-accent: #58a6ff;
-$gs-accent-dim: #388bfd;
-
-$gs-success: #3fb950;
-$gs-warning: #d29922;
-$gs-error: #f85149;
-
-$gs-user: #a371f7;
-$gs-tool: #d29922;
-
-/* ------------------------------------------------------------------------
-   Global
-   ------------------------------------------------------------------------ */
+$user: #a371f7;
+$tool: #d29922;
 
 Screen {
-    background: $gs-bg-primary;
-    color: $gs-fg-primary;
+    background: $bg-primary;
+    color: $fg-primary;
 }
 
-/* ------------------------------------------------------------------------
-   Layout: 2-pane grid (chat | info) + input bar
-   ------------------------------------------------------------------------ */
-
-#main-grid {
-    layout: grid;
-    grid-size: 2 2;
-    grid-columns: 1fr 26;
-    grid-rows: 1fr 3;
+/* Root layout: Horizontal splits main area (left) and info panel (right) */
+#app-root {
     height: 100%;
     width: 100%;
 }
 
-/* ------------------------------------------------------------------------
-   Chat Panel — Main content area
-   ------------------------------------------------------------------------ */
+/* Left side: chat panel above, input bar below */
+#main-area {
+    width: 1fr;
+    height: 100%;
+}
 
+/* Chat Panel */
 ChatPanel {
-    row-span: 1;
-    background: $gs-bg-primary;
-    color: $gs-fg-primary;
-    padding: 0 1;
+    height: 1fr;
     width: 100%;
-    border-right: vkey $gs-border;
+    background: $bg-primary;
+    border-right: solid $border;
 }
 
 ChatPanel #messages-scroll {
-    height: 1fr;
+    height: 100%;
     width: 100%;
-    background: $gs-bg-primary;
+    background: $bg-primary;
     border: none;
-    padding: 0;
 }
 
-/* ------------------------------------------------------------------------
-   Message Types
-   ------------------------------------------------------------------------ */
-
+/* Messages */
 UserMessage {
     margin: 1 0;
     padding: 0 1;
@@ -86,13 +62,12 @@ UserMessage {
 }
 
 UserMessage .msg-label {
-    color: $gs-user;
+    color: $user;
     text-style: bold;
-    margin-bottom: 0;
 }
 
 UserMessage .msg-body {
-    color: $gs-fg-primary;
+    color: $fg-primary;
     padding-left: 2;
 }
 
@@ -103,13 +78,12 @@ AssistantMessage {
 }
 
 AssistantMessage .msg-label {
-    color: $gs-accent;
+    color: $accent;
     text-style: bold;
-    margin-bottom: 0;
 }
 
 AssistantMessage .msg-body {
-    color: $gs-fg-primary;
+    color: $fg-primary;
     padding-left: 2;
 }
 
@@ -120,7 +94,7 @@ SystemMessage {
 }
 
 SystemMessage .msg-body {
-    color: $gs-fg-muted;
+    color: $fg-muted;
     text-style: dim;
     padding-left: 2;
 }
@@ -132,229 +106,182 @@ ErrorMessage {
 }
 
 ErrorMessage .msg-label {
-    color: $gs-error;
+    color: $error;
     text-style: bold;
 }
 
 ErrorMessage .msg-body {
-    color: $gs-error;
+    color: $error;
     padding-left: 2;
 }
 
-/* ------------------------------------------------------------------------
-   Tool Call Blocks — Collapsible
-   ------------------------------------------------------------------------ */
-
+/* Tool Call Blocks */
 ToolCallBlock {
     margin: 1 0;
     padding: 0;
-    background: $gs-bg-secondary;
-    border: hkey $gs-border;
+    background: $bg-secondary;
+    border: solid $border;
     width: 100%;
 }
 
 ToolCallBlock .tool-header {
     height: 1;
     padding: 0 1;
-    background: $gs-bg-tertiary;
-    color: $gs-tool;
+    background: $bg-tertiary;
+    color: $tool;
     content-align: left middle;
     text-style: bold;
-    border-bottom: hkey $gs-border-subtle;
+    border-bottom: solid $border;
 }
 
 ToolCallBlock .tool-header:hover {
-    background: $gs-bg-elevated;
+    background: $bg-secondary;
 }
 
 ToolCallBlock .tool-body {
     padding: 1 2;
-    color: $gs-fg-secondary;
-    background: $gs-bg-secondary;
+    color: $fg-secondary;
+    background: $bg-secondary;
     display: none;
 }
 
 ToolCallBlock .tool-body-expanded {
     display: block;
     padding: 1 2;
-    color: $gs-fg-secondary;
-    background: $gs-bg-secondary;
+    color: $fg-secondary;
+    background: $bg-secondary;
 }
 
 ToolCallBlock .tool-result {
     padding: 0 1;
-    color: $gs-success;
-    background: $gs-bg-secondary;
-    border-top: hkey $gs-border-subtle;
+    color: $success;
+    background: $bg-secondary;
+    border-top: solid $border;
     height: 1;
 }
 
 ToolCallBlock .tool-result-error {
     padding: 0 1;
-    color: $gs-error;
-    background: $gs-bg-secondary;
-    border-top: hkey $gs-border-subtle;
+    color: $error;
+    background: $bg-secondary;
+    border-top: solid $border;
     height: 1;
 }
 
-/* ------------------------------------------------------------------------
-   Streaming Indicator
-   ------------------------------------------------------------------------ */
-
+/* Streaming Indicator */
 StreamingIndicator {
     height: 1;
-    color: $gs-accent;
+    color: $accent;
     text-style: bold;
     padding: 0 1;
     margin: 1 0;
 }
 
-/* ------------------------------------------------------------------------
-   Right Info Panel
-   ------------------------------------------------------------------------ */
-
-InfoPanel {
-    row-span: 1;
-    background: $gs-bg-secondary;
-    color: $gs-fg-secondary;
-    padding: 1 1;
-    width: 100%;
-    height: 100%;
-}
-
-InfoPanel .section-title {
-    color: $gs-fg-muted;
-    text-style: bold;
-    padding: 1 0 0 0;
-    border-bottom: hkey $gs-border-subtle;
-    margin-bottom: 1;
-    height: 1;
-}
-
-InfoPanel .info-row {
-    height: 1;
-    padding: 0 0;
-    color: $gs-fg-secondary;
-}
-
-InfoPanel .info-label {
-    color: $gs-fg-muted;
-    text-style: dim;
-}
-
-InfoPanel .info-value {
-    color: $gs-fg-primary;
-}
-
-InfoPanel .info-value-warn {
-    color: $gs-warning;
-}
-
-InfoPanel .info-value-error {
-    color: $gs-error;
-}
-
-InfoPanel .info-value-success {
-    color: $gs-success;
-}
-
-InfoPanel .info-value-accent {
-    color: $gs-accent;
-}
-
-InfoPanel .info-footer {
-    height: 1;
-    dock: bottom;
-    color: $gs-fg-dim;
-    text-style: dim;
-    content-align: center middle;
-    border-top: hkey $gs-border-subtle;
-    margin-top: 1;
-    padding-top: 1;
-}
-
-/* ------------------------------------------------------------------------
-   Bottom Input Bar
-   ------------------------------------------------------------------------ */
-
+/* Input Bar */
 InputBar {
-    column-span: 2;
     height: 3;
-    background: $gs-bg-secondary;
-    color: $gs-fg-primary;
-    border-top: hkey $gs-border;
+    background: $bg-secondary;
+    color: $fg-primary;
+    border-top: solid $border;
     padding: 0 1;
 }
 
 InputBar Input {
     width: 1fr;
-    background: $gs-bg-tertiary;
-    color: $gs-fg-primary;
-    border: solid $gs-border;
+    background: $bg-tertiary;
+    color: $fg-primary;
+    border: solid $border;
     padding: 0 1;
     content-align: left middle;
 }
 
 InputBar Input:focus {
-    border: solid $gs-border-active;
+    border: solid $border-active;
 }
 
 InputBar Button {
     width: auto;
     margin-left: 1;
-    background: $gs-accent-dim;
-    color: $gs-bg-primary;
+    background: $accent;
+    color: $bg-primary;
     border: none;
     text-style: bold;
 }
 
 InputBar Button:hover {
-    background: $gs-accent;
+    background: $accent;
+    text-style: bold underline;
 }
 
 InputBar .hint {
-    color: $gs-fg-dim;
+    color: $fg-dim;
     text-style: dim;
     dock: right;
     content-align: right middle;
 }
 
-/* ------------------------------------------------------------------------
-   Modal Screens
-   ------------------------------------------------------------------------ */
+/* Info Panel (right side) */
+InfoPanel {
+    width: 26;
+    height: 100%;
+    background: $bg-secondary;
+    color: $fg-secondary;
+    padding: 1 1;
+}
 
+InfoPanel .section-title {
+    color: $fg-muted;
+    text-style: bold;
+    padding: 1 0 0 0;
+    border-bottom: solid $border;
+    margin-bottom: 1;
+    height: 1;
+}
+
+InfoPanel .info-footer {
+    height: 1;
+    dock: bottom;
+    color: $fg-dim;
+    text-style: dim;
+    content-align: center middle;
+    border-top: solid $border;
+    margin-top: 1;
+    padding-top: 1;
+}
+
+/* Modal Screens */
 PermissionScreen, DiffReviewScreen, CommandPaletteScreen {
     align: center middle;
-    background: $gs-bg-overlay;
+    background: rgba(13, 17, 23, 0.95);
 }
 
 PermissionScreen .dialog, DiffReviewScreen .dialog {
     width: 85;
     height: auto;
     max-height: 30;
-    background: $gs-bg-secondary;
-    border: solid $gs-border-active;
+    background: $bg-secondary;
+    border: solid $border-active;
     padding: 2 3;
 }
 
 PermissionScreen .dialog-title, DiffReviewScreen .dialog-title {
-    color: $gs-accent;
+    color: $accent;
     text-style: bold;
     text-align: center;
     margin-bottom: 1;
 }
 
 PermissionScreen .dialog-body, DiffReviewScreen .dialog-body {
-    color: $gs-fg-secondary;
+    color: $fg-secondary;
     margin: 1 0;
 }
 
 PermissionScreen .dialog-detail, DiffReviewScreen .dialog-detail {
-    color: $gs-fg-muted;
+    color: $fg-muted;
     text-style: dim;
     margin: 1 0;
     padding: 1 2;
-    background: $gs-bg-tertiary;
+    background: $bg-tertiary;
 }
 
 PermissionScreen .buttons, DiffReviewScreen .buttons {
@@ -370,65 +297,58 @@ PermissionScreen Button, DiffReviewScreen Button {
 }
 
 PermissionScreen Button#btn-yes, DiffReviewScreen Button#btn-accept {
-    background: $gs-success;
-    color: $gs-bg-primary;
+    background: $success;
+    color: $bg-primary;
     border: none;
 }
 
 PermissionScreen Button#btn-yes:hover, DiffReviewScreen Button#btn-accept:hover {
-    background: $gs-success;
     text-style: bold underline;
 }
 
 PermissionScreen Button#btn-no, DiffReviewScreen Button#btn-reject {
-    background: $gs-error;
-    color: $gs-bg-primary;
+    background: $error;
+    color: $bg-primary;
     border: none;
 }
 
 PermissionScreen Button#btn-no:hover, DiffReviewScreen Button#btn-reject:hover {
-    background: $gs-error;
     text-style: bold underline;
 }
 
 PermissionScreen Button#btn-always {
-    background: $gs-accent-dim;
-    color: $gs-bg-primary;
+    background: $accent;
+    color: $bg-primary;
     border: none;
 }
 
-PermissionScreen Button#btn-always:hover {
-    background: $gs-accent;
-}
-
 PermissionScreen .shortcut-hint {
-    color: $gs-fg-dim;
+    color: $fg-dim;
     text-style: dim;
     text-align: center;
     margin-top: 1;
 }
 
 /* Command Palette */
-
 CommandPaletteScreen .dialog {
     width: 80;
     height: auto;
     max-height: 25;
-    background: $gs-bg-secondary;
-    border: solid $gs-border-active;
+    background: $bg-secondary;
+    border: solid $border-active;
     padding: 1 2;
 }
 
 CommandPaletteScreen Input {
     width: 100%;
-    background: $gs-bg-tertiary;
-    color: $gs-fg-primary;
-    border: solid $gs-border;
+    background: $bg-tertiary;
+    color: $fg-primary;
+    border: solid $border;
     margin-bottom: 1;
 }
 
 CommandPaletteScreen ListView {
-    background: $gs-bg-secondary;
+    background: $bg-secondary;
     border: none;
     height: 1fr;
 }
@@ -436,71 +356,24 @@ CommandPaletteScreen ListView {
 CommandPaletteScreen ListItem {
     padding: 0 1;
     height: 1;
-    color: $gs-fg-secondary;
+    color: $fg-secondary;
 }
 
 CommandPaletteScreen ListItem:hover {
-    background: $gs-bg-tertiary;
-    color: $gs-fg-primary;
+    background: $bg-tertiary;
+    color: $fg-primary;
 }
 
 CommandPaletteScreen ListItem:focus {
-    background: $gs-accent-dim;
-    color: $gs-bg-primary;
+    background: $accent;
+    color: $bg-primary;
 }
 
-/* ------------------------------------------------------------------------
-   Welcome Screen
-   ------------------------------------------------------------------------ */
-
-WelcomeScreen {
-    align: center middle;
-    background: $gs-bg-primary;
-}
-
-WelcomeScreen .welcome-container {
-    width: 70;
-    height: auto;
-    padding: 3 4;
-    background: $gs-bg-secondary;
-    border: solid $gs-border;
-    content-align: center middle;
-}
-
-WelcomeScreen .welcome-title {
-    color: $gs-accent;
-    text-style: bold;
-    text-align: center;
-    margin-bottom: 1;
-}
-
-WelcomeScreen .welcome-subtitle {
-    color: $gs-fg-muted;
-    text-align: center;
-    margin-bottom: 2;
-}
-
-WelcomeScreen .welcome-info {
-    color: $gs-fg-secondary;
-    text-align: left;
-    margin: 1 0;
-}
-
-WelcomeScreen .welcome-hint {
-    color: $gs-fg-dim;
-    text-style: dim;
-    text-align: center;
-    margin-top: 2;
-}
-
-/* ------------------------------------------------------------------------
-   Scrollbar styling
-   ------------------------------------------------------------------------ */
-
+/* Scrollbars */
 * {
-    scrollbar-background: $gs-bg-secondary;
-    scrollbar-background-hover: $gs-bg-tertiary;
-    scrollbar-color: $gs-fg-dim;
-    scrollbar-color-active: $gs-fg-muted;
+    scrollbar-background: $bg-secondary;
+    scrollbar-background-hover: $bg-tertiary;
+    scrollbar-color: $fg-dim;
+    scrollbar-color-active: $fg-muted;
     scrollbar-size: 1 1;
 }

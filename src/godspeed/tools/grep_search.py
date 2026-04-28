@@ -146,7 +146,7 @@ class GrepSearchTool(Tool):
         search_path = context.cwd
         path_arg = arguments.get("path")
         if path_arg:
-            candidate = Path(path_arg)
+            candidate = Path(path_arg).expanduser()
             search_path = (
                 candidate.resolve()
                 if candidate.is_absolute()

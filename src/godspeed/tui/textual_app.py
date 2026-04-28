@@ -1,7 +1,4 @@
-"""Minimal working Textual TUI for Godspeed.
-
-Layout: chat (left) | info (right). Input at bottom of chat area.
-"""
+"""Minimal Godspeed TUI — no CSS, just compose and callbacks."""
 
 from __future__ import annotations
 
@@ -13,7 +10,7 @@ from typing import Any, ClassVar
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.containers import Horizontal, Vertical
 from textual.reactive import reactive
 from textual.screen import Screen
 from textual.widgets import Button, Input, Label, ListItem, ListView, Static
@@ -33,289 +30,19 @@ from godspeed.tui.output import capture_output
 logger = logging.getLogger(__name__)
 
 _COMMANDS: list[tuple[str, str]] = [
-    ("/quit", "Exit Godspeed"),
-    ("/help", "Show available commands"),
-    ("/pause", "Pause agent loop"),
-    ("/resume", "Resume agent loop"),
-    ("/cancel", "Cancel current operation"),
-    ("/clear", "Clear chat history"),
-    ("/model", "Switch AI model"),
-    ("/cost", "Show session cost"),
-    ("/tokens", "Show token usage"),
-    ("/permissions", "Show permission rules"),
-    ("/audit", "Show audit trail status"),
-    ("/evolve", "Run evolution cycle"),
+    ("/quit", "Exit"),
+    ("/help", "Show commands"),
+    ("/pause", "Pause agent"),
+    ("/resume", "Resume agent"),
+    ("/cancel", "Cancel"),
+    ("/clear", "Clear chat"),
+    ("/model", "Switch model"),
+    ("/cost", "Show cost"),
+    ("/tokens", "Show tokens"),
+    ("/permissions", "Show permissions"),
+    ("/audit", "Show audit"),
+    ("/evolve", "Evolve"),
 ]
-
-
-class InfoPanel(Static):
-    """Right panel with session info."""
-
-    session_id: reactive[str] = reactive("")
-    model: reactive[str] = reactive("")
-    project_dir: reactive[str] = reactive("")
-    input_tokens: reactive[int] = reactive(0)
-    output_tokens: reactive[int] = reactive(0)
-    context_pct: reactive[float] = reactive(0.0)
-    cost_usd: reactive[float] = reactive(0.0)
-    tool_calls: reactive[int] = reactive(0)
-    tool_errors: reactive[int] = reactive(0)
-    tool_denied: reactive[int] = reactive(0)
-    permission_mode: reactive[str] = reactive("normal")
-    is_running: reactive[bool] = reactive(False)
-
-    def compose(self) -> ComposeResult:
-        yield Static("Session", classes="section-title")
-        yield Static("", id="info-session")
-        yield Static("Usage", classes="section-title")
-        yield Static("", id="info-usage")
-        yield Static("Tools", classes="section-title")
-        yield Static("", id="info-tools")
-        yield Static("Mode", classes="section-title")
-        yield Static("", id="info-mode")
-        yield Static(f"Godspeed v{__version__}", classes="info-footer")
-
-    def on_mount(self) -> None:
-        self._refresh_all()
-
-    def _refresh_all(self) -> None:
-        self._render_session()
-        self._render_usage()
-        self._render_tools()
-        self._render_mode()
-
-    def _render_session(self) -> None:
-        sid = self.session_id[:10] if len(self.session_id) > 10 else self.session_id
-        lines = [
-            f"ID:     {sid}",
-            f"Model:  {self.model[:22]}",
-            f"Dir:    {self.project_dir[:22]}",
-        ]
-        self.query_one("#info-session", Static).update("\n".join(lines))
-
-    def _render_usage(self) -> None:
-        total = self.input_tokens + self.output_tokens
-        lines = [
-            f"In:     {self.input_tokens:,}",
-            f"Out:    {self.output_tokens:,}",
-            f"Total:  {total:,}",
-            f"Ctx:    {self.context_pct:.0f}%",
-            f"Cost:   ${self.cost_usd:.4f}",
-        ]
-        self.query_one("#info-usage", Static).update("\n".join(lines))
-
-    def _render_tools(self) -> None:
-        lines = [
-            f"Calls:  {self.tool_calls}",
-            f"Errors: {self.tool_errors}",
-            f"Denied: {self.tool_denied}",
-        ]
-        self.query_one("#info-tools", Static).update("\n".join(lines))
-
-    def _render_mode(self) -> None:
-        status = "running" if self.is_running else "idle"
-        lines = [
-            f"Mode:   {self.permission_mode}",
-            f"Status: {status}",
-        ]
-        self.query_one("#info-mode", Static).update("\n".join(lines))
-
-    def watch_session_id(self, _value: str) -> None:
-        self._render_session()
-
-    def watch_model(self, _value: str) -> None:
-        self._render_session()
-
-    def watch_project_dir(self, _value: str) -> None:
-        self._render_session()
-
-    def watch_input_tokens(self, _value: int) -> None:
-        self._render_usage()
-
-    def watch_output_tokens(self, _value: int) -> None:
-        self._render_usage()
-
-    def watch_context_pct(self, _value: float) -> None:
-        self._render_usage()
-
-    def watch_cost_usd(self, _value: float) -> None:
-        self._render_usage()
-
-    def watch_tool_calls(self, _value: int) -> None:
-        self._render_tools()
-
-    def watch_tool_errors(self, _value: int) -> None:
-        self._render_tools()
-
-    def watch_tool_denied(self, _value: int) -> None:
-        self._render_tools()
-
-    def watch_permission_mode(self, _value: str) -> None:
-        self._render_mode()
-
-    def watch_is_running(self, _value: bool) -> None:
-        self._render_mode()
-
-
-class ChatLog(VerticalScroll):
-    """Scrollable chat messages."""
-
-    def write_user(self, text: str) -> None:
-        self.mount(Static(f"You\n{text}", classes="msg-user"))
-        self.scroll_end(animate=False)
-
-    def write_assistant(self, text: str) -> None:
-        self.mount(Static(f"Assistant\n{text}", classes="msg-assistant"))
-        self.scroll_end(animate=False)
-
-    def write_system(self, text: str) -> None:
-        self.mount(Static(text, classes="msg-system"))
-        self.scroll_end(animate=False)
-
-    def write_error(self, text: str) -> None:
-        self.mount(Static(f"Error\n{text}", classes="msg-error"))
-        self.scroll_end(animate=False)
-
-
-class InputArea(Horizontal):
-    """Input + send button at bottom."""
-
-    def compose(self) -> ComposeResult:
-        yield Input(placeholder="Ask Godspeed anything...", id="user-input")
-        yield Button("Send", id="submit-btn", variant="primary")
-
-    def on_mount(self) -> None:
-        self.query_one("#user-input", Input).focus()
-
-    def get_value(self) -> str:
-        return self.query_one("#user-input", Input).value
-
-    def clear(self) -> None:
-        self.query_one("#user-input", Input).value = ""
-
-    def focus_input(self) -> None:
-        self.query_one("#user-input", Input).focus()
-
-
-class PermissionScreen(Screen[str]):
-    def __init__(
-        self,
-        tool_name: str,
-        reason: str,
-        arguments: dict[str, Any] | None = None,
-    ) -> None:
-        super().__init__()
-        self._tool_name = tool_name
-        self._reason = reason
-        self._arguments = arguments or {}
-
-    def compose(self) -> ComposeResult:
-        with Vertical(classes="dialog"):
-            yield Static("Permission Required", classes="dialog-title")
-            yield Static(
-                f"The assistant wants to run [b]{self._tool_name}[/b]",
-                classes="dialog-body",
-            )
-            yield Static(f"Reason: {self._reason}", classes="dialog-body")
-            if self._arguments:
-                yield Static(f"Arguments: {self._arguments}", classes="dialog-detail")
-            with Horizontal(classes="buttons"):
-                yield Button("Yes (y)", id="btn-yes", variant="success")
-                yield Button("No (n)", id="btn-no", variant="error")
-                yield Button("Always (a)", id="btn-always")
-            yield Static(
-                "y = allow once  ·  n = deny  ·  a = allow for session",
-                classes="shortcut-hint",
-            )
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        mapping = {"btn-yes": "allow", "btn-no": "deny", "btn-always": "always"}
-        btn_id = event.button.id or ""
-        self.dismiss(mapping.get(btn_id, "deny"))
-
-    def on_key(self, event: Any) -> None:
-        key_map = {"y": "allow", "n": "deny", "a": "always", "d": "deny"}
-        if event.key in key_map:
-            self.dismiss(key_map[event.key])
-
-
-class DiffReviewScreen(Screen[str]):
-    def __init__(
-        self,
-        tool_name: str,
-        path: str,
-        before: str,
-        after: str,
-    ) -> None:
-        super().__init__()
-        self._tool_name = tool_name
-        self._path = path
-        self._before = before
-        self._after = after
-
-    def compose(self) -> ComposeResult:
-        with Vertical(classes="dialog"):
-            yield Static(f"Review Changes: {self._path}", classes="dialog-title")
-            yield Static(f"Tool: {self._tool_name}", classes="dialog-body")
-            yield Static("[dim]--- before ---[/dim]", classes="dialog-detail")
-            yield Static(self._before[:400])
-            yield Static("[dim]+++ after +++[/dim]", classes="dialog-detail")
-            yield Static(self._after[:400])
-            with Horizontal(classes="buttons"):
-                yield Button("Accept (y)", id="btn-accept", variant="success")
-                yield Button("Reject (n)", id="btn-reject", variant="error")
-                yield Button("Always (a)", id="btn-always")
-            yield Static(
-                "y = accept  ·  n = reject  ·  a = accept all",
-                classes="shortcut-hint",
-            )
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        mapping = {"btn-accept": "accept", "btn-reject": "reject", "btn-always": "always"}
-        btn_id = event.button.id or ""
-        self.dismiss(mapping.get(btn_id, "reject"))
-
-    def on_key(self, event: Any) -> None:
-        key_map = {"y": "accept", "n": "reject", "a": "always", "d": "reject"}
-        if event.key in key_map:
-            self.dismiss(key_map[event.key])
-
-
-class CommandPaletteScreen(Screen[str | None]):
-    def compose(self) -> ComposeResult:
-        with Vertical(classes="dialog"):
-            yield Input(placeholder="Type a command...", id="palette-input")
-            yield ListView(id="palette-list")
-
-    def on_mount(self) -> None:
-        lv = self.query_one("#palette-list", ListView)
-        for cmd, desc in _COMMANDS:
-            lv.append(
-                ListItem(
-                    Label(f"[bold cyan]{cmd}[/]  [dim]{desc}[/]"),
-                    id=f"cmd-{cmd.lstrip('/').replace('/', '-')}",
-                )
-            )
-        self.query_one("#palette-input", Input).focus()
-
-    def on_input_changed(self, event: Input.Changed) -> None:
-        query = event.value.lower()
-        lv = self.query_one("#palette-list", ListView)
-        lv.clear()
-        for cmd, desc in _COMMANDS:
-            if query in cmd.lower() or query in desc.lower():
-                lv.append(ListItem(Label(f"[bold cyan]{cmd}[/]  [dim]{desc}[/]")))
-        if lv.children:
-            lv.index = 0
-
-    def on_list_view_selected(self, event: ListView.Selected) -> None:
-        text = str(event.item.render())
-        cmd = text.split()[0] if text else None
-        self.dismiss(cmd)
-
-    def on_key(self, event: Any) -> None:
-        if event.key == "escape":
-            self.dismiss(None)
 
 
 class _TextualPermissionProxy:
@@ -346,31 +73,76 @@ class _TextualPermissionProxy:
         return PermissionDecision(DENY, "user denied")
 
 
-class _TextualDiffReviewer:
-    def __init__(self, app: GodspeedTextualApp) -> None:
-        self._app = app
-        self._always_accept = False
+class PermissionScreen(Screen[str]):
+    def __init__(
+        self,
+        tool_name: str,
+        reason: str,
+        arguments: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__()
+        self._tool_name = tool_name
+        self._reason = reason
+        self._arguments = arguments or {}
 
-    async def review(self, *, tool_name: str, path: str, before: str, after: str) -> str:
-        if self._always_accept:
-            return "accept"
+    def compose(self) -> ComposeResult:
+        with Vertical():
+            yield Static(f"Permission Required: {self._tool_name}")
+            yield Static(f"Reason: {self._reason}")
+            if self._arguments:
+                yield Static(f"Args: {self._arguments}")
+            with Horizontal():
+                yield Button("Yes", id="btn-yes", variant="success")
+                yield Button("No", id="btn-no", variant="error")
+                yield Button("Always", id="btn-always")
 
-        screen = DiffReviewScreen(
-            tool_name=tool_name,
-            path=path,
-            before=before,
-            after=after,
-        )
-        result = await asyncio.to_thread(self._app.push_screen_wait, screen)
-        answer = result if isinstance(result, str) else "reject"
-        if answer == "always":
-            self._always_accept = True
-            return "accept"
-        return answer if answer in ("accept", "reject") else "reject"
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        mapping = {"btn-yes": "allow", "btn-no": "deny", "btn-always": "always"}
+        btn_id = event.button.id or ""
+        self.dismiss(mapping.get(btn_id, "deny"))
+
+    def on_key(self, event: Any) -> None:
+        key_map = {"y": "allow", "n": "deny", "a": "always", "d": "deny"}
+        if event.key in key_map:
+            self.dismiss(key_map[event.key])
+
+
+class CommandPaletteScreen(Screen[str | None]):
+    def compose(self) -> ComposeResult:
+        with Vertical():
+            yield Input(placeholder="Command...", id="palette-input")
+            yield ListView(id="palette-list")
+
+    def on_mount(self) -> None:
+        lv = self.query_one("#palette-list", ListView)
+        for cmd, desc in _COMMANDS:
+            lv.append(ListItem(Label(f"{cmd}  {desc}")))
+        self.query_one("#palette-input", Input).focus()
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        query = event.value.lower()
+        lv = self.query_one("#palette-list", ListView)
+        lv.clear()
+        for cmd, desc in _COMMANDS:
+            if query in cmd.lower() or query in desc.lower():
+                lv.append(ListItem(Label(f"{cmd}  {desc}")))
+        if lv.children:
+            lv.index = 0
+
+    def on_list_view_selected(self, event: ListView.Selected) -> None:
+        text = str(event.item.render())
+        cmd = text.split()[0] if text else None
+        self.dismiss(cmd)
+
+    def on_key(self, event: Any) -> None:
+        if event.key == "escape":
+            self.dismiss(None)
 
 
 class GodspeedTextualApp(App[None]):
-    CSS_PATH = "textual_app.css"
+    """Minimal Textual TUI with no custom CSS."""
+
+    CSS_PATH = None
     BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = [
         Binding("ctrl+c", "cancel", "Cancel"),
         Binding("ctrl+q", "quit", "Quit"),
@@ -442,45 +214,66 @@ class GodspeedTextualApp(App[None]):
             register_skill_commands(self._commands, conversation, skills)
 
     def compose(self) -> ComposeResult:
-        with Horizontal(id="root"):
-            with Vertical(id="left"):
-                yield ChatLog(id="chat-log")
-                yield InputArea(id="input-area")
-            yield InfoPanel(id="info-panel")
+        with Horizontal():
+            with Vertical():
+                yield Static("Chat", id="chat-header")
+                yield Static("", id="chat-log", expand=True)
+                with Horizontal():
+                    yield Input(placeholder="Ask Godspeed...", id="user-input")
+                    yield Button("Send", id="submit-btn")
+            with Vertical():
+                yield Static(f"Godspeed v{__version__}")
+                yield Static("---")
+                yield Static("Session", id="info-session")
+                yield Static("Usage", id="info-usage")
+                yield Static("Tools", id="info-tools")
+                yield Static("Mode", id="info-mode")
 
     def on_mount(self) -> None:
         self.title = "Godspeed"
         self.sub_title = self._llm_client.model
+        chat_log = self.query_one("#chat-log", Static)
+        chat_log.styles.height = "1fr"
         self._update_info_panel()
         self._wire_permissions()
-        self.query_one("#input-area", InputArea).focus_input()
+        self.query_one("#user-input", Input).focus()
 
     def _wire_permissions(self) -> None:
         if self._permission_engine is not None:
             self._tool_context.permissions = _TextualPermissionProxy(self._permission_engine, self)
-        self._tool_context.diff_reviewer = _TextualDiffReviewer(self)
+        # Diff reviewer placeholder
+        self._tool_context.diff_reviewer = None
 
     def _update_info_panel(self) -> None:
         try:
-            panel = self.query_one("#info-panel", InfoPanel)
+            session = self.query_one("#info-session", Static)
+            usage = self.query_one("#info-usage", Static)
+            tools = self.query_one("#info-tools", Static)
+            mode = self.query_one("#info-mode", Static)
         except Exception:
             return
-        panel.session_id = self._session_id
-        panel.model = self._llm_client.model
-        panel.project_dir = str(self._tool_context.cwd)
-        panel.input_tokens = self._llm_client.total_input_tokens
-        panel.output_tokens = self._llm_client.total_output_tokens
-        panel.context_pct = (
-            self._conversation.token_count / self._conversation.max_tokens * 100
-            if self._conversation.max_tokens > 0
-            else 0.0
+
+        sid = self._session_id[:10]
+        cwd = str(self._tool_context.cwd)[:30]
+        session.update(f"ID: {sid}\nModel: {self._llm_client.model}\nDir: {cwd}")
+
+        total = self._llm_client.total_input_tokens + self._llm_client.total_output_tokens
+        usage.update(
+            f"In: {self._llm_client.total_input_tokens:,}\n"
+            f"Out: {self._llm_client.total_output_tokens:,}\n"
+            f"Total: {total:,}\n"
+            f"Cost: ${self._llm_client.total_cost_usd:.4f}"
         )
-        panel.cost_usd = self._llm_client.total_cost_usd
-        panel.tool_calls = self._tool_calls_total
-        panel.tool_errors = self._tool_errors_total
-        panel.tool_denied = self._tool_denied_total
-        panel.permission_mode = self._get_permission_mode()
-        panel.is_running = self.running
+
+        tools.update(
+            f"Calls: {self._tool_calls_total}\n"
+            f"Errors: {self._tool_errors_total}\n"
+            f"Denied: {self._tool_denied_total}"
+        )
+
+        perm = self._get_permission_mode()
+        status = "running" if self.running else "idle"
+        mode.update(f"Mode: {perm}\nStatus: {status}")
 
     def _get_permission_mode(self) -> str:
         if self._permission_engine is None:
@@ -510,11 +303,11 @@ class GodspeedTextualApp(App[None]):
     def _handle_input(self) -> None:
         if self.running:
             return
-        input_area = self.query_one("#input-area", InputArea)
-        text = input_area.get_value().strip()
+        inp = self.query_one("#user-input", Input)
+        text = inp.value.strip()
         if not text:
             return
-        input_area.clear()
+        inp.value = ""
 
         if text.startswith("/"):
             self._dispatch_command(text)
@@ -523,8 +316,10 @@ class GodspeedTextualApp(App[None]):
         self.turn_count += 1
         self._update_info_panel()
 
-        chat = self.query_one("#chat-log", ChatLog)
-        chat.write_user(text)
+        chat = self.query_one("#chat-log", Static)
+        current = str(chat.renderable or "")
+        prefix = f"\n[You]: {text}\n" if current else f"[You]: {text}\n"
+        chat.update(current + prefix if current else prefix)
 
         if self._correction_tracker is not None:
             self._correction_tracker.check_for_correction(text)
@@ -532,11 +327,12 @@ class GodspeedTextualApp(App[None]):
         self.run_worker(self._agent_worker(text))
 
     def _dispatch_command(self, text: str) -> None:
-        chat = self.query_one("#chat-log", ChatLog)
+        chat = self.query_one("#chat-log", Static)
 
         if text == "/cancel":
             self._cancel_event.set()
-            chat.write_system("Cancelling current operation...")
+            current = str(chat.renderable or "")
+            chat.update(current + "\nCancelling...\n")
             return
 
         with capture_output() as sio:
@@ -544,22 +340,23 @@ class GodspeedTextualApp(App[None]):
 
         output = sio.getvalue()
         if output:
-            chat.write_system(output)
+            current = str(chat.renderable or "")
+            chat.update(current + f"\n{output}\n")
 
         if result is None:
-            chat.write_system(f"Unknown command: {text}. Type /help for available commands.")
+            current = str(chat.renderable or "")
+            chat.update(current + f"\nUnknown command: {text}\n")
             return
 
         if result.should_quit:
             self.exit()
 
         if text == "/clear":
-            self.query_one("#chat-log", ChatLog).remove_children()
+            chat.update("")
 
     async def _agent_worker(self, user_input: str) -> None:
         self.running = True
         self._update_info_panel()
-        chat = self.query_one("#chat-log", ChatLog)
         self._cancel_event.clear()
 
         try:
@@ -569,15 +366,15 @@ class GodspeedTextualApp(App[None]):
                 llm_client=self._llm_client,
                 tool_registry=self._tool_registry,
                 tool_context=self._tool_context,
-                on_assistant_text=lambda t: self.call_from_thread(lambda: chat.write_assistant(t)),
+                on_assistant_text=lambda t: self.call_from_thread(
+                    lambda: self._append_chat(f"[Assistant]: {t}")
+                ),
                 on_tool_call=lambda name, args: self.call_from_thread(
-                    lambda n=name, a=args: chat.write_system(f"Tool: {n} {a}")
+                    lambda n=name, a=args: self._append_chat(f"[Tool]: {n}")
                 ),
-                on_tool_result=lambda name, res: self.call_from_thread(
-                    lambda n=name, r=res: chat.write_system(f"Result: {n}")
-                ),
+                on_tool_result=lambda name, res: self.call_from_thread(lambda n=name, r=res: None),
                 on_permission_denied=lambda name, reason: self.call_from_thread(
-                    lambda n=name, r=reason: self._on_permission_denied(n, r)
+                    lambda n=name, r=reason: self._append_chat(f"Permission denied: {n} ({r})")
                 ),
                 max_iterations=self._commands.max_iterations or 25,
                 pause_event=self._pause_event,
@@ -587,25 +384,23 @@ class GodspeedTextualApp(App[None]):
                 auto_commit_threshold=self._commands.auto_commit_threshold,
             )
         except AgentCancelledError:
-            chat.write_system("Agent cancelled.")
+            self._append_chat("Agent cancelled.")
         except Exception as exc:
             logger.error("Agent loop error: %s", exc, exc_info=True)
-            chat.write_error(str(exc))
+            self._append_chat(f"Error: {exc}")
         finally:
             self.running = False
             self._update_info_panel()
-            self.query_one("#input-area", InputArea).focus_input()
+            self.query_one("#user-input", Input).focus()
 
-    def _on_permission_denied(self, name: str, reason: str) -> None:
-        self._tool_denied_total += 1
-        chat = self.query_one("#chat-log", ChatLog)
-        chat.write_system(f"Permission denied: {name} ({reason})")
-        self._update_info_panel()
+    def _append_chat(self, text: str) -> None:
+        chat = self.query_one("#chat-log", Static)
+        current = str(chat.renderable or "")
+        chat.update(current + f"\n{text}\n")
 
     def action_cancel(self) -> None:
         self._cancel_event.set()
-        chat = self.query_one("#chat-log", ChatLog)
-        chat.write_system("Cancelling...")
+        self._append_chat("Cancelling...")
 
     def action_command_palette(self) -> None:
         self.push_screen(CommandPaletteScreen(), callback=self._on_palette_result)
@@ -614,16 +409,14 @@ class GodspeedTextualApp(App[None]):
         if result is None:
             return
         self._dispatch_command(result)
-        self.query_one("#input-area", InputArea).focus_input()
+        self.query_one("#user-input", Input).focus()
 
     def action_clear_chat(self) -> None:
-        self.query_one("#chat-log", ChatLog).remove_children()
-        self.query_one("#chat-log", ChatLog).write_system("Chat cleared.")
+        self.query_one("#chat-log", Static).update("")
 
     async def action_quit(self) -> None:
         duration = time.monotonic() - self._start_time
-        chat = self.query_one("#chat-log", ChatLog)
-        chat.write_system(
+        self._append_chat(
             f"Session ended  {duration:.0f}s  "
             f"{self._tool_calls_total} calls  "
             f"${self._llm_client.total_cost_usd:.4f}"

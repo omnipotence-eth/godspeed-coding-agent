@@ -540,15 +540,19 @@ _TOOL_LABELS: dict[str, str] = {
 
 
 class _ThinkingSpinner:
-    """Context-aware Rich Status spinner.
+    """Context-aware Rich Status spinner with elapsed-time display.
 
-    Shows what the agent is doing ΓÇö "Thinking..." when waiting for LLM,
-    tool-specific labels during tool execution.
+    Shows what the agent is doing — "Thinking..." when waiting for LLM,
+    tool-specific labels during tool execution. After 10s of thinking,
+    shows elapsed seconds so the user knows the agent isn't frozen.
     """
 
     def __init__(self) -> None:
         self._status: Any | None = None
         self._started = False
+        self._start_time: float = 0.0
+        self._update_task: asyncio.Task | None = None
+        self._tool_label: str = ""
 
     def _make_label(self, text: str) -> str:
         return f"[{NEUTRAL}]{PROMPT_ICON} {text}[/{NEUTRAL}]"
@@ -558,6 +562,8 @@ class _ThinkingSpinner:
             return
         from rich.status import Status
 
+        self._start_time = time.monotonic()
+        self._tool_label = ""
         self._status = Status(
             self._make_label("Thinking..."),
             console=_output.console,
@@ -566,6 +572,17 @@ class _ThinkingSpinner:
         )
         self._status.start()
         self._started = True
+        # Start elapsed-time updater
+        self._update_task = asyncio.ensure_future(self._update_elapsed())
+
+    async def _update_elapsed(self) -> None:
+        """Update the spinner label with elapsed time after 10s."""
+        while self._started:
+            await asyncio.sleep(1)
+            elapsed = int(time.monotonic() - self._start_time)
+            if elapsed >= 10 and self._status is not None:
+                label = self._tool_label or "Thinking..."
+                self._status.update(self._make_label(f"{label} ({elapsed}s)"))
 
     def update(self, tool_name: str, args: dict[str, Any]) -> None:
         """Update spinner text based on current tool call."""
@@ -574,17 +591,20 @@ class _ThinkingSpinner:
         label = _TOOL_LABELS.get(tool_name, tool_name)
         primary_arg = args.get("file_path") or args.get("command") or args.get("pattern") or ""
         if primary_arg:
-            # Truncate long args
             if len(primary_arg) > 50:
                 primary_arg = "..." + primary_arg[-47:]
-            self._status.update(self._make_label(f"{label} {primary_arg}"))
+            self._tool_label = f"{label} {primary_arg}"
         else:
-            self._status.update(self._make_label(f"{label}..."))
+            self._tool_label = f"{label}..."
+        self._status.update(self._make_label(self._tool_label))
 
     def stop(self) -> None:
         if self._started and self._status is not None:
             self._status.stop()
             self._started = False
+        if self._update_task is not None:
+            self._update_task.cancel()
+            self._update_task = None
 
     def wrap(self, fn: Any) -> Any:
         """Return a wrapper that stops the spinner before calling *fn*."""

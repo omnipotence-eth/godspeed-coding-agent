@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import Iterable
 from pathlib import Path
 
@@ -10,6 +11,9 @@ from prompt_toolkit.completion import CompleteEvent, Completer, Completion
 from prompt_toolkit.document import Document
 
 logger = logging.getLogger(__name__)
+
+# Compiled regex for mention detection at cursor — avoids recompilation on every keystroke
+_MENTION_AT_CURSOR_RE = re.compile(r"@(\S*)$")
 
 SLASH_COMMANDS: list[tuple[str, str]] = [
     ("/help", "Show available commands"),
@@ -111,9 +115,7 @@ class GodspeedCompleter(Completer):
         Returns the partial mention text (e.g. "@file:src/m") or None.
         """
         # Walk backwards from cursor to find @ that starts a mention
-        import re
-
-        match = re.search(r"@(\S*)$", text)
+        match = _MENTION_AT_CURSOR_RE.search(text)
         if match:
             return match.group(0)
         return None

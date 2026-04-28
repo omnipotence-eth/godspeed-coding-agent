@@ -433,11 +433,12 @@ def format_permission_prompt(
         old = args["old_string"]
         new = args["new_string"]
 
-        # Line change stats
+        # Line change stats — single pass over ndiff output
         old_lines = old.splitlines()
         new_lines = new.splitlines()
-        added = sum(1 for line in difflib.ndiff(old_lines, new_lines) if line.startswith("+ "))
-        removed = sum(1 for line in difflib.ndiff(old_lines, new_lines) if line.startswith("- "))
+        diff_lines = list(difflib.ndiff(old_lines, new_lines))
+        added = sum(1 for line in diff_lines if line.startswith("+ "))
+        removed = sum(1 for line in diff_lines if line.startswith("- "))
         stats = f"+{added} -{removed} lines"
 
         console.print(f"  {file_path}  {styled(stats, DIM)}")
@@ -606,10 +607,10 @@ def format_diff_review_prompt(
     else:
         before_lines = before.splitlines()
         after_lines = after.splitlines()
-        added = sum(1 for line in difflib.ndiff(before_lines, after_lines) if line.startswith("+ "))
-        removed = sum(
-            1 for line in difflib.ndiff(before_lines, after_lines) if line.startswith("- ")
-        )
+        # Single pass over ndiff output
+        diff_lines_list = list(difflib.ndiff(before_lines, after_lines))
+        added = sum(1 for line in diff_lines_list if line.startswith("+ "))
+        removed = sum(1 for line in diff_lines_list if line.startswith("- "))
         console.print(f"    {styled(f'+{added} -{removed} lines', DIM)}")
         diff_lines = list(
             difflib.unified_diff(

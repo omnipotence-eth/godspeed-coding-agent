@@ -41,11 +41,23 @@ class BackgroundProcess:
 
     @property
     def stdout(self) -> str:
-        return "".join(self.stdout_chunks)
+        # Cache joined result to avoid repeated string concatenation
+        if not hasattr(self, "_stdout_cache"):
+            self._stdout_cache = "".join(self.stdout_chunks)
+        return self._stdout_cache
 
     @property
     def stderr(self) -> str:
-        return "".join(self.stderr_chunks)
+        if not hasattr(self, "_stderr_cache"):
+            self._stderr_cache = "".join(self.stderr_chunks)
+        return self._stderr_cache
+
+    def invalidate_output_cache(self) -> None:
+        """Clear cached stdout/stderr strings after new chunks arrive."""
+        if hasattr(self, "_stdout_cache"):
+            delattr(self, "_stdout_cache")
+        if hasattr(self, "_stderr_cache"):
+            delattr(self, "_stderr_cache")
 
 
 class BackgroundRegistry:
@@ -70,6 +82,10 @@ class BackgroundRegistry:
 
     def add(self, proc: BackgroundProcess) -> None:
         self._processes[proc.id] = proc
+
+    def remove(self, pid: int) -> None:
+        """Remove a completed process from the registry to free memory."""
+        self._processes.pop(pid, None)
 
     def get_process(self, pid: int) -> BackgroundProcess | None:
         return self._processes.get(pid)
@@ -102,12 +118,17 @@ async def _collect_output(proc: BackgroundProcess) -> None:
             if not line:
                 break
             chunks.append(line.decode("utf-8", errors="replace"))
+            # Invalidate cached output when new chunks arrive
+            proc.invalidate_output_cache()
 
     await asyncio.gather(
         _read_stream(proc.process.stdout, proc.stdout_chunks),
         _read_stream(proc.process.stderr, proc.stderr_chunks),
     )
     await proc.process.wait()
+    # Auto-cleanup: remove completed process from registry to prevent memory leak
+    registry = BackgroundRegistry.get()
+    registry.remove(proc.id)
 
 
 class BackgroundCheckTool(Tool):

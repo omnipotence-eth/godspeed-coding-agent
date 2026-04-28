@@ -69,7 +69,7 @@ class GlobSearchTool(Tool):
         search_root = context.cwd
         path_arg = arguments.get("path")
         if path_arg:
-            candidate = Path(path_arg)
+            candidate = Path(path_arg).expanduser()
             search_root = (
                 candidate.resolve()
                 if candidate.is_absolute()

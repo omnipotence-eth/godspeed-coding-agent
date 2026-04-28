@@ -24,7 +24,7 @@ def resolve_tool_path(file_path: str, cwd: Path) -> Path:
             f"which is outside the project directory '{cwd.resolve()}'"
         )
 
-    path = Path(file_path)
+    path = Path(file_path).expanduser()
     resolved = path.resolve() if path.is_absolute() else (cwd / path).resolve()
     cwd_resolved = cwd.resolve()
 

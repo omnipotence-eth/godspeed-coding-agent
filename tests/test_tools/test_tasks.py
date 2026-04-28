@@ -105,11 +105,11 @@ class TestTaskTool:
 
     def test_name_and_risk(self, tool: TaskTool) -> None:
         assert tool.name == "tasks"
-        assert tool.risk_level == RiskLevel.LOW
+        assert tool.risk_level == RiskLevel.READ_ONLY
 
     def test_schema_has_action(self, tool: TaskTool) -> None:
         schema = tool.get_schema()
-        assert "action" in schema["parameters"]["properties"]
+        assert "action" in schema["properties"]
 
     @pytest.mark.asyncio()
     async def test_create(self, tool: TaskTool, context: ToolContext) -> None:

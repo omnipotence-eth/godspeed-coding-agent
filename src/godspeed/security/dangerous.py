@@ -204,6 +204,109 @@ DANGEROUS_PATTERNS: list[tuple[re.Pattern[str], str]] = [
 ]
 
 
+# Pre-filter keywords derived from pattern prefixes for fast short-circuit
+_DANGEROUS_KEYWORDS = frozenset(
+    {
+        "rm ",
+        "rmdir",
+        "sudo ",
+        "chmod ",
+        "chown ",
+        "chroot",
+        "mkfs.",
+        "dd ",
+        "git push --force",
+        "git reset --hard",
+        "git clean -f",
+        "docker",
+        "pip",
+        "npm i",
+        "npm install",
+        "pip install",
+        "curl",
+        "wget",
+        "nc ",
+        "ncat",
+        "eval",
+        "exec",
+        "shutdown",
+        "reboot",
+        "halt",
+        "poweroff",
+        "init ",
+        "systemctl",
+        "> /dev/",
+        "/dev/null",
+        "mv ",
+        "cp -r",
+        "cp -rf",
+        "mount",
+        "> /etc/",
+        "> ~/",
+        ".bashrc",
+        ".profile",
+        "sc stop",
+        "sc delete",
+        "--no-verify",
+        "--privileged",
+        "sed -i",
+        "perl -i",
+        "chattr",
+        "drop table",
+        "drop database",
+        "delete from",
+        "truncate",
+        "kill -9",
+        "killall",
+        "pkill",
+        "xkill",
+        "fork bomb",
+        ":(){",
+        "iptables",
+        "fdisk",
+        "parted",
+        "crontab",
+        "kubectl delete",
+        "systemctl disable",
+        "ssh-keygen",
+        "gpg --delete",
+        "del /f",
+        "del /q",
+        "format ",
+        "reg delete",
+        "powershell -enc",
+        "nohup",
+        "disown",
+        "su ",
+        "npm publish",
+        "twine upload",
+        "podman run",
+        "> /dev/sda",
+        "> /dev/hda",
+        "chmod -r",
+        "> /dev/sd",
+        "git push",
+        "del /",
+        "find ",
+        "-exec",
+        "exec(",
+        "git",
+        "python",
+        "bash ",
+        "sh ",
+    }
+)
+
+
+def _likely_dangerous(command: str) -> bool:
+    """Fast pre-check: does the command contain any dangerous indicators?"""
+    cmd_lower = command.lower()
+    # Pipes/semicolons indicate command chaining — always check via regex
+    if "|" in command or ";" in command:
+        return True
+    return any(kw in cmd_lower for kw in _DANGEROUS_KEYWORDS)
+
+
 def detect_dangerous_command(command: str) -> list[str]:
     """Check a shell command against dangerous patterns.
 
@@ -213,6 +316,8 @@ def detect_dangerous_command(command: str) -> list[str]:
     Returns:
         List of danger descriptions. Empty list means safe.
     """
+    if not _likely_dangerous(command):
+        return []
     dangers = []
     for pattern, description in DANGEROUS_PATTERNS:
         if pattern.search(command):

@@ -9,24 +9,46 @@ class TestPromptCaching:
     """Test _apply_prompt_caching static method."""
 
     def test_adds_cache_control_for_claude(self) -> None:
+        """Cache all but the last 2 messages for Anthropic models."""
+        messages = [
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": "First question"},
+            {"role": "assistant", "content": "First answer"},
+            {"role": "user", "content": "Second question"},
+        ]
+        result = LLMClient._apply_prompt_caching("claude-sonnet-4-20250514", messages)
+        # First 2 messages should get cache_control (4 total - 2 tail = 2 cached)
+        assert isinstance(result[0]["content"], list)
+        assert result[0]["content"][0]["cache_control"] == {"type": "ephemeral"}
+        assert isinstance(result[1]["content"], list)
+        assert result[1]["content"][0]["cache_control"] == {"type": "ephemeral"}
+        # Last 2 messages should be unchanged
+        assert result[2]["content"] == "First answer"
+        assert result[3]["content"] == "Second question"
+
+    def test_short_conversation_no_cache_for_claude(self) -> None:
+        """With <= 2 messages, nothing gets cached (no stable prefix)."""
         messages = [
             {"role": "system", "content": "You are a helpful assistant."},
             {"role": "user", "content": "Hello"},
         ]
         result = LLMClient._apply_prompt_caching("claude-sonnet-4-20250514", messages)
-        # System message should be converted to content block with cache_control
-        assert result[0]["role"] == "system"
-        assert isinstance(result[0]["content"], list)
-        assert result[0]["content"][0]["type"] == "text"
-        assert result[0]["content"][0]["cache_control"] == {"type": "ephemeral"}
-        # User message should be unchanged
+        # Both should be unchanged (num_to_cache = 0)
+        assert result[0]["content"] == "You are a helpful assistant."
         assert result[1]["content"] == "Hello"
 
-    def test_adds_cache_control_for_gpt4o(self) -> None:
-        messages = [{"role": "system", "content": "System prompt"}]
+    def test_no_cache_for_openai(self) -> None:
+        """OpenAI caches automatically — no explicit cache_control."""
+        messages = [
+            {"role": "system", "content": "System prompt"},
+            {"role": "user", "content": "Query"},
+            {"role": "assistant", "content": "Reply"},
+        ]
         result = LLMClient._apply_prompt_caching("gpt-4o", messages)
-        assert isinstance(result[0]["content"], list)
-        assert "cache_control" in result[0]["content"][0]
+        # All messages should be unchanged
+        assert result[0]["content"] == "System prompt"
+        assert result[1]["content"] == "Query"
+        assert result[2]["content"] == "Reply"
 
     def test_no_cache_for_ollama(self) -> None:
         messages = [{"role": "system", "content": "System prompt"}]
@@ -40,12 +62,16 @@ class TestPromptCaching:
         assert result[0]["content"] == "System prompt"
 
     def test_preserves_non_system_messages(self) -> None:
+        """User and assistant messages also get cache_control (prefix caching)."""
         messages = [
             {"role": "system", "content": "System"},
             {"role": "user", "content": "User input"},
             {"role": "assistant", "content": "Response"},
         ]
         result = LLMClient._apply_prompt_caching("claude-sonnet-4-20250514", messages)
+        # Only system gets cache_control (3 total - 2 tail = 1 cached)
+        assert isinstance(result[0]["content"], list)
+        assert "cache_control" in result[0]["content"][0]
         assert result[1] == messages[1]
         assert result[2] == messages[2]
 

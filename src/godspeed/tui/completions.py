@@ -1,4 +1,4 @@
-﻿"""Tab completion for the Godspeed TUI."""
+"""Tab completion for the Godspeed TUI."""
 
 from __future__ import annotations
 
@@ -14,17 +14,38 @@ logger = logging.getLogger(__name__)
 SLASH_COMMANDS: list[tuple[str, str]] = [
     ("/help", "Show available commands"),
     ("/model", "Show or switch the active model"),
+    ("/models", "List installed Ollama models and presets"),
+    ("/scan", "Hardware scan and model recommendations"),
     ("/clear", "Clear conversation history"),
+    ("/quit", "Exit Godspeed"),
+    ("/exit", "Exit Godspeed"),
     ("/undo", "Undo last git commit"),
-    ("/audit", "Show audit trail stats and verify chain"),
-    ("/permissions", "Show current permission rules"),
+    ("/plan", "Toggle plan mode (read-only tools only)"),
+    ("/context", "Show context window usage"),
+    ("/checkpoint", "Save/restore conversation state"),
+    ("/restore", "Restore a checkpoint"),
+    ("/pause", "Pause the agent loop"),
+    ("/resume", "Resume the agent loop"),
+    ("/guidance", "Inject guidance message into agent"),
+    ("/tasks", "Show active tasks"),
+    ("/reindex", "Rebuild codebase search index"),
+    ("/stats", "Show session statistics"),
+    ("/export", "Export conversation to markdown"),
+    ("/correct", "Record a correction for the agent"),
+    ("/preferences", "Show stored preferences"),
+    ("/sessions", "List past session logs"),
+    ("/tools", "List available tools with descriptions"),
+    ("/diff", "Show git diff of session changes"),
     ("/autocommit", "Toggle auto-commit or set threshold"),
     ("/architect", "Toggle architect mode (plan then execute)"),
     ("/think", "Toggle extended thinking or set token budget"),
     ("/budget", "Show/set cost budget in USD"),
     ("/evolve", "Self-evolution: status|run|history|rollback|review"),
-    ("/quit", "Exit Godspeed"),
-    ("/exit", "Exit Godspeed"),
+    ("/audit", "Show audit trail stats and verify chain"),
+    ("/permissions", "Show current permission rules"),
+    ("/remember", "Add permanent allow/deny/ask rule"),
+    ("/review", "Show git status of session changes"),
+    ("/actions", "Show recent agent actions"),
 ]
 
 MENTION_TYPES: list[tuple[str, str]] = [

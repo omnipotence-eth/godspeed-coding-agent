@@ -14,7 +14,7 @@ import gzip
 import json
 import logging
 import statistics
-from collections import Counter, defaultdict
+from collections import Counter, defaultdict, deque
 from pathlib import Path
 from typing import Any
 
@@ -287,27 +287,134 @@ class TraceAnalyzer:
         return results
 
     def generate_report(self, sessions: list[SessionTrace]) -> EvolutionReport:
-        """Generate a full analysis report from session traces."""
-        # Tool usage counts
+        """Generate a full analysis report — single pass over all sessions."""
         tool_counts: Counter[str] = Counter()
         total_calls = 0
         total_errors = 0
 
+        # Failure accumulator: (tool_name, category) -> list of all args
+        failures_acc: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
+        # Latency accumulator: tool_name -> list of latencies
+        latencies_acc: dict[str, list[float]] = defaultdict(list)
+        # Permission accumulators
+        denials: Counter[str] = Counter()
+        grants: Counter[str] = Counter()
+        # Sequence accumulator: (tool_tuple) -> count + successes
+        seq_counts: Counter[tuple[str, ...]] = Counter()
+        seq_successes: dict[tuple[str, ...], list[bool]] = defaultdict(list)
+
         for session in sessions:
+            # --- Tool calls + errors + latencies ---
             for tc in session.tool_calls:
                 tool_counts[tc.tool_name] += 1
                 total_calls += 1
                 if tc.is_error:
                     total_errors += 1
+                    category = self._classify_error(tc)
+                    failures_acc[(tc.tool_name, category)].append(tc.arguments)
+                if tc.latency_ms > 0:
+                    latencies_acc[tc.tool_name].append(tc.latency_ms)
+
+            # --- Permissions ---
+            for tool_name, _reason in session.permission_denials:
+                denials[tool_name] += 1
+            for tool_name in session.permission_grants:
+                grants[tool_name] += 1
+
+            # --- Tool sequences (sliding windows 2-4) ---
+            names = [tc.tool_name for tc in session.tool_calls]
+            errors_set = {i for i, tc in enumerate(session.tool_calls) if tc.is_error}
+            for window_size in (2, 3, 4):
+                for i in range(len(names) - window_size + 1):
+                    seq = tuple(names[i : i + window_size])
+                    seq_counts[seq] += 1
+                    all_ok = all(j not in errors_set for j in range(i, i + window_size))
+                    seq_successes[seq].append(all_ok)
+
+        # --- Build failure patterns ---
+        failure_patterns: list[ToolFailurePattern] = []
+        for (tool_name, category), args_list in failures_acc.items():
+            failure_patterns.append(
+                ToolFailurePattern(
+                    tool_name=tool_name,
+                    error_category=category,
+                    frequency=len(args_list),
+                    example_args=tuple(args_list[:5]),
+                    suggested_fix=self._suggest_fix(tool_name, category, tuple(args_list[:5])),
+                )
+            )
+        failure_patterns.sort(key=lambda p: p.frequency, reverse=True)
+
+        # --- Build latency stats ---
+        latency_stats: list[LatencyStats] = []
+        for tool_name, values in latencies_acc.items():
+            if not values:
+                continue
+            sorted_vals = sorted(values)
+            n = len(sorted_vals)
+            latency_stats.append(
+                LatencyStats(
+                    tool_name=tool_name,
+                    count=n,
+                    p50_ms=self._percentile(sorted_vals, 50),
+                    p95_ms=self._percentile(sorted_vals, 95),
+                    p99_ms=self._percentile(sorted_vals, 99),
+                    mean_ms=statistics.mean(sorted_vals),
+                )
+            )
+        latency_stats.sort(key=lambda s: s.p95_ms, reverse=True)
+
+        # --- Build permission insights ---
+        all_tools = set(denials.keys()) | set(grants.keys())
+        permission_insights: list[PermissionInsight] = []
+        for tool_name in all_tools:
+            d = denials.get(tool_name, 0)
+            g = grants.get(tool_name, 0)
+            if d >= 5 and g == 0:
+                suggestion = "review_needed"
+            elif d >= 5:
+                suggestion = "add_to_allowlist"
+            elif g >= 5 and d == 0:
+                suggestion = "pre_approve"
+            else:
+                continue
+            permission_insights.append(
+                PermissionInsight(
+                    tool_name=tool_name,
+                    denial_count=d,
+                    grant_count=g,
+                    suggestion=suggestion,
+                )
+            )
+        permission_insights.sort(key=lambda i: i.denial_count + i.grant_count, reverse=True)
+
+        # --- Build tool sequences ---
+        min_frequency = 3
+        tool_sequences: list[ToolSequence] = []
+        for seq, count in seq_counts.items():
+            if count < min_frequency:
+                continue
+            successes = seq_successes[seq]
+            avg_success = sum(successes) / len(successes) if successes else 0.0
+            skill_name = "_and_".join(dict.fromkeys(seq))
+            tool_sequences.append(
+                ToolSequence(
+                    tools=seq,
+                    frequency=count,
+                    avg_success_rate=avg_success,
+                    candidate_skill_name=skill_name,
+                )
+            )
+        tool_sequences.sort(key=lambda r: r.frequency, reverse=True)
 
         error_rate = total_errors / total_calls if total_calls > 0 else 0.0
 
         return EvolutionReport(
             sessions_analyzed=len(sessions),
-            tool_failures=tuple(self.analyze_tool_failures(sessions)),
-            latency_stats=tuple(self.analyze_tool_latency(sessions)),
-            permission_insights=tuple(self.analyze_permission_patterns(sessions)),
-            tool_sequences=tuple(self.analyze_multi_tool_sequences(sessions)),
+            tool_failures=tuple(failure_patterns),
+            latency_stats=tuple(latency_stats),
+            permission_insights=tuple(permission_insights),
+            tool_sequences=tuple(tool_sequences),
             most_used_tools=tuple(tool_counts.most_common(10)),
             error_rate=error_rate,
         )
@@ -358,13 +465,13 @@ class TraceAnalyzer:
         permission_grants: list[str] = []
         total_latency = 0.0
 
-        # Build tool call / response pairs
-        pending_calls: dict[str, AuditRecord] = {}  # tool_name+seq -> call record
+        # Build tool call / response pairs — per-tool FIFO O(1) lookup
+        pending_calls: dict[str, deque[AuditRecord]] = defaultdict(deque)
 
         for rec in records:
             if rec.action_type == AuditEventType.TOOL_CALL:
                 tool_name = rec.action_detail.get("tool_name", "unknown")
-                pending_calls[f"{tool_name}_{rec.sequence}"] = rec
+                pending_calls[tool_name].append(rec)
 
             elif rec.action_type == AuditEventType.TOOL_RESPONSE:
                 tool_name = rec.action_detail.get("tool_name", "unknown")
@@ -373,12 +480,11 @@ class TraceAnalyzer:
                 output_length = rec.action_detail.get("output_length", 0)
                 arguments = rec.action_detail.get("arguments", {})
 
-                # Try to find the matching call for arguments
-                for key, call_rec in list(pending_calls.items()):
-                    if key.startswith(f"{tool_name}_"):
-                        arguments = call_rec.action_detail.get("arguments", arguments)
-                        del pending_calls[key]
-                        break
+                # Pop the matching call from the per-tool deque (O(1))
+                call_queue = pending_calls.get(tool_name)
+                if call_queue:
+                    call_rec = call_queue.popleft()
+                    arguments = call_rec.action_detail.get("arguments", arguments)
 
                 tc = ToolCall(
                     tool_name=tool_name,

@@ -18,7 +18,7 @@ from godspeed.agent.result import AgentCancelledError
 from godspeed.audit.trail import AuditTrail
 from godspeed.llm.client import LLMClient
 from godspeed.security.permissions import ALLOW, ASK, PermissionDecision, PermissionEngine
-from godspeed.tools.base import ToolContext
+from godspeed.tools.base import RiskLevel, ToolContext
 from godspeed.tools.registry import ToolRegistry
 from godspeed.tui import output as _output
 from godspeed.tui.commands import Commands
@@ -652,6 +652,14 @@ class _InteractivePermissionProxy:
             return PermissionDecision(ALLOW, "user approved")
         if answer in ("a", "always"):
             pattern = tool_call.format_for_permission()
+            # LOW-risk tools get tool-level session grant (WebSearch(*) covers all queries)
+            risk = self._engine._tool_risk_levels.get(tool_call.tool_name, RiskLevel.HIGH)
+            if risk == RiskLevel.LOW:
+                self._engine.grant_tool_session_permission(tool_call.tool_name)
+                # Also track for auto-permission suggestion
+                if self._tracker is not None:
+                    self._tracker.record_approval(f"{tool_call.tool_name}(*)")
+                return PermissionDecision(ALLOW, f"session grant: {tool_call.tool_name}(*)")
             self._engine.grant_session_permission(pattern)
             return PermissionDecision(ALLOW, f"session grant: {pattern}")
 

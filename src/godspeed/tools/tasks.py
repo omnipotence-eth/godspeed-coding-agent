@@ -95,40 +95,36 @@ class TaskTool(Tool):
 
     @property
     def risk_level(self) -> RiskLevel:
-        return RiskLevel.LOW
+        return RiskLevel.READ_ONLY
 
     def get_schema(self) -> dict[str, Any]:
         return {
-            "name": self.name,
-            "description": self.description,
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "action": {
-                        "type": "string",
-                        "enum": ["create", "update", "list", "complete"],
-                        "description": "Action to perform.",
-                    },
-                    "title": {
-                        "type": "string",
-                        "description": "Task title (for create).",
-                    },
-                    "description": {
-                        "type": "string",
-                        "description": "Task description (for create).",
-                    },
-                    "task_id": {
-                        "type": "integer",
-                        "description": "Task ID (for update/complete).",
-                    },
-                    "status": {
-                        "type": "string",
-                        "enum": ["pending", "in_progress", "completed"],
-                        "description": "New status (for update).",
-                    },
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": ["create", "update", "list", "complete"],
+                    "description": "Action to perform.",
                 },
-                "required": ["action"],
+                "title": {
+                    "type": "string",
+                    "description": "Task title (for create).",
+                },
+                "description": {
+                    "type": "string",
+                    "description": "Task description (for create).",
+                },
+                "task_id": {
+                    "type": "integer",
+                    "description": "Task ID (for update/complete).",
+                },
+                "status": {
+                    "type": "string",
+                    "enum": ["pending", "in_progress", "completed"],
+                    "description": "New status (for update).",
+                },
             },
+            "required": ["action"],
         }
 
     async def execute(

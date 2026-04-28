@@ -80,6 +80,10 @@ class EvolutionRegistry:
         self._applied_dir = base_dir / "applied"
         self._originals_dir = base_dir / "originals"
 
+        # Mtime-cached registry reads — avoid re-reading the file every cycle
+        self._cache_records: list[EvolutionRecord] | None = None
+        self._cache_mtime: float = 0.0
+
         # Ensure directories exist
         for d in (self._candidates_dir, self._applied_dir, self._originals_dir):
             d.mkdir(parents=True, exist_ok=True)
@@ -272,11 +276,18 @@ class EvolutionRegistry:
         except OSError as exc:
             logger.warning("Failed to append registry record: %s", exc)
             raise
+        self._cache_records = None  # stale after write
 
     def _load_records(self) -> list[EvolutionRecord]:
-        """Load all records from the JSONL registry."""
+        """Load all records from the JSONL registry — mtime-cached."""
         if not self._registry_path.exists():
+            self._cache_records = None
+            self._cache_mtime = 0.0
             return []
+
+        current_mtime = self._registry_path.stat().st_mtime
+        if self._cache_records is not None and self._cache_mtime == current_mtime:
+            return self._cache_records
 
         records: list[EvolutionRecord] = []
         for line in self._registry_path.read_text(encoding="utf-8").splitlines():
@@ -288,6 +299,9 @@ class EvolutionRegistry:
                 records.append(EvolutionRecord.from_dict(data))
             except (json.JSONDecodeError, TypeError) as exc:
                 logger.debug("Skipping malformed registry record: %s", exc)
+
+        self._cache_records = records
+        self._cache_mtime = current_mtime
         return records
 
     def _rewrite_registry(self, records: list[EvolutionRecord]) -> None:
@@ -303,6 +317,7 @@ class EvolutionRegistry:
                 f.write("".join(lines))
                 f.flush()
             Path(tmp_path).replace(self._registry_path)
+            self._cache_records = None  # stale after write
         except OSError as exc:
             logger.warning("Failed to rewrite registry: %s — data may be lost", exc)
             Path(tmp_path).unlink(missing_ok=True)

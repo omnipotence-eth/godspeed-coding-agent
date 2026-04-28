@@ -29,7 +29,7 @@ class TestCodeSearchTool:
         index = MagicMock()
         tool = CodeSearchTool(index)
         schema = tool.get_schema()
-        assert "query" in schema["parameters"]["properties"]
+        assert "query" in schema["properties"]
 
     @pytest.mark.asyncio()
     async def test_missing_query(self, context: ToolContext) -> None:

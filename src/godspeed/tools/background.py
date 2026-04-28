@@ -126,7 +126,7 @@ class BackgroundCheckTool(Tool):
 
     @property
     def risk_level(self) -> RiskLevel:
-        return RiskLevel.LOW
+        return RiskLevel.HIGH  # kill action is destructive
 
     def get_schema(self) -> dict[str, Any]:
         return {

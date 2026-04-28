@@ -289,6 +289,7 @@ def _build_tool_registry(tool_set: str = "full") -> tuple:
     allowed = get_allowed_tool_names(tool_set)
     from godspeed.tools.base import RiskLevel
     from godspeed.tools.file_edit import FileEditTool
+    from godspeed.tools.file_move import FileMoveTool
     from godspeed.tools.file_read import FileReadTool
     from godspeed.tools.file_write import FileWriteTool
     from godspeed.tools.registry import ToolRegistry
@@ -299,6 +300,7 @@ def _build_tool_registry(tool_set: str = "full") -> tuple:
     from godspeed.tools.background import BackgroundCheckTool
     from godspeed.tools.complexity import ComplexityTool
     from godspeed.tools.coverage import CoverageTool
+    from godspeed.tools.db_query import DbQueryTool
     from godspeed.tools.dep_audit import DepAuditTool
     from godspeed.tools.generate_tests import GenerateTestsTool
     from godspeed.tools.git import GitTool
@@ -309,14 +311,24 @@ def _build_tool_registry(tool_set: str = "full") -> tuple:
     from godspeed.tools.security_scan import SecurityScanTool
     from godspeed.tools.shell import ShellTool
     from godspeed.tools.test_runner import TestRunnerTool
+    from godspeed.tools.traceback_analyzer import TracebackAnalyzerTool
     from godspeed.tools.verify import VerifyTool
     from godspeed.tools.web_fetch import WebFetchTool
     from godspeed.tools.web_search import WebSearchTool
 
+    try:
+        from godspeed.tools.stock_price import StockPriceTool
+
+        _stock_price_available = True
+    except ImportError:
+        _stock_price_available = False
+
     tools: list = [
         FileReadTool(),
+        TracebackAnalyzerTool(),
         FileWriteTool(),
         FileEditTool(),
+        FileMoveTool(),
         ShellTool(),
         GlobSearchTool(),
         GrepSearchTool(),
@@ -333,7 +345,11 @@ def _build_tool_registry(tool_set: str = "full") -> tuple:
         WebFetchTool(),
         NotebookEditTool(),
         BackgroundCheckTool(),
+        DbQueryTool(),
     ]
+
+    if _stock_price_available:
+        tools.append(StockPriceTool())
 
     # Optional tools — register if their dependencies are available
     try:

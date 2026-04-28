@@ -135,16 +135,44 @@ _MULTI_NEWLINE = re.compile(r"\n{3,}")
 
 def _html_to_text(raw_html: str) -> str:
     """Extract readable text from HTML — simple tag stripping."""
-    # Remove script/style/head blocks
     text = _STRIP_TAGS.sub("", raw_html)
-    # Remove all remaining tags
     text = _HTML_TAGS.sub("\n", text)
-    # Decode HTML entities
     text = html.unescape(text)
-    # Collapse whitespace
     text = _MULTI_SPACE.sub(" ", text)
     text = _MULTI_NEWLINE.sub("\n\n", text)
     return text.strip()
+
+
+def _extract_content(raw_html: str, url: str) -> str:
+    """Extract main article content using readability (fallback: tag stripping).
+
+    Readability identifies the main content block of a page, removing
+    navigation, sidebars, ads, and boilerplate. For pages without a clear
+    article structure (APIs, raw data), falls back to simple HTML->text.
+    """
+    try:
+        from readability import Document
+
+        doc = Document(raw_html)
+        title = doc.title() or ""
+        content_html = doc.summary()
+
+        # Extract text from the readability-cleaned HTML
+        content = _html_to_text(content_html)
+
+        if title and title.strip():
+            content = f"Title: {title.strip()}\n\n{content}"
+
+        # Readability sometimes returns very little for non-article pages.
+        # If we got < 50 chars of useful content, fall back to full page.
+        if len(content.strip()) < 50:
+            logger.debug("Readability extracted too little from %s, falling back", url)
+            return _html_to_text(raw_html)
+
+        return content
+    except Exception:
+        logger.debug("Readability extraction failed for %s, falling back", url, exc_info=True)
+        return _html_to_text(raw_html)
 
 
 class WebFetchTool(Tool):
@@ -241,9 +269,9 @@ class WebFetchTool(Tool):
         except (LookupError, UnicodeDecodeError):
             text = raw.decode("utf-8", errors="replace")
 
-        # Extract text from HTML
+        # Extract text from HTML — try readability first, fall back to tag stripping
         if "html" in content_type.lower():
-            text = _html_to_text(text)
+            text = _extract_content(text, url)
 
         # Truncate
         if len(text) > MAX_OUTPUT_CHARS:

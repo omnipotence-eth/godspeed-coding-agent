@@ -103,9 +103,9 @@ class StockPriceTool(Tool):
         for symbol in symbols:
             try:
                 ticker_obj = yf.Ticker(symbol)
-                info = await asyncio.to_thread(lambda t=ticker_obj: t.info)  # type: ignore[arg-type]
+                info = await asyncio.to_thread(lambda t=ticker_obj: t.info)  # type: ignore[misc]
                 hist = await asyncio.to_thread(
-                    lambda t=ticker_obj, p=period: t.history(period=p)  # type: ignore[arg-type]
+                    lambda t=ticker_obj, p=period: t.history(period=p)  # type: ignore[misc]
                 )
             except Exception as exc:
                 logger.warning("yfinance failed for %s: %s", symbol, exc)

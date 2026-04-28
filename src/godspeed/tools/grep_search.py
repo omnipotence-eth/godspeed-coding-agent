@@ -164,15 +164,21 @@ class GrepSearchTool(Tool):
         logger.info("grep_search pattern=%r path=%s glob=%r", pattern, search_path, file_glob)
 
         # Collect files to search
-        if search_path.is_file():
-            files = [search_path]
-        else:
-            glob_pattern = file_glob if file_glob else "**/*"
-            files = [
-                p
-                for p in search_path.glob(glob_pattern)
-                if p.is_file() and not is_excluded(p.relative_to(search_path))
-            ]
+        try:
+            if search_path.is_file():
+                files = [search_path]
+            else:
+                glob_pattern = file_glob if file_glob else "**/*"
+
+                def _safe_filter(p: Path) -> bool:
+                    try:
+                        return p.is_file() and not is_excluded(p.relative_to(search_path))
+                    except (OSError, PermissionError, ValueError):
+                        return False
+
+                files = [p for p in search_path.glob(glob_pattern) if _safe_filter(p)]
+        except OSError:
+            files = []
 
         # Search files and collect results
         total_matches = 0

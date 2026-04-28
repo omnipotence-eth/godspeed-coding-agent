@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from pathlib import Path
 from typing import Any
@@ -87,17 +88,23 @@ class GlobSearchTool(Tool):
 
         logger.info("glob_search pattern=%r root=%s", pattern, search_root)
 
+        def _safe_filter(p: Path) -> bool:
+            """Filter a path, skipping inaccessible files."""
+            try:
+                if not p.is_file():
+                    return False
+                return not is_excluded(p.relative_to(search_root))
+            except (OSError, PermissionError, ValueError):
+                return False
+
         try:
-            matches = [
-                p
-                for p in search_root.glob(pattern)
-                if p.is_file() and not is_excluded(p.relative_to(search_root))
-            ]
+            matches = [p for p in search_root.glob(pattern) if _safe_filter(p)]
         except ValueError as exc:
             return ToolResult.failure(f"Invalid glob pattern: {exc}")
 
-        # Sort by modification time, newest first
-        matches.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+        # Sort by modification time, newest first (skip inaccessible files)
+        with contextlib.suppress(OSError):
+            matches.sort(key=lambda p: p.stat().st_mtime, reverse=True)
 
         if not matches:
             return ToolResult.success(f"No files found matching '{pattern}'")

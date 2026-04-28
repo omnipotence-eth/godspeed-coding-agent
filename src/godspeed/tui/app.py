@@ -1,4 +1,4 @@
-﻿"""Main TUI application for Godspeed ΓÇö prompt-toolkit input, Rich output."""
+"""Main TUI application for Godspeed ΓÇö prompt-toolkit input, Rich output."""
 
 from __future__ import annotations
 
@@ -36,14 +36,17 @@ from godspeed.tui.output import (
     format_thinking,
     format_tool_call,
     format_tool_result,
+    format_turn_separator,
     format_welcome,
+    is_compact_mode,
+    set_compact_mode,
 )
 from godspeed.tui.theme import (
     BOLD_PRIMARY,
     BOLD_WARNING,
     DIM,
     ERROR,
-    MUTED,
+    NEUTRAL,
     PROMPT_ICON,
     icon_prompt,
     styled,
@@ -96,6 +99,7 @@ class TUIApp:
         codebase_index: Any | None = None,
         correction_tracker: Any | None = None,
         session_memory: Any | None = None,
+        compact: bool = False,
     ) -> None:
         self._llm_client = llm_client
         self._tool_registry = tool_registry
@@ -106,6 +110,8 @@ class TUIApp:
         self._session_id = session_id
         self._correction_tracker = correction_tracker
         self._session_memory = session_memory
+
+        set_compact_mode(compact)
 
         # Pause/resume event for human-in-the-loop
         self._pause_event = asyncio.Event()
@@ -204,23 +210,11 @@ class TUIApp:
         tool_errors = 0
         tool_denied = 0
 
-        # Collect tool names and deny rules for safety disclosure
-        tool_names = [t.name for t in self._tool_registry.list_tools()]
-        deny_rules = (
-            [r.pattern for r in self._permission_engine.deny_rules]
-            if self._permission_engine is not None
-            else []
-        )
-
+        # Display welcome without tools/deny-rules clutter
         format_welcome(
             model=self._llm_client.model,
             project_dir=str(self._tool_context.cwd),
-            tools=tool_names,
-            deny_rules=deny_rules,
-            audit_enabled=self._audit_trail is not None,
             permission_mode=self._get_permission_mode(),
-            context_limit=self._conversation.max_tokens,
-            fallback_models=self._llm_client.fallback_models,
         )
 
         try:
@@ -239,12 +233,29 @@ class TUIApp:
             return
 
         while True:
+            # Compute context percentage for the prompt
+            context_pct = (
+                self._conversation.token_count / self._conversation.max_tokens * 100
+                if self._conversation.max_tokens > 0
+                else 0.0
+            )
+
+            def _prompt(_ctx: float = context_pct) -> str:
+                return session.prompt(
+                    HTML(
+                        icon_prompt(
+                            self._get_prompt_state(),
+                            turn=self._turn_count,
+                            context_pct=_ctx,
+                            compact=is_compact_mode(),
+                        )
+                    ),
+                )
+
             try:
                 user_input = await asyncio.get_event_loop().run_in_executor(
                     None,
-                    lambda: session.prompt(
-                        HTML(icon_prompt(self._get_prompt_state())),
-                    ),
+                    _prompt,
                 )
             except KeyboardInterrupt:
                 _output.console.print(f"\n  [{DIM}]Interrupted. Type /quit to exit.[/{DIM}]")
@@ -270,7 +281,7 @@ class TUIApp:
             self._turn_count += 1
             _output.console.print()
             _output.console.print(
-                f"  {styled(str(self._turn_count), MUTED)}"
+                f"  {styled(str(self._turn_count), NEUTRAL)}"
                 f" {styled(PROMPT_ICON, BOLD_PRIMARY)}"
                 f" {user_input.strip()}"
             )
@@ -297,17 +308,27 @@ class TUIApp:
             # Run agent loop with context-aware thinking indicator
             spinner = _ThinkingSpinner()
 
+            # Track per-tool-call timing: tool_name -> start_monotonic
+            _tool_timings: dict[str, float] = {}
+
             def _track_tool_call(
-                tool_name: str, args: dict[str, Any], _s: _ThinkingSpinner = spinner
+                tool_name: str,
+                args: dict[str, Any],
+                _s: _ThinkingSpinner = spinner,
+                _timings: dict[str, float] = _tool_timings,
             ) -> None:
                 nonlocal tool_calls
                 tool_calls += 1
+                _timings[tool_name] = time.monotonic()
                 _s.update(tool_name, args)
                 _s.stop()
                 format_tool_call(tool_name, args)
 
             def _track_tool_result(
-                tool_name: str, result: Any, _s: _ThinkingSpinner = spinner
+                tool_name: str,
+                result: Any,
+                _s: _ThinkingSpinner = spinner,
+                _timings: dict[str, float] = _tool_timings,
             ) -> None:
                 nonlocal tool_errors
                 is_error = getattr(result, "is_error", False)
@@ -317,8 +338,13 @@ class TUIApp:
                 output = getattr(result, "output", str(result))
                 error = getattr(result, "error", None)
                 display_text = str(error) if is_error and error else str(output)
+                # Calculate elapsed time for this tool call
+                start = _timings.pop(tool_name, None)
+                duration_ms = (time.monotonic() - start) * 1000 if start is not None else 0.0
                 _s.stop()
-                format_tool_result(tool_name, display_text, is_error=is_error)
+                format_tool_result(
+                    tool_name, display_text, is_error=is_error, duration_ms=duration_ms
+                )
 
             def _track_permission_denied(
                 tool_name: str, reason: str, _s: _ThinkingSpinner = spinner
@@ -470,6 +496,10 @@ class TUIApp:
                     preset=preset_tag,
                 )
 
+                # Visual separator before the next prompt
+                if not is_compact_mode():
+                    format_turn_separator(turn=self._turn_count)
+
         # Session summary on exit
         duration = time.monotonic() - start_time
         format_session_summary(
@@ -521,7 +551,7 @@ class _ThinkingSpinner:
         self._started = False
 
     def _make_label(self, text: str) -> str:
-        return f"[{MUTED}]{PROMPT_ICON} {text}[/{MUTED}]"
+        return f"[{NEUTRAL}]{PROMPT_ICON} {text}[/{NEUTRAL}]"
 
     def start(self) -> None:
         if self._started:
@@ -532,7 +562,7 @@ class _ThinkingSpinner:
             self._make_label("Thinking..."),
             console=_output.console,
             spinner="dots",
-            spinner_style=MUTED,
+            spinner_style=NEUTRAL,
         )
         self._status.start()
         self._started = True
@@ -634,13 +664,13 @@ class _InteractivePermissionProxy:
             if rule == pattern:
                 return
 
-        from godspeed.tui.theme import ACCENT, SUCCESS
+        from godspeed.tui.theme import NEUTRAL, SUCCESS
 
         _output.console.print(
-            f"\n  [{ACCENT}]You've approved [{SUCCESS}]{pattern}"
-            f"[/{SUCCESS}] multiple times.[/{ACCENT}]"
+            f"\n  [{NEUTRAL}]You've approved [{SUCCESS}]{pattern}"
+            f"[/{SUCCESS}] multiple times.[/{NEUTRAL}]"
         )
-        _output.console.print(f"  [{ACCENT}]Add to permanent allow rules? (y/n)[/{ACCENT}]")
+        _output.console.print(f"  [{NEUTRAL}]Add to permanent allow rules? (y/n)[/{NEUTRAL}]")
         try:
             answer = _output.console.input(f"[{BOLD_WARNING}]  > [/{BOLD_WARNING}]").strip().lower()
         except (KeyboardInterrupt, EOFError):

@@ -25,7 +25,7 @@ from godspeed.tui.theme import (
     CTX_OK,
     CTX_WARN,
     DIM,
-    MUTED,
+    NEUTRAL,
     PERM_ALLOW,
     PERM_ASK,
     PERM_DENY,
@@ -159,7 +159,7 @@ class Commands:
 
     def _cmd_help(self, _args: str = "") -> CommandResult:
         """Show available commands — grouped by category."""
-        rule = styled(RULE_CHAR * 40, MUTED)
+        rule = styled(RULE_CHAR * 40, NEUTRAL)
         _output.console.print()
         _output.console.print(f"  {styled('Commands', BOLD_PRIMARY)}")
         _output.console.print(f"  {rule}")
@@ -217,7 +217,7 @@ class Commands:
 
         for group_name, cmds in groups:
             _output.console.print()
-            _output.console.print(f"  {styled(group_name, MUTED)}")
+            _output.console.print(f"  {styled(group_name, NEUTRAL)}")
             for cmd_name, desc in cmds:
                 _output.console.print(
                     f"    {styled(cmd_name, BOLD_PRIMARY):28s} {styled(desc, DIM)}"
@@ -240,7 +240,7 @@ class Commands:
                 old_model = self._llm_client.model
                 self._llm_client.model = resolved
                 format_success(
-                    f"Model switched: [{MUTED}]{old_model}[/{MUTED}]"
+                    f"Model switched: [{NEUTRAL}]{old_model}[/{NEUTRAL}]"
                     f" -> [{BOLD_PRIMARY}]{resolved}[/{BOLD_PRIMARY}]"
                     f"  [{DIM}](preset: {arg.lower()})[/{DIM}]"
                 )
@@ -259,7 +259,7 @@ class Commands:
                 self._llm_client.model = arg
                 new_model = self._llm_client.model
                 format_success(
-                    f"Model switched: [{MUTED}]{old_model}[/{MUTED}]"
+                    f"Model switched: [{NEUTRAL}]{old_model}[/{NEUTRAL}]"
                     f" -> [{BOLD_PRIMARY}]{new_model}[/{BOLD_PRIMARY}]"
                 )
 
@@ -346,7 +346,7 @@ class Commands:
 
         from rich.table import Table
 
-        table = Table(show_header=False, border_style=MUTED, expand=False)
+        table = Table(show_header=False, border_style=NEUTRAL, expand=False)
         table.add_column("Key", style=TABLE_KEY)
         table.add_column("Value", style=TABLE_VALUE)
         table.add_row("Session", self._session_id[:12] + "...")
@@ -872,7 +872,7 @@ class Commands:
 
             table = Table(title="Checkpoints", border_style=TABLE_BORDER, expand=False)
             table.add_column("Name", style=BOLD_PRIMARY)
-            table.add_column("Time", style=MUTED)
+            table.add_column("Time", style=NEUTRAL)
             table.add_column("Model")
             table.add_column("Tokens", justify="right")
             table.add_column("Messages", justify="right")
@@ -1013,7 +1013,7 @@ class Commands:
             elif t.status == "in_progress":
                 status_style = f"[{WARNING}]{t.status}[/{WARNING}]"
             else:
-                status_style = f"[{MUTED}]{t.status}[/{MUTED}]"
+                status_style = f"[{NEUTRAL}]{t.status}[/{NEUTRAL}]"
             table.add_row(str(t.id), t.title, status_style)
 
         _output.console.print(table)
@@ -1373,7 +1373,7 @@ Describe what this skill does here.
 
         table = Table(title="Model Presets", border_style=TABLE_BORDER, expand=False)
         table.add_column("Preset", style=BOLD_PRIMARY)
-        table.add_column("Model", style=MUTED)
+        table.add_column("Model", style=NEUTRAL)
         table.add_column("Description")
 
         for name, model in presets.items():

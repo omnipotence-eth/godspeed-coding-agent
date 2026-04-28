@@ -1171,7 +1171,7 @@ def models() -> None:
     from rich.table import Table
 
     from godspeed.config import GodspeedSettings
-    from godspeed.tui.theme import BOLD_PRIMARY, DIM, MUTED, SUCCESS, TABLE_BORDER
+    from godspeed.tui.theme import BOLD_PRIMARY, DIM, NEUTRAL, SUCCESS, TABLE_BORDER
 
     c = RichConsole()
 
@@ -1181,7 +1181,7 @@ def models() -> None:
     c.print(f"  [{DIM}]Use --preset or /model <preset> to switch.[/{DIM}]\n")
     preset_table = Table(border_style=TABLE_BORDER, expand=False)
     preset_table.add_column("Preset", style=BOLD_PRIMARY)
-    preset_table.add_column("Model", style=MUTED)
+    preset_table.add_column("Model", style=NEUTRAL)
     preset_table.add_column("Description")
     preset_descriptions = {
         "fast": "Local, low VRAM, fast responses (5.1GB)",
@@ -1198,9 +1198,9 @@ def models() -> None:
     c.print()
     table = Table(title="Popular Models", border_style=TABLE_BORDER, expand=False)
     table.add_column("Model", style=BOLD_PRIMARY)
-    table.add_column("Provider", style=MUTED)
+    table.add_column("Provider", style=NEUTRAL)
     table.add_column("Cost")
-    table.add_column("API Key Env Var", style=MUTED)
+    table.add_column("API Key Env Var", style=NEUTRAL)
 
     free = f"[{SUCCESS}]Free[/{SUCCESS}]"
     table.add_row("ollama/rnj-1:8b", "Ollama", free, "None (local, 5.1GB)")

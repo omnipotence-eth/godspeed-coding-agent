@@ -782,40 +782,19 @@ def init() -> None:
 
     from rich.console import Console as RichConsole
 
-    from godspeed.tui.theme import ACCENT, BOLD_PRIMARY, DIM, SUCCESS
+    from godspeed.tui.theme import BOLD_PRIMARY, DIM, PRIMARY, SUCCESS
 
     c = RichConsole()
     global_dir = DEFAULT_GLOBAL_DIR
     settings_path = global_dir / "settings.yaml"
-    audit_dir = global_dir / "audit"
-
-    global_dir.mkdir(parents=True, exist_ok=True)
-    audit_dir.mkdir(parents=True, exist_ok=True)
-
-    if settings_path.exists():
-        c.print(f"  [{DIM}]Settings already exist:[/{DIM}] {settings_path}")
-    else:
-        # Copy the example settings
-        example = Path(__file__).parent.parent.parent / "settings.yaml.example"
-        if example.exists():
-            settings_path.write_text(example.read_text(encoding="utf-8"), encoding="utf-8")
-        else:
-            # Inline minimal config if example not bundled
-            settings_path.write_text(
-                "# Godspeed settings — see https://github.com/omnipotence-eth/godspeed-coding-agent\n"
-                "model: ollama/qwen3:4b\n"
-                "fallback_models: []\n",
-                encoding="utf-8",
-            )
-        c.print(f"  [{SUCCESS}]Created settings:[/{SUCCESS}] {settings_path}")
-
-    c.print(f"  [{SUCCESS}]Audit directory:[/{SUCCESS}] {audit_dir}")
+    c.print(f"\n  [{BOLD_PRIMARY}]Welcome to Godspeed![/{BOLD_PRIMARY}]")
+    c.print(f"  [{DIM}]The security-first coding agent[/{DIM}]")
     c.print()
-    c.print(f"  [{BOLD_PRIMARY}]Next steps:[/{BOLD_PRIMARY}]")
-    c.print(f"    1. Install a local model: [{ACCENT}]ollama pull qwen3:4b[/{ACCENT}]")
-    c.print(f"    2. Or set an API key:     [{ACCENT}]export ANTHROPIC_API_KEY=sk-...[/{ACCENT}]")
-    c.print(f"    3. Edit your settings:    [{ACCENT}]{settings_path}[/{ACCENT}]")
-    c.print(f"    4. Launch Godspeed:        [{ACCENT}]godspeed[/{ACCENT}]")
+    c.print(f"  [{DIM}]First-time setup:[/{DIM}]")
+    c.print(f"    1. Install a local model: [{PRIMARY}]ollama pull qwen3:4b[/{PRIMARY}]")
+    c.print(f"    2. Or set an API key:     [{PRIMARY}]export ANTHROPIC_API_KEY=sk-...[/{PRIMARY}]")
+    c.print(f"    3. Edit your settings:    [{PRIMARY}]{settings_path}[/{PRIMARY}]")
+    c.print(f"    4. Launch Godspeed:        [{PRIMARY}]godspeed[/{PRIMARY}]")
 
 
 @main.command("run")

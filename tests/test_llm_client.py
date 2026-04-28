@@ -144,7 +144,11 @@ class TestLLMClientHelpers:
         assert "All models failed" in str(err)
 
     def test_apply_prompt_caching_claude(self) -> None:
-        messages = [{"role": "system", "content": "You are helpful."}]
+        messages = [
+            {"role": "system", "content": "You are helpful."},
+            {"role": "user", "content": "Query"},
+            {"role": "assistant", "content": "Reply"},
+        ]
         result = LLMClient._apply_prompt_caching("claude-sonnet", messages)
         assert result[0]["content"][0]["cache_control"] == {"type": "ephemeral"}
 

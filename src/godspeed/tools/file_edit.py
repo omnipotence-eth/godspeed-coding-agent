@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import ast
+import contextlib
 import json
 import logging
+import os
+import tempfile
 from difflib import SequenceMatcher
 from typing import Any
 
@@ -229,7 +232,16 @@ class FileEditTool(Tool):
                     f"Edit rejected by reviewer for {file_path_str} — no changes written."
                 )
 
-        resolved.write_text(new_content, encoding="utf-8")
+        # Atomic write
+        fd, tmp_path = tempfile.mkstemp(suffix=resolved.suffix, dir=str(resolved.parent))
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(new_content)
+            os.replace(tmp_path, str(resolved))
+        except Exception:
+            with contextlib.suppress(OSError):
+                os.unlink(tmp_path)
+            raise
         logger.info(
             "Edited file path=%s replacements=%d",
             file_path_str,

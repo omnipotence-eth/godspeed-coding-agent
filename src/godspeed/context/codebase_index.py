@@ -274,24 +274,18 @@ class CodebaseIndex:
         return False
 
     def _iter_files(self, excludes: set[str]) -> list[Path]:
-        """Iterate indexable files, respecting exclusions."""
+        """Iterate indexable files, skipping excluded directories eagerly."""
         files = []
-        for path in self._project_dir.rglob("*"):
-            if not path.is_file():
+        dirs_to_visit = [self._project_dir]
+        while dirs_to_visit:
+            current = dirs_to_visit.pop()
+            try:
+                for entry in current.iterdir():
+                    if entry.is_dir():
+                        if entry.name not in excludes:
+                            dirs_to_visit.append(entry)
+                    elif entry.is_file() and entry.suffix in INDEXABLE_EXTENSIONS:
+                        files.append(entry)
+            except (PermissionError, OSError):
                 continue
-            if path.suffix not in INDEXABLE_EXTENSIONS:
-                continue
-
-            # Check exclusions
-            parts = path.relative_to(self._project_dir).parts
-            skip = False
-            for part in parts:
-                if part in excludes:
-                    skip = True
-                    break
-            if skip:
-                continue
-
-            files.append(path)
-
         return sorted(files)

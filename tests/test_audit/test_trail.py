@@ -242,6 +242,9 @@ class TestAuditFailClosed:
         prev_count = trail.record_count
         prev_hash = first.record_hash
 
+        # Close handle so next record() will re-open and hit the mock
+        trail.close()
+
         with (
             patch("builtins.open", side_effect=OSError("disk full")),
             pytest.raises(AuditWriteError),
@@ -257,6 +260,9 @@ class TestAuditFailClosed:
     def test_chain_verifies_after_recovery(self, trail: AuditTrail) -> None:
         """Full chain stays verifiable across a failed + recovered write."""
         trail.record(AuditEventType.SESSION_START)
+
+        # Close handle so next record() will re-open and hit the mock
+        trail.close()
 
         with (
             patch("builtins.open", side_effect=OSError("transient")),

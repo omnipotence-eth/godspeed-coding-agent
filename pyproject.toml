@@ -58,6 +58,8 @@ dependencies = [
     # python-dotenv==1.0.1 strictly, making a pin-up unsatisfiable. CI's
     # pip-audit call suppresses this one CVE via --ignore-vuln below. We'll
     # remove the suppression when litellm relaxes its bound.
+    "yfinance>=1.3.0",
+    "readability-lxml>=0.8.4.1",
 ]
 
 [project.optional-dependencies]

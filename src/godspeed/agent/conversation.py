@@ -34,8 +34,13 @@ class Conversation:
         self._system_message: dict[str, Any] = {"role": "system", "content": system_prompt}
         self._messages: list[dict[str, Any]] = []
         self._logger = conversation_logger
+        self._token_count_cache: int | None = None
         if self._logger is not None:
             self._logger.log_system(system_prompt)
+
+    def _invalidate_token_cache(self) -> None:
+        """Mark the token count cache as dirty."""
+        self._token_count_cache = None
 
     @property
     def messages(self) -> list[dict[str, Any]]:
@@ -44,8 +49,10 @@ class Conversation:
 
     @property
     def token_count(self) -> int:
-        """Estimate current token usage."""
-        return count_message_tokens(self.messages, self.model)
+        """Estimate current token usage (cached, invalidated on mutation)."""
+        if self._token_count_cache is None:
+            self._token_count_cache = count_message_tokens(self.messages, self.model)
+        return self._token_count_cache
 
     @property
     def is_near_limit(self) -> bool:
@@ -60,6 +67,7 @@ class Conversation:
                 (e.g. text + image blocks in OpenAI multimodal format).
         """
         self._messages.append({"role": "user", "content": content})
+        self._invalidate_token_cache()
         if self._logger is not None:
             self._logger.log_user(content)
 
@@ -73,8 +81,6 @@ class Conversation:
         if content:
             msg["content"] = content
         if tool_calls:
-            # Ensure each tool call has 'type' — required by some providers
-            # (e.g. LiteLLM's ollama_chat transformation)
             normalized = []
             for tc in tool_calls:
                 entry = dict(tc)
@@ -82,6 +88,7 @@ class Conversation:
                 normalized.append(entry)
             msg["tool_calls"] = normalized
         self._messages.append(msg)
+        self._invalidate_token_cache()
         if self._logger is not None:
             self._logger.log_assistant(
                 content=content,
@@ -89,7 +96,9 @@ class Conversation:
             )
 
     def add_tool_result(self, tool_call_id: str, content: str) -> None:
-        """Add a tool result message."""
+        """Add a tool result message, truncating excessive output."""
+        if len(content) > 50000:
+            content = content[:50000] + f"\n... (truncated {len(content) - 50000:,} chars)"
         self._messages.append(
             {
                 "role": "tool",
@@ -97,10 +106,11 @@ class Conversation:
                 "content": content,
             }
         )
+        self._invalidate_token_cache()
         if self._logger is not None:
             self._logger.log_tool_result(
                 tool_call_id=tool_call_id,
-                tool_name="",  # caller can enrich via direct logger access
+                tool_name="",
                 content=content,
             )
 
@@ -132,6 +142,7 @@ class Conversation:
                 ),
             }
         ]
+        self._invalidate_token_cache()
         logger.info("Compacted to tokens=%d", self.token_count)
 
     def get_compaction_context(self) -> str:
@@ -151,6 +162,7 @@ class Conversation:
     def clear(self) -> None:
         """Clear all messages (keeps system prompt)."""
         self._messages.clear()
+        self._invalidate_token_cache()
 
 
 def build_image_content_block(image_url: str) -> dict[str, Any]:

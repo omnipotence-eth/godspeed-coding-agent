@@ -7,7 +7,7 @@ from typing import Any
 
 from godspeed.skills.loader import SkillDefinition
 from godspeed.tui import output as _output
-from godspeed.tui.theme import BOLD_PRIMARY, DIM, MUTED, TABLE_BORDER
+from godspeed.tui.theme import BOLD_PRIMARY, DIM, NEUTRAL, TABLE_BORDER
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +54,7 @@ def register_skill_commands(
     # Register /skills listing command
     def _cmd_skills(_args: str = "") -> CommandResult:
         if not skills:
-            _output.console.print(f"  [{MUTED}]No skills installed.[/{MUTED}]")
+            _output.console.print(f"  [{NEUTRAL}]No skills installed.[/{NEUTRAL}]")
             _output.console.print(
                 f"  [{DIM}]Add .md files to ~/.godspeed/skills/ or .godspeed/skills/[/{DIM}]"
             )
@@ -65,7 +65,7 @@ def register_skill_commands(
         table = Table(title="Skills", border_style=TABLE_BORDER, expand=False)
         table.add_column("Trigger", style=BOLD_PRIMARY)
         table.add_column("Name")
-        table.add_column("Description", style=MUTED)
+        table.add_column("Description", style=NEUTRAL)
 
         for s in sorted(skills, key=lambda x: x.trigger):
             table.add_row(f"/{s.trigger}", s.name, s.description)

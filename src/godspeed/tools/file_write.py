@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
+import os
+import tempfile
 from typing import Any
 
 from godspeed.tools.base import RiskLevel, Tool, ToolContext, ToolResult
@@ -105,8 +108,16 @@ class FileWriteTool(Tool):
             # Create parent directories
             resolved.parent.mkdir(parents=True, exist_ok=True)
 
-            # Write the file
-            resolved.write_text(content, encoding="utf-8")
+            # Atomic write: write to temp file, then replace atomically
+            fd, tmp_path = tempfile.mkstemp(suffix=resolved.suffix, dir=str(resolved.parent))
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as f:
+                    f.write(content)
+                os.replace(tmp_path, str(resolved))
+            except Exception:
+                with contextlib.suppress(OSError):
+                    os.unlink(tmp_path)
+                raise
 
             logger.info("Wrote file path=%s size=%d", resolved, len(content))
             return ToolResult.success(f"Wrote {len(content)} bytes to {file_path_str}")

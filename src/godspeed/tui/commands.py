@@ -25,7 +25,7 @@ from godspeed.tui.theme import (
     CTX_OK,
     CTX_WARN,
     DIM,
-    MUTED,
+    NEUTRAL,
     PERM_ALLOW,
     PERM_ASK,
     PERM_DENY,
@@ -127,6 +127,8 @@ class Commands:
         self._handlers["/models"] = self._cmd_models
         self._handlers["/correct"] = self._cmd_correct
         self._handlers["/preferences"] = self._cmd_preferences
+        self._handlers["/tools"] = self._cmd_tools
+        self._handlers["/diff"] = self._cmd_diff
 
     # External references — set after Commands init
     _task_store: Any | None = None
@@ -159,7 +161,7 @@ class Commands:
 
     def _cmd_help(self, _args: str = "") -> CommandResult:
         """Show available commands — grouped by category."""
-        rule = styled(RULE_CHAR * 40, MUTED)
+        rule = styled(RULE_CHAR * 40, NEUTRAL)
         _output.console.print()
         _output.console.print(f"  {styled('Commands', BOLD_PRIMARY)}")
         _output.console.print(f"  {rule}")
@@ -176,6 +178,8 @@ class Commands:
                     ("/export [name]", "Export conversation as markdown"),
                     ("/correct <msg>", "Record a correction for future sessions"),
                     ("/preferences", "Show stored user preferences"),
+                    ("/tools", "List available tools with descriptions"),
+                    ("/diff", "Show git diff of all session changes"),
                     ("/quit, /exit", "Exit Godspeed"),
                 ],
             ),
@@ -217,7 +221,7 @@ class Commands:
 
         for group_name, cmds in groups:
             _output.console.print()
-            _output.console.print(f"  {styled(group_name, MUTED)}")
+            _output.console.print(f"  {styled(group_name, NEUTRAL)}")
             for cmd_name, desc in cmds:
                 _output.console.print(
                     f"    {styled(cmd_name, BOLD_PRIMARY):28s} {styled(desc, DIM)}"
@@ -240,7 +244,7 @@ class Commands:
                 old_model = self._llm_client.model
                 self._llm_client.model = resolved
                 format_success(
-                    f"Model switched: [{MUTED}]{old_model}[/{MUTED}]"
+                    f"Model switched: [{NEUTRAL}]{old_model}[/{NEUTRAL}]"
                     f" -> [{BOLD_PRIMARY}]{resolved}[/{BOLD_PRIMARY}]"
                     f"  [{DIM}](preset: {arg.lower()})[/{DIM}]"
                 )
@@ -259,7 +263,7 @@ class Commands:
                 self._llm_client.model = arg
                 new_model = self._llm_client.model
                 format_success(
-                    f"Model switched: [{MUTED}]{old_model}[/{MUTED}]"
+                    f"Model switched: [{NEUTRAL}]{old_model}[/{NEUTRAL}]"
                     f" -> [{BOLD_PRIMARY}]{new_model}[/{BOLD_PRIMARY}]"
                 )
 
@@ -346,7 +350,7 @@ class Commands:
 
         from rich.table import Table
 
-        table = Table(show_header=False, border_style=MUTED, expand=False)
+        table = Table(show_header=False, border_style=NEUTRAL, expand=False)
         table.add_column("Key", style=TABLE_KEY)
         table.add_column("Value", style=TABLE_VALUE)
         table.add_row("Session", self._session_id[:12] + "...")
@@ -872,7 +876,7 @@ class Commands:
 
             table = Table(title="Checkpoints", border_style=TABLE_BORDER, expand=False)
             table.add_column("Name", style=BOLD_PRIMARY)
-            table.add_column("Time", style=MUTED)
+            table.add_column("Time", style=NEUTRAL)
             table.add_column("Model")
             table.add_column("Tokens", justify="right")
             table.add_column("Messages", justify="right")
@@ -1013,7 +1017,7 @@ class Commands:
             elif t.status == "in_progress":
                 status_style = f"[{WARNING}]{t.status}[/{WARNING}]"
             else:
-                status_style = f"[{MUTED}]{t.status}[/{MUTED}]"
+                status_style = f"[{NEUTRAL}]{t.status}[/{NEUTRAL}]"
             table.add_row(str(t.id), t.title, status_style)
 
         _output.console.print(table)
@@ -1373,7 +1377,7 @@ Describe what this skill does here.
 
         table = Table(title="Model Presets", border_style=TABLE_BORDER, expand=False)
         table.add_column("Preset", style=BOLD_PRIMARY)
-        table.add_column("Model", style=MUTED)
+        table.add_column("Model", style=NEUTRAL)
         table.add_column("Description")
 
         for name, model in presets.items():
@@ -1452,5 +1456,84 @@ Describe what this skill does here.
             for c in corrections:
                 ctable.add_row(str(c["id"]), c["corrected"][:60])
             _output.console.print(ctable)
+
+        return CommandResult(handled=True)
+
+    def _cmd_tools(self, _args: str = "") -> CommandResult:
+        """List available tools with risk levels and descriptions."""
+        from rich.table import Table
+
+        if self._tool_registry is None:
+            format_error("Tool registry not available.")
+            return CommandResult(handled=True)
+
+        tools = self._tool_registry.list_tools()
+        table = Table(title="Available Tools", border_style=TABLE_BORDER, expand=False)
+        table.add_column("Tool", style=BOLD_PRIMARY)
+        table.add_column("Risk", style=NEUTRAL)
+        table.add_column("Description", style=DIM)
+
+        for tool in sorted(tools, key=lambda t: t.name):
+            risk = (
+                str(tool.risk_level.value)
+                if hasattr(tool.risk_level, "value")
+                else str(tool.risk_level)
+            )
+            desc = tool.description.split("\n")[0][:80]
+            table.add_row(tool.name, risk, desc)
+
+        _output.console.print(table)
+        _output.console.print(f"  [{DIM}]{len(tools)} tools available[/{DIM}]")
+        return CommandResult(handled=True)
+
+    def _cmd_diff(self, _args: str = "") -> CommandResult:
+        """Show git diff of all changes in the current session."""
+        try:
+            result = subprocess.run(
+                ["git", "diff", "--stat"],
+                capture_output=True,
+                text=True,
+                cwd=str(self._cwd),
+                timeout=10,
+            )
+            if result.returncode != 0:
+                format_info("No changes detected or not a git repository.")
+                return CommandResult(handled=True)
+
+            output = result.stdout.strip()
+            if not output:
+                format_info("No changes detected in working tree.")
+                return CommandResult(handled=True)
+
+            _output.console.print()
+            _output.console.print(f"  {styled('Session Changes', BOLD_PRIMARY)}")
+            _output.console.print(styled(f"  {'-' * 40}", NEUTRAL))
+
+            lines = output.splitlines()
+            for line in lines[:20]:
+                _output.console.print(f"  {styled(line, DIM)}")
+            if len(lines) > 20:
+                _output.console.print(f"  [{DIM}]... ({len(lines) - 20} more lines)[/{DIM}]")
+
+            _output.console.print()
+
+            # Detailed diff
+            result_detailed = subprocess.run(
+                ["git", "diff", "--unified=3"],
+                capture_output=True,
+                text=True,
+                cwd=str(self._cwd),
+                timeout=10,
+            )
+            if result_detailed.stdout.strip():
+                from rich.syntax import Syntax
+
+                diff_text = result_detailed.stdout.strip()[:4000]
+                syntax = Syntax(diff_text, "diff", theme="monokai", word_wrap=True)
+                _output.console.print(syntax)
+                _output.console.print()
+
+        except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as exc:
+            format_error(f"Could not run git diff: {exc}")
 
         return CommandResult(handled=True)

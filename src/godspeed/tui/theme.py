@@ -1,68 +1,97 @@
-"""Godspeed visual identity — Ultra-clean minimal.
+"""Godspeed visual identity — Earth-tone palette.
 
 Design philosophy:
-- Minimal: no distractions, pure information
-- Fast: load instantly, render lean
-- Text-first: characters over emoji when possible
-- Professional: clean lines, no clutter
+- Earth tones: warm browns, sage greens, terracotta, ochre
+- Natural, grounded aesthetic — less clinical than cool blues
+- Semantic colors drawn from nature (clay, leaf, amber, bark)
 """
 
 from __future__ import annotations
 
 # =============================================================================
-# Core palette — Clean monochrome (terminal-native)
+# Core palette — earth tones
 # =============================================================================
 
-PRIMARY = "cyan"  # Cyan — clean, visible
-SECONDARY = "grey69"  # Neutral grey
-SUCCESS = "green"
-ERROR = "red"
-WARNING = "yellow"
-MUTED = "grey50"  # Dimmed text
-ACCENT = "cyan"
+# Primary accent — warm terracotta clay
+# Used for: brand name, active tool names, command names, headers,
+#           current model, important values, plan mode.
+PRIMARY = "#c17c5b"
 
-BRAND_GOLD = "yellow1"
-BRAND_GOLD_BOLD = "bold yellow1"
+# Neutral — warm brown-grey
+# Used for: structural labels (Model, Project, Mode), borders,
+#           separators, metadata, inactive elements.
+NEUTRAL = "#8b7355"
+
+# Semantic states — natural earth tones
+SUCCESS = "#87a96b"  # Sage green — ok, enabled, normal
+ERROR = "#a45a52"  # Terracotta red — errors, denied, critical
+WARNING = "#d4a817"  # Ochre amber — warnings, strict, ask
+
+# Terminal-native dim for content text
+DIM = "dim"
 
 # =============================================================================
-# Semantic styles
+# ANSI equivalents — prompt-toolkit HTML (hex unsupported there)
+# =============================================================================
+
+ANSI_PRIMARY = "ansibrown"
+ANSI_NEUTRAL = "ansibrightblack"
+ANSI_SUCCESS = "ansigreen"
+ANSI_ERROR = "ansired"
+ANSI_WARNING = "ansiyellow"
+ANSI_BRIGHT_PRIMARY = "ansiyellow"
+
+# =============================================================================
+# Semantic styles — bold variants for emphasis
 # =============================================================================
 
 BOLD_PRIMARY = f"bold {PRIMARY}"
-BOLD_SECONDARY = f"bold {SECONDARY}"
 BOLD_SUCCESS = f"bold {SUCCESS}"
 BOLD_ERROR = f"bold {ERROR}"
 BOLD_WARNING = f"bold {WARNING}"
-DIM = "dim"
 
-# Panel borders
-BORDER_BRAND = "yellow"
-BORDER_TOOL = "grey69"
-BORDER_INFO = "grey69"
-BORDER_SUCCESS = "green"
-BORDER_ERROR = "red"
-BORDER_WARNING = "yellow"
+# =============================================================================
+# Panel borders — unified
+# =============================================================================
 
+BORDER_BRAND = PRIMARY
+BORDER_TOOL = NEUTRAL
+BORDER_INFO = NEUTRAL
+BORDER_SUCCESS = SUCCESS
+BORDER_ERROR = ERROR
+BORDER_WARNING = WARNING
+
+# =============================================================================
 # Table styles
-TABLE_HEADER = "bold cyan"
-TABLE_BORDER = "grey46"
-TABLE_KEY = "grey35"
+# =============================================================================
+
+TABLE_HEADER = f"bold {NEUTRAL}"
+TABLE_BORDER = NEUTRAL
+TABLE_KEY = NEUTRAL
 TABLE_VALUE = "bold"
 
-PERM_ALLOW = "green"
-PERM_DENY = "red"
-PERM_ASK = "yellow"
-PERM_SESSION = "cyan"
+# =============================================================================
+# Permission colors — semantic mapping
+# =============================================================================
 
-CTX_OK = "green"
-CTX_WARN = "yellow"
-CTX_CRITICAL = "red"
+PERM_ALLOW = SUCCESS
+PERM_DENY = ERROR
+PERM_ASK = WARNING
+PERM_SESSION = PRIMARY
+
+# =============================================================================
+# Context-window usage colors — traffic-light with earth tones
+# =============================================================================
+
+CTX_OK = SUCCESS
+CTX_WARN = WARNING
+CTX_CRITICAL = ERROR
 
 # =============================================================================
 # Branded strings
 # =============================================================================
 
-PROMPT_ICON = ">"  # Simple greater-than
+PROMPT_ICON = ">"
 PROMPT_TEXT = "godspeed"
 BRAND_TAGLINE = "Build fast"
 
@@ -73,19 +102,19 @@ SYNTAX_THEME = "monokai"
 # Ultra-clean markers — Text-only, no emoji
 # =============================================================================
 
-MARKER_SUCCESS = "ok"  # Instead of ✓
-MARKER_ERROR = "x"  # Instead of ✗
-MARKER_WARNING = "!"  # Instead of ⚠
-MARKER_TOOL = ">"  # Instead of ▸
-MARKER_INFO = "i"  # Instead of ●
-MARKER_PARALLEL = "||"  # Instead of ⚡
-SEPARATOR_DOT = "|"  # Instead of ·
+MARKER_SUCCESS = "ok"
+MARKER_ERROR = "x"
+MARKER_WARNING = "!"
+MARKER_TOOL = ">"
+MARKER_INFO = "i"
+MARKER_PARALLEL = "||"
+SEPARATOR_DOT = "|"
 
 # Structural
 DECORATOR = ""
-RULE_CHAR = "-"  # Minimal rule
+RULE_CHAR = "-"
 GUTTER = ""
-GUTTER_STYLE = MUTED
+GUTTER_STYLE = NEUTRAL
 
 # =============================================================================
 # Markup helpers
@@ -101,22 +130,45 @@ def brand(version: str = "") -> str:
     """Return the branded product name with optional version."""
     name = styled("Godspeed", BOLD_PRIMARY)
     if version:
-        return f"{name} {styled(f'v{version}', MUTED)}"
+        return f"{name} {styled(f'v{version}', NEUTRAL)}"
     return name
 
 
-def icon_prompt(state: str = "") -> str:
+def icon_prompt(
+    state: str = "",
+    turn: int = 0,
+    context_pct: float = 0.0,
+    compact: bool = False,
+) -> str:
     """Return the branded prompt string for prompt-toolkit (HTML format).
 
     State can be: '' (normal), 'plan' (plan mode), 'paused'.
+    When *turn* > 0 and *compact* is False, the prompt includes the turn
+    number and context-window usage percentage.
     """
-    color = "ansigold" if not state else "ansiyellow"
+    color = ANSI_PRIMARY
     icon = PROMPT_ICON
     suffix = ""
     if state == "plan":
         suffix = " [plan]"
-        color = "ansicyan"
+        color = ANSI_BRIGHT_PRIMARY
     elif state == "paused":
         suffix = " [paused]"
-        color = "ansiyellow"
-    return f"<b><{color}>{icon} {PROMPT_TEXT}{suffix}></{color}></b> "
+        color = ANSI_WARNING
+
+    prompt = f"<b><{color}>{icon} {PROMPT_TEXT}{suffix}></{color}></b>"
+
+    if not compact and turn > 0:
+        extras: list[str] = []
+        extras.append(f"turn {turn}")
+        if context_pct > 0:
+            if context_pct >= 90:
+                ctx_color = ANSI_ERROR
+            elif context_pct >= 70:
+                ctx_color = ANSI_WARNING
+            else:
+                ctx_color = ANSI_SUCCESS
+            extras.append(f"ctx <{ctx_color}>{context_pct:.0f}%</{ctx_color}>")
+        prompt = f'<span color="{ANSI_NEUTRAL}">{" | ".join(extras)}</span> {prompt}'
+
+    return prompt + " "

@@ -183,21 +183,16 @@ class TestFormatToolResult:
 
 
 class TestFormatWelcome:
-    """Test welcome banner — clean and minimal."""
+    """Test welcome banner — minimal two-line format."""
 
-    def test_shows_model_and_project(self) -> None:
+    def test_shows_model(self) -> None:
         output = _capture(format_welcome, "claude-sonnet", "/home/user/project")
-        assert "claude-sonnet" in output
-        assert "/home/user/project" in output
         assert "Godspeed" in output
+        assert "claude-sonnet" in output
 
-    def test_shows_audit_status(self) -> None:
-        output = _capture(format_welcome, "model", "/home/user", audit_enabled=True)
-        assert "enabled" in output
-
-    def test_shows_help_hint(self) -> None:
+    def test_shows_version(self) -> None:
         output = _capture(format_welcome, "model", "/home/user")
-        assert "/help" in output
+        assert "v" in output  # version string
 
     def test_no_tools_list_by_default(self) -> None:
         """Welcome should NOT dump the full tools list."""
@@ -229,7 +224,8 @@ class TestFormatSessionSummary:
 
     def test_shows_free_for_zero_cost(self) -> None:
         output = _capture(format_session_summary, 60.0, 1000, 500, cost=0.0)
-        assert "free" in output
+        # No cost line shown when cost is zero
+        assert "$" not in output
 
     def test_shows_tool_summary(self) -> None:
         output = _capture(
@@ -296,25 +292,28 @@ class TestStatusFormatters:
 
 
 class TestDecorativeElements:
-    """Test Crush-inspired decorative branding elements."""
+    """Test minimal output has no decorative elements."""
 
-    def test_welcome_has_decorators(self) -> None:
+    def test_welcome_is_minimal(self) -> None:
         output = _capture(format_welcome, "model", "/home/user")
         assert "Godspeed" in output
-        assert "Build fast" in output
+        # No tagline, no rule, no brand decorator
+        assert "Build fast" not in output
 
-    def test_welcome_has_rule(self) -> None:
+    def test_welcome_no_rule(self) -> None:
         output = _capture(format_welcome, "model", "/home/user")
-        assert "-" in output  # rule character
+        # No horizontal rule in minimal design
+        assert "-" not in output  # no rule characters
 
-    def test_session_summary_has_rule(self) -> None:
+    def test_session_summary_no_rule(self) -> None:
         output = _capture(format_session_summary, 60.0, 1000, 500)
-        assert "-" in output  # rule character
+        # No horizontal rule in minimal design
+        assert "-" not in output
 
-    def test_session_summary_has_decorated_signoff(self) -> None:
+    def test_session_summary_signoff_minimal(self) -> None:
         output = _capture(format_session_summary, 60.0, 1000, 500)
         assert "Godspeed" in output
-        assert "-" in output
+        # No decorated signoff
 
     def test_tool_call_shell_has_gutter(self) -> None:
         output = _capture(format_tool_call, "shell", {"command": "ls -la"})
@@ -446,11 +445,11 @@ class TestFormatStatusHud:
             model="nvidia_nim/moonshotai/kimi-k2.5",
             turns=3,
         )
-        assert "1,234 in" in output
-        assert "567 out" in output
-        assert "1,801" in output  # total
+        assert "1,801" in output  # total tokens
+        assert "tokens" in output
         assert "$0.0024" in output
-        assert "3 turns" in output
+        assert "kimi-k2.5" in output  # short name
+        assert "turn 3" in output
 
     def test_model_short_name(self) -> None:
         """Provider prefix is stripped for readability."""
@@ -485,7 +484,7 @@ class TestFormatStatusHud:
             model="m",
             turns=1,
         )
-        assert "1 turn " in output or output.rstrip().endswith("1 turn")
+        assert "turn 1" in output
 
     def test_budget_shown_when_set(self) -> None:
         output = _capture(
@@ -511,7 +510,7 @@ class TestFormatStatusHud:
         )
         assert "/" not in output.split("$0.0500")[1].split("\n")[0]
 
-    def test_uses_dot_separator(self) -> None:
+    def test_uses_pipe_separator(self) -> None:
         output = _capture(
             format_status_hud,
             input_tokens=0,
@@ -520,4 +519,63 @@ class TestFormatStatusHud:
             model="m",
             turns=0,
         )
-        assert output.count("|") >= 4  # 4+ | separators
+        assert " | " in output  # pipe separator
+
+
+class TestFormatTurnSeparator:
+    """Test turn separator formatting."""
+
+    def test_shows_turn_number(self) -> None:
+        output = _capture(_output.format_turn_separator, turn=3)
+        assert "turn 3" in output
+
+    def test_normal_mode_long_rule(self) -> None:
+        output = _capture(_output.format_turn_separator, turn=1)
+        # Should be a long rule with turn number embedded
+        assert len(output.strip()) > 20
+
+    def test_compact_mode_short_rule(self) -> None:
+        _output.set_compact_mode(True)
+        try:
+            output = _capture(_output.format_turn_separator, turn=5)
+            assert "turn" not in output
+            # Compact rule is short
+            assert len(output.strip()) < 30
+        finally:
+            _output.set_compact_mode(False)
+
+
+class TestFormatToolResultTiming:
+    """Test tool result timing display."""
+
+    def test_timing_milliseconds(self) -> None:
+        output = _capture(format_tool_result, "shell", "ok", duration_ms=250.0)
+        assert "250ms" in output
+
+    def test_timing_seconds(self) -> None:
+        output = _capture(format_tool_result, "shell", "ok", duration_ms=1500.0)
+        assert "1.5s" in output
+
+    def test_no_timing_when_zero(self) -> None:
+        output = _capture(format_tool_result, "shell", "ok", duration_ms=0.0)
+        assert "ms" not in output
+        assert "s)" not in output
+
+
+class TestCompactMode:
+    """Test compact mode toggle."""
+
+    def test_default_is_off(self) -> None:
+        assert _output.is_compact_mode() is False
+
+    def test_can_enable(self) -> None:
+        _output.set_compact_mode(True)
+        try:
+            assert _output.is_compact_mode() is True
+        finally:
+            _output.set_compact_mode(False)
+
+    def test_can_disable(self) -> None:
+        _output.set_compact_mode(True)
+        _output.set_compact_mode(False)
+        assert _output.is_compact_mode() is False

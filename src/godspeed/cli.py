@@ -289,6 +289,7 @@ def _build_tool_registry(tool_set: str = "full") -> tuple:
     allowed = get_allowed_tool_names(tool_set)
     from godspeed.tools.base import RiskLevel
     from godspeed.tools.file_edit import FileEditTool
+    from godspeed.tools.file_move import FileMoveTool
     from godspeed.tools.file_read import FileReadTool
     from godspeed.tools.file_write import FileWriteTool
     from godspeed.tools.registry import ToolRegistry
@@ -299,6 +300,7 @@ def _build_tool_registry(tool_set: str = "full") -> tuple:
     from godspeed.tools.background import BackgroundCheckTool
     from godspeed.tools.complexity import ComplexityTool
     from godspeed.tools.coverage import CoverageTool
+    from godspeed.tools.db_query import DbQueryTool
     from godspeed.tools.dep_audit import DepAuditTool
     from godspeed.tools.generate_tests import GenerateTestsTool
     from godspeed.tools.git import GitTool
@@ -309,14 +311,24 @@ def _build_tool_registry(tool_set: str = "full") -> tuple:
     from godspeed.tools.security_scan import SecurityScanTool
     from godspeed.tools.shell import ShellTool
     from godspeed.tools.test_runner import TestRunnerTool
+    from godspeed.tools.traceback_analyzer import TracebackAnalyzerTool
     from godspeed.tools.verify import VerifyTool
     from godspeed.tools.web_fetch import WebFetchTool
     from godspeed.tools.web_search import WebSearchTool
 
+    try:
+        from godspeed.tools.stock_price import StockPriceTool
+
+        _stock_price_available = True
+    except ImportError:
+        _stock_price_available = False
+
     tools: list = [
         FileReadTool(),
+        TracebackAnalyzerTool(),
         FileWriteTool(),
         FileEditTool(),
+        FileMoveTool(),
         ShellTool(),
         GlobSearchTool(),
         GrepSearchTool(),
@@ -333,7 +345,11 @@ def _build_tool_registry(tool_set: str = "full") -> tuple:
         WebFetchTool(),
         NotebookEditTool(),
         BackgroundCheckTool(),
+        DbQueryTool(),
     ]
+
+    if _stock_price_available:
+        tools.append(StockPriceTool())
 
     # Optional tools — register if their dependencies are available
     try:
@@ -385,9 +401,8 @@ async def _run_app(
     project_dir: Path,
     verbose: bool,
     audit_dir: Path | None,
-    textual: bool = False,
 ) -> None:
-    """Wire up all components and launch the TUI."""
+    """Wire up all components and launch the Textual TUI."""
     from godspeed.agent.conversation import Conversation
     from godspeed.agent.system_prompt import build_system_prompt
     from godspeed.audit.trail import AuditTrail
@@ -396,7 +411,6 @@ async def _run_app(
     from godspeed.llm.client import LLMClient
     from godspeed.security.permissions import PermissionEngine
     from godspeed.tools.base import ToolContext
-    from godspeed.tui.app import TUIApp
 
     # Load config
     overrides: dict = {}
@@ -618,47 +632,26 @@ async def _run_app(
         )
         hook_executor.run_pre_session()
 
-    # Launch TUI
-    if textual:
-        from godspeed.tui.textual_app import GodspeedTextualApp
+    # Launch classic TUI (prompt-toolkit)
+    from godspeed.tui.app import TUIApp
 
-        textual_app = GodspeedTextualApp(
-            llm_client=llm_client,
-            tool_registry=registry,
-            tool_context=tool_context,
-            conversation=conversation,
-            permission_engine=permission_engine,
-            audit_trail=audit_trail,
-            session_id=session_id,
-            skills=skills,
-            extra_completions=skill_completions,
-            hook_executor=hook_executor,
-            task_store=task_store,
-            codebase_index=codebase_index,
-            correction_tracker=correction_tracker,
-            session_memory=session_memory,
-        )
-        # Textual manages its own event loop; run in a thread so we don't
-        # block the caller's async loop.
-        await asyncio.to_thread(textual_app.run)
-    else:
-        app = TUIApp(
-            llm_client=llm_client,
-            tool_registry=registry,
-            tool_context=tool_context,
-            conversation=conversation,
-            permission_engine=permission_engine,
-            audit_trail=audit_trail,
-            session_id=session_id,
-            skills=skills,
-            extra_completions=skill_completions,
-            hook_executor=hook_executor,
-            task_store=task_store,
-            codebase_index=codebase_index,
-            correction_tracker=correction_tracker,
-            session_memory=session_memory,
-        )
-        await app.run()
+    app = TUIApp(
+        llm_client=llm_client,
+        tool_registry=registry,
+        tool_context=tool_context,
+        conversation=conversation,
+        permission_engine=permission_engine,
+        audit_trail=audit_trail,
+        session_id=session_id,
+        skills=skills,
+        extra_completions=skill_completions,
+        hook_executor=hook_executor,
+        task_store=task_store,
+        codebase_index=codebase_index,
+        correction_tracker=correction_tracker,
+        session_memory=session_memory,
+    )
+    await app.run()
 
     # Close conversation logger
     if conversation_logger is not None:
@@ -685,11 +678,6 @@ async def _run_app(
     default=None,
     help="Directory for audit logs (default: ~/.godspeed/audit).",
 )
-@click.option(
-    "--textual",
-    is_flag=True,
-    help="Use the experimental Textual-based TUI.",
-)
 @click.pass_context
 def main(
     ctx: click.Context,
@@ -697,7 +685,6 @@ def main(
     project_dir: Path,
     verbose: bool,
     audit_dir: Path | None,
-    textual: bool,
 ) -> None:
     """Godspeed -- Security-first open-source coding agent."""
     _setup_logging(verbose)
@@ -714,12 +701,11 @@ def main(
     ctx.obj["project_dir"] = project_dir
     ctx.obj["verbose"] = verbose
     ctx.obj["audit_dir"] = audit_dir
-    ctx.obj["textual"] = textual
 
     # If no subcommand, launch the TUI
     if ctx.invoked_subcommand is None:
         with contextlib.suppress(KeyboardInterrupt):
-            asyncio.run(_run_app(model, project_dir, verbose, audit_dir, textual))
+            asyncio.run(_run_app(model, project_dir, verbose, audit_dir))
 
 
 @main.command()
@@ -796,40 +782,19 @@ def init() -> None:
 
     from rich.console import Console as RichConsole
 
-    from godspeed.tui.theme import ACCENT, BOLD_PRIMARY, DIM, SUCCESS
+    from godspeed.tui.theme import BOLD_PRIMARY, DIM, PRIMARY
 
     c = RichConsole()
     global_dir = DEFAULT_GLOBAL_DIR
     settings_path = global_dir / "settings.yaml"
-    audit_dir = global_dir / "audit"
-
-    global_dir.mkdir(parents=True, exist_ok=True)
-    audit_dir.mkdir(parents=True, exist_ok=True)
-
-    if settings_path.exists():
-        c.print(f"  [{DIM}]Settings already exist:[/{DIM}] {settings_path}")
-    else:
-        # Copy the example settings
-        example = Path(__file__).parent.parent.parent / "settings.yaml.example"
-        if example.exists():
-            settings_path.write_text(example.read_text(encoding="utf-8"), encoding="utf-8")
-        else:
-            # Inline minimal config if example not bundled
-            settings_path.write_text(
-                "# Godspeed settings — see https://github.com/omnipotence-eth/godspeed-coding-agent\n"
-                "model: ollama/qwen3:4b\n"
-                "fallback_models: []\n",
-                encoding="utf-8",
-            )
-        c.print(f"  [{SUCCESS}]Created settings:[/{SUCCESS}] {settings_path}")
-
-    c.print(f"  [{SUCCESS}]Audit directory:[/{SUCCESS}] {audit_dir}")
+    c.print(f"\n  [{BOLD_PRIMARY}]Welcome to Godspeed![/{BOLD_PRIMARY}]")
+    c.print(f"  [{DIM}]The security-first coding agent[/{DIM}]")
     c.print()
-    c.print(f"  [{BOLD_PRIMARY}]Next steps:[/{BOLD_PRIMARY}]")
-    c.print(f"    1. Install a local model: [{ACCENT}]ollama pull qwen3:4b[/{ACCENT}]")
-    c.print(f"    2. Or set an API key:     [{ACCENT}]export ANTHROPIC_API_KEY=sk-...[/{ACCENT}]")
-    c.print(f"    3. Edit your settings:    [{ACCENT}]{settings_path}[/{ACCENT}]")
-    c.print(f"    4. Launch Godspeed:        [{ACCENT}]godspeed[/{ACCENT}]")
+    c.print(f"  [{DIM}]First-time setup:[/{DIM}]")
+    c.print(f"    1. Install a local model: [{PRIMARY}]ollama pull qwen3:4b[/{PRIMARY}]")
+    c.print(f"    2. Or set an API key:     [{PRIMARY}]export ANTHROPIC_API_KEY=sk-...[/{PRIMARY}]")
+    c.print(f"    3. Edit your settings:    [{PRIMARY}]{settings_path}[/{PRIMARY}]")
+    c.print(f"    4. Launch Godspeed:        [{PRIMARY}]godspeed[/{PRIMARY}]")
 
 
 @main.command("run")
@@ -1201,7 +1166,7 @@ def models() -> None:
     from rich.table import Table
 
     from godspeed.config import GodspeedSettings
-    from godspeed.tui.theme import BOLD_PRIMARY, DIM, MUTED, SUCCESS, TABLE_BORDER
+    from godspeed.tui.theme import BOLD_PRIMARY, DIM, NEUTRAL, SUCCESS, TABLE_BORDER
 
     c = RichConsole()
 
@@ -1211,7 +1176,7 @@ def models() -> None:
     c.print(f"  [{DIM}]Use --preset or /model <preset> to switch.[/{DIM}]\n")
     preset_table = Table(border_style=TABLE_BORDER, expand=False)
     preset_table.add_column("Preset", style=BOLD_PRIMARY)
-    preset_table.add_column("Model", style=MUTED)
+    preset_table.add_column("Model", style=NEUTRAL)
     preset_table.add_column("Description")
     preset_descriptions = {
         "fast": "Local, low VRAM, fast responses (5.1GB)",
@@ -1228,9 +1193,9 @@ def models() -> None:
     c.print()
     table = Table(title="Popular Models", border_style=TABLE_BORDER, expand=False)
     table.add_column("Model", style=BOLD_PRIMARY)
-    table.add_column("Provider", style=MUTED)
+    table.add_column("Provider", style=NEUTRAL)
     table.add_column("Cost")
-    table.add_column("API Key Env Var", style=MUTED)
+    table.add_column("API Key Env Var", style=NEUTRAL)
 
     free = f"[{SUCCESS}]Free[/{SUCCESS}]"
     table.add_row("ollama/rnj-1:8b", "Ollama", free, "None (local, 5.1GB)")

@@ -16,7 +16,6 @@ logger = logging.getLogger(__name__)
 DEFAULT_TIMEOUT = 120
 MAX_TIMEOUT = 600
 MAX_COMMAND_LENGTH = 10000  # 10K characters max for shell commands
-MAX_COMMAND_LENGTH = 10000  # 10K characters max for shell commands
 
 
 def _kill_process_tree(pid: int) -> None:
@@ -60,21 +59,20 @@ def _kill_process_tree(pid: int) -> None:
         parent.kill()
 
 
+_shell_cache: list[str] | None = None
+
+
 def _detect_shell() -> list[str]:
-    """Return the shell command prefix for the current platform.
-
-    Uses bash on Unix. On Windows, prefers git-bash, then falls back to cmd.
-    """
+    """Return the shell command prefix for the current platform (cached)."""
+    global _shell_cache
+    if _shell_cache is not None:
+        return _shell_cache
     if platform.system() != "Windows":
-        return ["/bin/bash", "-c"]
-
-    # Prefer git-bash on Windows
-    git_bash = shutil.which("bash")
-    if git_bash:
-        return [git_bash, "-c"]
-
-    # Fallback to cmd
-    return ["cmd.exe", "/c"]
+        _shell_cache = ["/bin/bash", "-c"]
+    else:
+        git_bash = shutil.which("bash")
+        _shell_cache = [git_bash, "-c"] if git_bash else ["cmd.exe", "/c"]
+    return _shell_cache
 
 
 class ShellTool(Tool):

@@ -49,6 +49,7 @@ _EXPLICIT_LOCAL_TOOL_NAMES: frozenset[str] = frozenset(
         "diff_apply",
         "tasks",
         "background_check",
+        "db_query",
     }
 )
 

@@ -364,43 +364,53 @@ class LLMClient:
             )
         return RuntimeError(f"All models failed. Last error: {last_error}")
 
+    # Providers that support anthropic-style cache_control
+    _ANTHROPIC_CACHING = frozenset({"claude", "anthropic", "deepseek"})
+
+    @staticmethod
+    def _supports_prompt_caching(model: str) -> bool:
+        return any(prefix in model for prefix in ("claude", "anthropic", "deepseek"))
+
     @staticmethod
     def _apply_prompt_caching(
         model: str,
         messages: list[dict[str, Any]],
     ) -> list[dict[str, Any]]:
-        """Apply prompt caching markers for supported providers.
+        """Apply prompt caching markers for Anthropic-compatible providers.
 
-        Marks the system prompt with cache_control for Anthropic/OpenAI models,
-        giving ~50% cost reduction on repeated prefixes.
+        Marks all but the last 2 messages with cache_control, giving
+        ~75-80% input cost reduction on long conversations. OpenAI
+        handles caching automatically so we skip it there.
         """
         model_lower = model.lower()
-        # Only apply for providers that support cache_control
-        supports_caching = any(
-            prefix in model_lower
-            for prefix in ("claude", "anthropic", "gpt-4o", "gpt-4-turbo", "o3")
-        )
+        supports_caching = any(prefix in model_lower for prefix in LLMClient._ANTHROPIC_CACHING)
         if not supports_caching:
             return messages
 
+        # Cache all messages except the final exchange (user+assistant pair)
+        num_to_cache = max(0, len(messages) - 2)
+        if num_to_cache == 0:
+            return messages
+
         cached = []
-        for msg in messages:
-            if msg.get("role") == "system" and isinstance(msg.get("content"), str):
-                # Convert string content to content block with cache_control
-                cached.append(
-                    {
-                        "role": "system",
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": msg["content"],
-                                "cache_control": {"type": "ephemeral"},
-                            }
-                        ],
-                    }
-                )
-            else:
-                cached.append(msg)
+        for i, msg in enumerate(messages):
+            if i < num_to_cache:
+                raw_content = msg.get("content", "")
+                if isinstance(raw_content, str) and raw_content:
+                    cached.append(
+                        {
+                            "role": msg["role"],
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": raw_content,
+                                    "cache_control": {"type": "ephemeral"},
+                                }
+                            ],
+                        }
+                    )
+                    continue
+            cached.append(msg)
         return cached
 
     def _is_anthropic_model(self, model: str | None = None) -> bool:
@@ -534,22 +544,12 @@ class LLMClient:
         tools: list[dict[str, Any]] | None = None,
         task_type: str | None = None,
     ) -> AsyncGenerator[ChatResponse, None]:
-        """Stream LLM response chunks.
+        """Stream LLM response chunks with fallback to batch on failure.
 
-        Yields ChatResponse objects as they arrive. The final response
-        has finish_reason set.
-
-        Args:
-            messages: Conversation messages.
-            tools: Tool schemas for function calling.
-            task_type: Optional task hint for model routing (see
-                :mod:`godspeed.llm.router`). When set and the router
-                has a mapping, ``self.model`` is swapped for the
-                duration of the stream and restored on cleanup.
+        Yields ChatResponse objects as they arrive. On stream failure,
+        retries once, then falls back to batch chat() with full retry
+        logic. The final response has finish_reason set.
         """
-        # Apply task-aware routing for the duration of the stream.
-        # The finally restores self.model even on early generator
-        # close (aclose() in the agent loop's cancel path).
         routed_model = self.router.route(self.model, task_type)
         swap_model = routed_model != self.model
         original_model = self.model
@@ -558,9 +558,29 @@ class LLMClient:
         try:
             async for chunk in self._stream_chat_inner(messages, tools):
                 yield chunk
+            return
+        except Exception:
+            logger.warning("Streaming call failed, retrying once", exc_info=True)
         finally:
             if swap_model:
                 self.model = original_model
+
+        # Retry streaming once
+        if swap_model:
+            self.model = routed_model
+        try:
+            async for chunk in self._stream_chat_inner(messages, tools):
+                yield chunk
+            return
+        except Exception:
+            logger.warning("Streaming retry failed, falling back to batch", exc_info=True)
+        finally:
+            if swap_model:
+                self.model = original_model
+
+        # Fall back to batch with full retry/fallback chain
+        response = await self.chat(messages=messages, tools=tools, task_type=task_type)
+        yield response
 
     async def _stream_chat_inner(
         self,

@@ -6,8 +6,10 @@ restraint in color, information density that respects the developer's attention.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
+from io import StringIO
 from typing import Any
 
 from rich.console import Console
@@ -20,11 +22,9 @@ from godspeed.tui.theme import (
     BOLD_ERROR,
     BOLD_PRIMARY,
     BOLD_WARNING,
-    BRAND_TAGLINE,
     CTX_CRITICAL,
     CTX_OK,
     CTX_WARN,
-    DECORATOR,
     DIM,
     ERROR,
     GUTTER,
@@ -35,10 +35,10 @@ from godspeed.tui.theme import (
     MARKER_SUCCESS,
     MARKER_TOOL,
     MARKER_WARNING,
-    MUTED,
+    NEUTRAL,
+    PRIMARY,
     PROMPT_ICON,
     RULE_CHAR,
-    SECONDARY,
     SEPARATOR_DOT,
     SUCCESS,
     SYNTAX_THEME,
@@ -53,6 +53,51 @@ logger = logging.getLogger(__name__)
 
 console = Console()
 
+# =============================================================================
+# Display mode
+# =============================================================================
+
+# When True, reduce vertical whitespace and skip decorative elements.
+_compact_mode: bool = False
+
+
+def set_compact_mode(enabled: bool) -> None:
+    """Toggle compact display mode (denser output, fewer blank lines)."""
+    global _compact_mode
+    _compact_mode = enabled
+
+
+def is_compact_mode() -> bool:
+    """Return whether compact display mode is active."""
+    return _compact_mode
+
+
+@contextlib.contextmanager
+def capture_output(width: int = 120) -> Any:
+    """Temporarily redirect Rich console output to a StringIO buffer.
+
+    Usage::
+
+        with capture_output() as sio:
+            format_success("Hello")
+        captured = sio.getvalue()
+
+    Args:
+        width: Terminal width for the capture console.
+
+    Yields:
+        StringIO buffer containing rendered output.
+    """
+    global console
+    old_console = console
+    sio = StringIO()
+    console = Console(file=sio, force_terminal=False, width=width)
+    try:
+        yield sio
+    finally:
+        console = old_console
+
+
 # Max lines for inline tool result display
 _RESULT_MAX_LINES = 10
 _RESULT_MAX_CHARS = 2000
@@ -63,7 +108,24 @@ _RULE_WIDTH = 35
 
 def _rule() -> str:
     """Return a thin horizontal rule string."""
-    return styled(RULE_CHAR * _RULE_WIDTH, MUTED)
+    return styled(RULE_CHAR * _RULE_WIDTH, NEUTRAL)
+
+
+def format_turn_separator(turn: int = 0) -> None:
+    """Print a visual separator between conversation turns.
+
+    In compact mode the separator is a single short rule; otherwise it
+    includes the turn number.
+    """
+    if _compact_mode:
+        console.print(f"  {styled('-' * 20, NEUTRAL)}")
+    else:
+        label = f" turn {turn} " if turn > 0 else ""
+        total = _RULE_WIDTH
+        left = max(0, (total - len(label)) // 2)
+        right = max(0, total - left - len(label))
+        line = f"{RULE_CHAR * left}{label}{RULE_CHAR * right}"
+        console.print(f"  {styled(line, NEUTRAL)}")
 
 
 def _gutter_lines(text: str) -> None:
@@ -80,7 +142,7 @@ def _gutter_lines(text: str) -> None:
 
 def format_info(message: str) -> None:
     """Display an info message with ● indicator."""
-    console.print(f"  {styled(MARKER_INFO, SECONDARY)} {styled(message, DIM)}")
+    console.print(f"  {styled(MARKER_INFO, NEUTRAL)} {styled(message, DIM)}")
 
 
 def format_success(message: str) -> None:
@@ -114,8 +176,8 @@ def format_thinking(text: str) -> None:
 
     panel = Panel(
         styled(display_text, DIM),
-        title=styled("Thinking", MUTED),
-        border_style=MUTED,
+        title=styled("Thinking", NEUTRAL),
+        border_style=NEUTRAL,
         expand=False,
         padding=(0, 1),
     )
@@ -129,7 +191,7 @@ def format_thinking(text: str) -> None:
 
 def format_tool_call(name: str, args: dict[str, Any]) -> None:
     """Display a tool call — compact inline for simple calls, expanded for complex ones."""
-    marker = styled(MARKER_TOOL, MUTED)
+    marker = styled(MARKER_TOOL, NEUTRAL)
     tool = styled(name, BOLD_PRIMARY)
 
     # Simple single-arg tools: compact inline
@@ -190,8 +252,27 @@ def format_tool_call(name: str, args: dict[str, Any]) -> None:
     _gutter_lines(args_text)
 
 
-def format_tool_result(name: str, result: str, is_error: bool = False) -> None:
-    """Display a tool result — compact for success, expanded for errors."""
+def format_tool_result(
+    name: str,
+    result: str,
+    is_error: bool = False,
+    duration_ms: float = 0.0,
+) -> None:
+    """Display a tool result — compact for success, expanded for errors.
+
+    Args:
+        name: Tool name.
+        result: Tool output text.
+        is_error: Whether the result represents an error.
+        duration_ms: Execution time in milliseconds; shown when > 0.
+    """
+    timing = ""
+    if duration_ms > 0:
+        if duration_ms < 1000:
+            timing = styled(f" ({duration_ms:.0f}ms)", NEUTRAL)
+        else:
+            timing = styled(f" ({duration_ms / 1000:.1f}s)", NEUTRAL)
+
     if is_error:
         marker = styled(MARKER_ERROR, ERROR)
         tool = styled(f"{name}", BOLD_ERROR)
@@ -205,11 +286,11 @@ def format_tool_result(name: str, result: str, is_error: bool = False) -> None:
         lines = display.splitlines()
         if len(lines) <= 3:
             # Short error inline
-            console.print(f"  {marker} {tool}  {lines[0] if lines else ''}")
+            console.print(f"  {marker} {tool}{timing}  {lines[0] if lines else ''}")
             for line in lines[1:]:
                 console.print(f"    {line}")
         else:
-            console.print(f"  {marker} {tool}")
+            console.print(f"  {marker} {tool}{timing}")
             # Indent error output
             for line in lines[:20]:
                 console.print(f"    {styled(line, DIM)}")
@@ -217,25 +298,25 @@ def format_tool_result(name: str, result: str, is_error: bool = False) -> None:
                 console.print(f"    {styled(f'... ({len(lines) - 20} more lines)', DIM)}")
     else:
         marker = styled(MARKER_SUCCESS, SUCCESS)
-        tool = styled(name, MUTED)
+        tool = styled(name, NEUTRAL)
 
         # Summarize success output
         lines = result.splitlines()
         line_count = len(lines)
 
         if not result.strip():
-            console.print(f"  {marker} {tool}")
+            console.print(f"  {marker} {tool}{timing}")
             return
 
         # Short results: show inline
         if line_count <= _RESULT_MAX_LINES and len(result) <= 500:
-            console.print(f"  {marker} {tool}")
+            console.print(f"  {marker} {tool}{timing}")
             for line in lines:
                 console.print(f"    {styled(line, DIM)}")
         else:
             # Long results: show first 3 lines as preview + line count
             preview_lines = lines[:3]
-            console.print(f"  {marker} {tool}  {styled(f'({line_count} lines)', DIM)}")
+            console.print(f"  {marker} {tool}{timing}  {styled(f'({line_count} lines)', DIM)}")
             for line in preview_lines:
                 console.print(f"    {styled(line, DIM)}")
             if line_count > 3:
@@ -273,13 +354,13 @@ def format_parallel_tool_calls(calls: list[tuple[str, dict[str, Any]]]) -> None:
     concurrently before results arrive.
     """
     count = len(calls)
-    marker = styled(MARKER_PARALLEL, SECONDARY)
+    marker = styled(MARKER_PARALLEL, NEUTRAL)
     header = styled(f"Running {count} tools in parallel", BOLD_PRIMARY)
     console.print(f"\n  {marker} {header}")
 
     for name, args in calls:
         brief = _tool_brief(name, args)
-        console.print(f"    {styled(MARKER_TOOL, MUTED)} {brief}")
+        console.print(f"    {styled(MARKER_TOOL, NEUTRAL)} {brief}")
 
     console.print()
 
@@ -295,7 +376,7 @@ def format_parallel_results(results: list[tuple[str, str, bool]]) -> None:
 
     # Compact success summary
     if successes:
-        names = [styled(n, MUTED) for n, _ in successes]
+        names = [styled(n, NEUTRAL) for n, _ in successes]
         label = f" {SEPARATOR_DOT} ".join(names)
         console.print(f"  {styled(MARKER_SUCCESS, SUCCESS)} {label}")
 
@@ -392,7 +473,7 @@ def format_permission_prompt(
             action = "overwrite"
         else:
             action = "create"
-        action_style = WARNING if action == "overwrite" else MUTED
+        action_style = WARNING if action == "overwrite" else NEUTRAL
         console.print(f"  {file_path}  {styled(f'({action}, {line_count} lines)', action_style)}")
 
         preview = "\n".join(all_lines[:15])
@@ -445,41 +526,14 @@ def format_status_hud(
     permission_mode: str = "",
     preset: str = "",
 ) -> None:
-    """Print a compact one-line session HUD after each completed turn.
+    """Print a minimal one-line session HUD after each completed turn."""
+    parts: list[str] = []
 
-    Example rendering:
-        | 1,234 in + 567 out (1,801) | ctx 34% | $0.0024 | qwen3.5-397b | 3/50 turns
+    # Token count
+    total = input_tokens + output_tokens
+    parts.append(styled(f"{total:,} tokens", DIM))
 
-    Shows context window usage percentage, cost, model with preset tag,
-    iteration progress, and active permission mode.
-    """
-    total_tokens = input_tokens + output_tokens
-    tokens_text = styled(f"{input_tokens:,} in + {output_tokens:,} out ({total_tokens:,})", DIM)
-
-    if budget_usd > 0:
-        remaining = max(0.0, budget_usd - cost_usd)
-        near_limit = remaining < budget_usd * 0.2
-        cost_style = WARNING if near_limit else DIM
-        cost_text = styled(f"${cost_usd:.4f} / ${budget_usd:.2f}", cost_style)
-    else:
-        cost_text = styled(f"${cost_usd:.4f}", DIM)
-
-    # Short model label — drop provider prefix for readability
-    model_short = model.split("/", 1)[-1] if "/" in model else model
-    if preset:
-        model_text = styled(f"{model_short} [{preset}]", MUTED)
-    else:
-        model_text = styled(model_short, MUTED)
-
-    # Turn progress
-    if max_iterations > 0:
-        turns_text = styled(f"{turns}/{max_iterations} turns", DIM)
-    else:
-        turns_text = styled(f"{turns} turn{'s' if turns != 1 else ''}", DIM)
-
-    parts = [tokens_text]
-
-    # Context window usage
+    # Context window
     if context_pct > 0:
         if context_pct >= 90:
             ctx_style = CTX_CRITICAL
@@ -487,21 +541,38 @@ def format_status_hud(
             ctx_style = CTX_WARN
         else:
             ctx_style = CTX_OK
-        ctx_text = styled(f"ctx {context_pct:.0f}%", ctx_style)
-        parts.append(ctx_text)
+        parts.append(styled(f"ctx {context_pct:.0f}%", ctx_style))
 
-    parts.extend([cost_text, model_text, turns_text])
+    # Cost
+    if budget_usd > 0:
+        remaining = max(0.0, budget_usd - cost_usd)
+        near_limit = remaining < budget_usd * 0.2
+        cost_style = WARNING if near_limit else DIM
+        parts.append(styled(f"${cost_usd:.4f} / ${budget_usd:.2f}", cost_style))
+    elif cost_usd > 0:
+        parts.append(styled(f"${cost_usd:.4f}", DIM))
 
-    # Permission mode indicator
+    # Model (short)
+    model_short = model.split("/", 1)[-1] if "/" in model else model
+    if preset:
+        model_short = f"{model_short} [{preset}]"
+    parts.append(styled(model_short, NEUTRAL))
+
+    # Turn count
+    if max_iterations > 0:
+        parts.append(styled(f"{turns}/{max_iterations}", DIM))
+    else:
+        parts.append(styled(f"turn {turns}", DIM))
+
+    # Permission mode
     if permission_mode == "yolo":
         parts.append(styled("YOLO", BOLD_WARNING))
     elif permission_mode == "strict":
         parts.append(styled("strict", WARNING))
     elif permission_mode == "plan":
-        parts.append(styled("plan", "ansicyan"))
+        parts.append(styled("plan", PRIMARY))
 
-    sep = styled(SEPARATOR_DOT, MUTED)
-    console.print(f"  {sep} {f' {sep} '.join(parts)}")
+    console.print(f"  {' | '.join(parts)}")
 
 
 def format_diff_review_prompt(
@@ -567,7 +638,7 @@ def format_stats(
     cost: float | None = None,
 ) -> None:
     """Display session statistics (used by /stats command)."""
-    table = Table(show_header=False, border_style=MUTED, expand=False, padding=(0, 2))
+    table = Table(show_header=False, border_style=NEUTRAL, expand=False, padding=(0, 2))
     table.add_column("Key", style=TABLE_KEY)
     table.add_column("Value", style=TABLE_VALUE)
     table.add_row("Model", model)
@@ -581,7 +652,7 @@ def format_stats(
     panel = Panel(
         table,
         title=styled("Session Stats", BOLD_PRIMARY),
-        border_style=SECONDARY,
+        border_style=NEUTRAL,
         expand=False,
     )
     console.print(panel)
@@ -595,94 +666,87 @@ def format_welcome(
     audit_enabled: bool = True,
     permission_mode: str = "normal",
     preset: str = "",
-    context_limit: int = 0,
-    fallback_models: list[str] | None = None,
 ) -> None:
-    """Display welcome banner with key session info, inspired by opencode/claude-code."""
+    """Display welcome banner with rotating Bible verse."""
     from godspeed import __version__
+
+    verses = [
+        (
+            "Proverbs 3:5-6",
+            "Trust in the Lord with all your heart and lean not on your own "
+            "understanding; in all your ways submit to him, and he will make "
+            "your paths straight.",
+        ),
+        (
+            "Joshua 1:9",
+            "Have I not commanded you? Be strong and courageous. Do not be "
+            "afraid; do not be discouraged, for the Lord your God will be with "
+            "you wherever you go.",
+        ),
+        (
+            "Isaiah 41:10",
+            "So do not fear, for I am with you; do not be dismayed, for I am "
+            "your God. I will strengthen you and help you; I will uphold you "
+            "with my righteous right hand.",
+        ),
+        ("Philippians 4:13", "I can do all this through him who gives me strength."),
+        (
+            "Jeremiah 29:11",
+            "For I know the plans I have for you, declares the Lord, plans to "
+            "prosper you and not to harm you, plans to give you hope and a "
+            "future.",
+        ),
+        ("Psalm 23:1", "The Lord is my shepherd, I lack nothing."),
+        (
+            "Romans 8:28",
+            "And we know that in all things God works for the good of those who "
+            "love him, who have been called according to his purpose.",
+        ),
+        (
+            "Matthew 6:33",
+            "But seek first his kingdom and his righteousness, and all these "
+            "things will be given to you as well.",
+        ),
+        (
+            "2 Timothy 1:7",
+            "For the Spirit God gave us does not make us timid, but gives us "
+            "power, love and self-discipline.",
+        ),
+        ("Psalm 119:105", "Your word is a lamp for my feet, a light on my path."),
+    ]
+
+    import hashlib
+    import time
+
+    # Deterministic rotation based on day of year
+    seed_str = str(time.localtime().tm_yday).encode()
+    day_seed = int(hashlib.sha256(seed_str).hexdigest()[:4], 16)
+    verse_ref, verse_text = verses[day_seed % len(verses)]
 
     console.print()
 
     # Branded header
-    dec = styled(f"{DECORATOR}{DECORATOR}{DECORATOR}", MUTED)
-    header = f"  {dec} {PROMPT_ICON} {brand(__version__)} {dec}"
+    header = f"  {PROMPT_ICON} {brand(__version__)}"
     console.print(header)
-    console.print(f"  {styled(BRAND_TAGLINE, DIM)}")
-    console.print()
 
-    # Thin rule separator
-    console.print(f"  {_rule()}")
-
-    # Model line — show full model name + preset tag + fallback chain
-    model_display = model
+    # Model + mode on one line
+    model_short = model.split("/", 1)[-1] if "/" in model else model
     if preset:
-        model_display = f"{model} {styled(f'({preset})', DIM)}"
-    console.print(f"  {styled('Model', MUTED)}    {model_display}")
-    if fallback_models:
-        fallbacks_short = [m.split("/", 1)[-1] if "/" in m else m for m in fallback_models[:3]]
-        fallback_str = styled(f"{SEPARATOR_DOT} ".join(fallbacks_short), DIM)
-        console.print(f"  {styled('Fallbacks', MUTED)}  {fallback_str}")
+        model_short = f"{model_short} [{preset}]"
+    mode_map = {"normal": "", "strict": "strict", "yolo": "YOLO", "plan": "plan"}
+    mode_str = mode_map.get(permission_mode, permission_mode)
+    line = f"  model: {styled(model_short, NEUTRAL)}"
+    if mode_str:
+        line += f"  {styled(f'[{mode_str}]', DIM)}"
+    console.print(line)
 
-    # Context window
-    if context_limit > 0:
-        ctx_display = f"{context_limit:,} tokens"
-        console.print(f"  {styled('Context', MUTED)}   {ctx_display}")
+    # Top commands hint
+    console.print(f"  {styled('/help /clear /quit', DIM)}")
 
-    # Project directory
-    console.print(f"  {styled('Project', MUTED)}  {project_dir}")
-
-    # Permission mode — show prominently if not default
-    mode_labels = {
-        "normal": styled("normal", SUCCESS),
-        "strict": styled("strict", WARNING),
-        "yolo": styled("YOLO", BOLD_WARNING),
-        "plan": styled("plan", "ansicyan"),
-    }
-    mode_display = mode_labels.get(permission_mode, styled(permission_mode, DIM))
-    console.print(f"  {styled('Mode', MUTED)}      {mode_display}")
-
-    # Audit status
-    audit_status = styled("enabled", SUCCESS) if audit_enabled else styled("disabled", ERROR)
-    console.print(f"  {styled('Audit', MUTED)}    {audit_status}")
-
-    # Tool count
-    if tools:
-        tool_count = len(tools)
-        console.print(
-            f"  {styled('Tools', MUTED)}    "
-            f"{tool_count} available"
-            f" {styled(f'({SEPARATOR_DOT} /permissions to see rules)', DIM)}"
-        )
-
-    # Deny rules summary
-    if deny_rules:
-        console.print(
-            f"  {styled('Denied', MUTED)}    "
-            f"{len(deny_rules)} rule{'s' if len(deny_rules) != 1 else ''}"
-        )
-
-    # Preset quick reference
-    from godspeed.config import GodspeedSettings
-
-    presets = GodspeedSettings.MODEL_PRESETS
+    # Bible verse of the day
     console.print()
-    console.print(f"  {styled('Presets', MUTED)}   ", end="")
-    preset_parts = []
-    for name, preset_model in presets.items():
-        short = preset_model.split("/", 1)[-1] if "/" in preset_model else preset_model
-        if name == preset:
-            preset_parts.append(styled(f"{name}={short}*", BOLD_PRIMARY))
-        else:
-            preset_parts.append(styled(f"{name}={short}", DIM))
-    console.print(f" {SEPARATOR_DOT} ".join(preset_parts))
-
-    # Hint line
-    console.print()
-    console.print(
-        f"  {styled('/help', DIM)} {styled(SEPARATOR_DOT, MUTED)}"
-        f" {styled('/plan', DIM)} {styled(SEPARATOR_DOT, MUTED)}"
-        f" {styled('/scan', DIM)}"
-    )
+    console.print(f"  [{DIM}]{verse_ref}[/{DIM}]")
+    console.print(f"  [{DIM}]{verse_text}[/{DIM}]")
     console.print()
 
 
@@ -697,39 +761,20 @@ def format_session_summary(
     model: str = "",
     session_id: str = "",
 ) -> None:
-    """Display session summary on quit — clean, compact."""
-    console.print()
-    console.print(f"  {_rule()}")
-    console.print(f"  {styled('Session complete', DIM)}")
+    """Display minimal session summary on quit."""
     console.print()
 
-    # Model and session
-    if model:
-        model_short = model.split("/", 1)[-1] if "/" in model else model
-        console.print(f"    {styled('Model', MUTED)}     {model_short}")
-    if session_id:
-        console.print(f"    {styled('Session', MUTED)}   {session_id[:12]}...")
-
-    # Duration
+    # Duration + tokens on one line
     minutes = int(duration_secs // 60)
     seconds = int(duration_secs % 60)
     dur = f"{minutes}m {seconds}s" if minutes > 0 else f"{seconds}s"
-    console.print(f"    {styled('Duration', MUTED)}  {dur}")
-
-    # Tokens
     total = input_tokens + output_tokens
-    console.print(
-        f"    {styled('Tokens', MUTED)}    {total:,}"
-        f"  {styled(f'(in: {input_tokens:,} {SEPARATOR_DOT} out: {output_tokens:,})', DIM)}"
-    )
-
-    # Cost
+    line = f"  {styled(dur, DIM)}  {styled(f'{total:,} tokens', NEUTRAL)}"
     if cost is not None and cost > 0:
-        console.print(f"    {styled('Cost', MUTED)}      ${cost:.4f}")
-    elif cost is not None:
-        console.print(f"    {styled('Cost', MUTED)}      {styled('free', SUCCESS)}")
+        line += f"  {styled(f'${cost:.4f}', DIM)}"
+    console.print(line)
 
-    # Tool summary
+    # Tool summary (one line)
     if tool_calls > 0:
         success = tool_calls - tool_errors - tool_denied
         parts = [f"{success} {MARKER_SUCCESS}"]
@@ -737,11 +782,8 @@ def format_session_summary(
             parts.append(f"{tool_errors} {MARKER_ERROR}")
         if tool_denied > 0:
             parts.append(f"{tool_denied} denied")
-        summary = f" {SEPARATOR_DOT} ".join(parts)
-        console.print(
-            f"    {styled('Tools', MUTED)}     {tool_calls} calls  {styled(f'({summary})', DIM)}"
-        )
+        summary = f" {' | '.join(parts)}"
+        console.print(f"  {tool_calls} calls  {styled(f'({summary})', DIM)}")
 
-    # Branded sign-off with decorative slashes
-    dec = styled(f"{DECORATOR}{DECORATOR}{DECORATOR}", MUTED)
-    console.print(f"\n  {dec} {PROMPT_ICON} {styled('Godspeed', BOLD_PRIMARY)} {dec}\n")
+    # Compact sign-off
+    console.print(f"  {styled(PROMPT_ICON, BOLD_PRIMARY)} {styled('Godspeed', BOLD_PRIMARY)}")

@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from godspeed.tui.theme import (
-    ACCENT,
+    ANSI_BRIGHT_PRIMARY,
+    ANSI_PRIMARY,
+    ANSI_WARNING,
     BOLD_ERROR,
     BOLD_PRIMARY,
-    BOLD_SECONDARY,
     BOLD_SUCCESS,
     BOLD_WARNING,
     BORDER_BRAND,
@@ -21,7 +22,7 @@ from godspeed.tui.theme import (
     CTX_WARN,
     DIM,
     ERROR,
-    MUTED,
+    NEUTRAL,
     PERM_ALLOW,
     PERM_ASK,
     PERM_DENY,
@@ -29,7 +30,6 @@ from godspeed.tui.theme import (
     PRIMARY,
     PROMPT_ICON,
     PROMPT_TEXT,
-    SECONDARY,
     SUCCESS,
     SYNTAX_THEME,
     TABLE_BORDER,
@@ -47,12 +47,14 @@ class TestPaletteConstants:
     """Verify palette constants are non-empty strings."""
 
     def test_primary_colors(self) -> None:
-        for color in [PRIMARY, SECONDARY, SUCCESS, ERROR, WARNING, MUTED, ACCENT]:
+        for color in [PRIMARY, NEUTRAL, SUCCESS, ERROR, WARNING]:
             assert isinstance(color, str)
             assert len(color) > 0
+            # Hex palette colors start with #
+            assert color.startswith("#") or color == "dim"
 
     def test_bold_styles_contain_bold(self) -> None:
-        for style in [BOLD_PRIMARY, BOLD_SECONDARY, BOLD_SUCCESS, BOLD_ERROR, BOLD_WARNING]:
+        for style in [BOLD_PRIMARY, BOLD_SUCCESS, BOLD_ERROR, BOLD_WARNING]:
             assert "bold" in style
 
     def test_border_styles_are_strings(self) -> None:
@@ -142,10 +144,10 @@ class TestStructuralConstants:
         # Ultra-clean: empty
         assert GUTTER in ("", "\u2502")
 
-    def test_gutter_style_is_muted(self) -> None:
-        from godspeed.tui.theme import GUTTER_STYLE, MUTED
+    def test_gutter_style_is_neutral(self) -> None:
+        from godspeed.tui.theme import GUTTER_STYLE, NEUTRAL
 
-        assert GUTTER_STYLE == MUTED
+        assert GUTTER_STYLE == NEUTRAL
 
 
 class TestBrandedStrings:
@@ -191,7 +193,7 @@ class TestBrand:
         result = brand("1.2.3")
         assert "Godspeed" in result
         assert "v1.2.3" in result
-        assert MUTED in result
+        assert NEUTRAL in result
 
     def test_brand_empty_version(self) -> None:
         result = brand("")
@@ -206,26 +208,61 @@ class TestIconPrompt:
         result = icon_prompt()
         assert PROMPT_ICON in result
         assert PROMPT_TEXT in result
-        assert "ansigold" in result
+        assert ANSI_PRIMARY in result
 
     def test_plan_mode_prompt(self) -> None:
         result = icon_prompt("plan")
         assert "[plan]" in result
-        assert "ansicyan" in result
+        assert ANSI_BRIGHT_PRIMARY in result
 
     def test_paused_prompt(self) -> None:
         result = icon_prompt("paused")
         assert "[paused]" in result
-        assert "ansiyellow" in result
+        assert ANSI_WARNING in result
 
-    def test_unknown_state_uses_yellow(self) -> None:
+    def test_unknown_state_uses_primary(self) -> None:
         result = icon_prompt("something")
-        assert "ansiyellow" in result
+        assert ANSI_PRIMARY in result
 
     def test_prompt_is_html_formatted(self) -> None:
         result = icon_prompt()
         assert "<b>" in result
         assert "</b>" in result
+
+
+class TestIconPromptExtras:
+    """Test icon_prompt turn count and context percentage display."""
+
+    def test_default_no_extras(self) -> None:
+        result = icon_prompt()
+        assert "turn" not in result
+        assert "ctx" not in result
+
+    def test_turn_displayed(self) -> None:
+        result = icon_prompt(turn=5)
+        assert "turn 5" in result
+
+    def test_context_displayed(self) -> None:
+        result = icon_prompt(turn=1, context_pct=42.0)
+        assert "ctx" in result
+        assert "42%" in result
+
+    def test_context_color_green_when_low(self) -> None:
+        result = icon_prompt(turn=1, context_pct=30.0)
+        assert "ansigreen" in result
+
+    def test_context_color_yellow_when_warning(self) -> None:
+        result = icon_prompt(turn=1, context_pct=75.0)
+        assert "ansiyellow" in result
+
+    def test_context_color_red_when_critical(self) -> None:
+        result = icon_prompt(turn=1, context_pct=95.0)
+        assert "ansired" in result
+
+    def test_compact_suppresses_extras(self) -> None:
+        result = icon_prompt(turn=5, context_pct=50.0, compact=True)
+        assert "turn" not in result
+        assert "ctx" not in result
 
 
 class TestRichCompatibility:

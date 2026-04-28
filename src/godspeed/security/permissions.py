@@ -163,6 +163,23 @@ class PermissionEngine:
             self._session_grants[pattern] = time.monotonic()
         logger.info("Session permission granted pattern=%s ttl=%ds", pattern, int(self._grant_ttl))
 
+    def grant_tool_session_permission(self, tool_name: str) -> None:
+        """Grant a session-scoped permission for ALL calls to a tool.
+
+        Stores ``ToolName(*)`` so any argument pattern matches.
+        Used for LOW-risk tools where the user wants to approve once per session.
+        Thread-safe.
+        """
+        pattern = f"{tool_name}(*)"
+        with self._grants_lock:
+            self._session_grants[pattern] = time.monotonic()
+        logger.info(
+            "Tool-level session grant tool=%s pattern=%s ttl=%ds",
+            tool_name,
+            pattern,
+            int(self._grant_ttl),
+        )
+
     def revoke_session_permission(self, pattern: str) -> None:
         """Revoke a single session-scoped permission. Thread-safe."""
         with self._grants_lock:

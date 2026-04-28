@@ -33,23 +33,19 @@ class CodeSearchTool(Tool):
 
     def get_schema(self) -> dict[str, Any]:
         return {
-            "name": self.name,
-            "description": self.description,
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "Natural language search query.",
-                    },
-                    "top_k": {
-                        "type": "integer",
-                        "description": "Max results to return (default: 5).",
-                        "default": 5,
-                    },
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Natural language search query.",
                 },
-                "required": ["query"],
+                "top_k": {
+                    "type": "integer",
+                    "description": "Max results to return (default: 5).",
+                    "default": 5,
+                },
             },
+            "required": ["query"],
         }
 
     async def execute(

@@ -33,7 +33,7 @@ from godspeed.agent.loop import agent_loop
 from godspeed.agent.result import AgentCancelledError
 from godspeed.audit.trail import AuditTrail
 from godspeed.llm.client import LLMClient
-from godspeed.security.permissions import ALLOW, ASK, PermissionDecision, PermissionEngine
+from godspeed.security.permissions import ALLOW, ASK, DENY, PermissionDecision, PermissionEngine
 from godspeed.tools.base import ToolContext
 from godspeed.tools.registry import ToolRegistry
 from godspeed.tui.commands import Commands
@@ -652,7 +652,7 @@ class _TextualPermissionProxy:
         self._engine = engine
         self._app = app
 
-    def evaluate(self, tool_call: Any) -> PermissionDecision:
+    async def evaluate(self, tool_call: Any) -> PermissionDecision:
         decision = self._engine.evaluate(tool_call)
         if decision != ASK:
             return decision
@@ -663,7 +663,7 @@ class _TextualPermissionProxy:
             reason=decision.reason,
             arguments=args,
         )
-        result = self._app.push_screen_wait(screen)
+        result = await asyncio.to_thread(self._app.push_screen_wait, screen)
         answer = result if isinstance(result, str) else "deny"
 
         if answer == "allow":
@@ -672,7 +672,7 @@ class _TextualPermissionProxy:
             pattern = tool_call.format_for_permission()
             self._engine.grant_session_permission(pattern)
             return PermissionDecision(ALLOW, f"session grant: {pattern}")
-        return PermissionDecision("deny", "user denied")
+        return PermissionDecision(DENY, "user denied")
 
 
 class _TextualDiffReviewer:
@@ -774,6 +774,7 @@ class GodspeedTextualApp(App[None]):
 
         self._current_streaming_indicator: StreamingIndicator | None = None
         self._current_tool_block: ToolCallBlock | None = None
+        self._current_assistant_msg: AssistantMessage | None = None
 
         # Slash command registry
         self._commands = Commands(
@@ -829,7 +830,10 @@ class GodspeedTextualApp(App[None]):
         self._tool_context.diff_reviewer = _TextualDiffReviewer(self)
 
     def _update_info_panel(self) -> None:
-        panel = self.query_one("#info-panel", InfoPanel)
+        try:
+            panel = self.query_one("#info-panel", InfoPanel)
+        except Exception:
+            return
         panel.session_id = self._session_id
         panel.model = self._llm_client.model
         panel.project_dir = str(self._tool_context.cwd)
@@ -873,6 +877,8 @@ class GodspeedTextualApp(App[None]):
             self._handle_input()
 
     def _handle_input(self) -> None:
+        if self.running:
+            return
         input_bar = self.query_one("#input-bar", InputBar)
         text = input_bar.get_value().strip()
         if not text:
@@ -954,10 +960,12 @@ class GodspeedTextualApp(App[None]):
                 on_assistant_chunk=lambda chunk: self.call_from_thread(
                     lambda c=chunk: self._on_assistant_chunk(c)
                 ),
-                max_iterations=25,
+                max_iterations=self._commands.max_iterations or 25,
                 pause_event=self._pause_event,
                 cancel_event=self._cancel_event,
                 hook_executor=self._hook_executor,
+                auto_commit=self._commands.auto_commit,
+                auto_commit_threshold=self._commands.auto_commit_threshold,
                 on_parallel_start=lambda calls: self.call_from_thread(
                     lambda c=calls: chat.write_system(f"Running {len(c)} tools in parallel...")
                 ),
@@ -976,6 +984,8 @@ class GodspeedTextualApp(App[None]):
             if self._current_streaming_indicator is not None:
                 self._current_streaming_indicator.remove()
                 self._current_streaming_indicator = None
+            # Reset streaming message ref
+            self._current_assistant_msg = None
             # Focus input
             self.query_one("#input-bar", InputBar).focus_input()
 
@@ -984,11 +994,24 @@ class GodspeedTextualApp(App[None]):
         if self._current_streaming_indicator is not None:
             self._current_streaming_indicator.remove()
             self._current_streaming_indicator = None
+        if self._current_assistant_msg is not None:
+            self._current_assistant_msg = None
+            return
         chat.write_assistant(text)
 
     def _on_assistant_chunk(self, chunk: str) -> None:
         chat = self.query_one("#chat-panel", ChatPanel)
-        chat.write_assistant(chunk)
+        if self._current_streaming_indicator is not None:
+            self._current_streaming_indicator.remove()
+            self._current_streaming_indicator = None
+        if self._current_assistant_msg is None:
+            self._current_assistant_msg = AssistantMessage(chunk)
+            chat._container().mount(self._current_assistant_msg)
+        else:
+            self._current_assistant_msg._text += chunk
+            body = self._current_assistant_msg.query_one(".msg-body", Static)
+            body.update(self._current_assistant_msg._text)
+        chat._scroll_to_bottom()
 
     def _on_tool_call(self, name: str, args: dict[str, Any]) -> None:
         chat = self.query_one("#chat-panel", ChatPanel)

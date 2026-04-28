@@ -75,7 +75,7 @@ def capture_output(width: int = 120) -> Any:
     global console
     old_console = console
     sio = StringIO()
-    console = Console(file=sio, force_terminal=True, width=width)
+    console = Console(file=sio, force_terminal=False, width=width)
     try:
         yield sio
     finally:

@@ -296,7 +296,10 @@ async def agent_loop(
 
             # Permission check
             if tool_context.permissions is not None:
-                decision = tool_context.permissions.evaluate(tool_call)
+                if asyncio.iscoroutinefunction(tool_context.permissions.evaluate):
+                    decision = await tool_context.permissions.evaluate(tool_call)
+                else:
+                    decision = tool_context.permissions.evaluate(tool_call)
                 if decision == "deny":
                     reason = f"Permission denied for {tool_call.format_for_permission()}"
                     logger.info("Permission denied tool=%s", tool_call.tool_name)

@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import hashlib
+import inspect
 import json
 import logging
 import time
@@ -31,6 +32,7 @@ STUCK_LOOP_THRESHOLD = 3
 AUTO_STASH_THRESHOLD = 3
 MUST_FIX_CAP = 3
 MAX_TOOL_OUTPUT_CHARS = 50000  # Prevent single tool call from blowing context window
+MAX_SPECULATIVE_CACHE_SIZE = 10  # Max concurrent speculative tasks per iteration
 VERIFIABLE_EXTENSIONS = (
     ".py",
     ".pyi",
@@ -303,7 +305,7 @@ async def agent_loop(
 
             # Permission check
             if tool_context.permissions is not None:
-                if asyncio.iscoroutinefunction(tool_context.permissions.evaluate):
+                if inspect.iscoroutinefunction(tool_context.permissions.evaluate):
                     decision = await tool_context.permissions.evaluate(tool_call)
                 else:
                     decision = tool_context.permissions.evaluate(tool_call)
@@ -567,9 +569,34 @@ async def _post_process_results(
     llm_client: LLMClient,
     metrics: AgentMetrics | None,
 ) -> None:
-    """Post-process a batch of tool results (auto-verify, auto-stash, etc.)."""
-    # Auto-verify
-    for tc, result in zip(tool_calls, results, strict=True):
+    """Post-process a batch of tool results (auto-verify, auto-stash, etc.).
+
+    Optimized: single-pass iteration over tool_calls/results to avoid repeated zip.
+    """
+    # Pre-compute zipped pairs once to avoid repeated iteration
+    paired = list(zip(tool_calls, results, strict=True))
+
+    # Single-pass: collect write operations and errors
+    write_results: list[tuple[ToolCall, ToolResult]] = []
+    has_non_write = False
+
+    for tc, result in paired:
+        # Check for write operations
+        if not result.is_error and tc.tool_name in ("file_edit", "file_write"):
+            write_results.append((tc, result))
+        elif tc.tool_name not in ("file_edit", "file_write"):
+            has_non_write = True
+
+        # Stuck-loop detection (inline to avoid another pass)
+        if result.is_error:
+            error_hash = hashlib.sha256((result.error or "").encode()).hexdigest()
+            state.recent_error_hashes.append(error_hash)
+            if len(state.recent_error_hashes) > state.stuck_threshold:
+                state.recent_error_hashes.pop(0)
+        else:
+            state.recent_error_hashes.clear()
+
+        # Auto-verify for write operations
         if (
             not result.is_error
             and tc.tool_name in ("file_edit", "file_write")
@@ -594,28 +621,30 @@ async def _post_process_results(
                     state.must_fix_cap,
                 )
 
-    # Auto-stash and edit tracking
-    batch_writes = sum(
-        1
-        for tc, r in zip(tool_calls, results, strict=True)
-        if not r.is_error and tc.tool_name in ("file_edit", "file_write")
-    )
-    batch_has_non_write = any(tc.tool_name not in ("file_edit", "file_write") for tc in tool_calls)
-    if batch_has_non_write:
+    # Update write tracking from collected results
+    batch_writes = len(write_results)
+    if has_non_write:
         state.consecutive_writes = batch_writes
-        state.consecutive_successful_edits = sum(
-            1
-            for tc, r in zip(tool_calls, results, strict=True)
-            if not r.is_error and tc.tool_name in ("file_edit", "file_write")
-        )
+        state.consecutive_successful_edits = batch_writes
         state.recent_change_descriptions = [
-            f"{tc.tool_name} {tc.arguments.get('file_path', '?')}"
-            for tc, r in zip(tool_calls, results, strict=True)
-            if not r.is_error and tc.tool_name in ("file_edit", "file_write")
+            f"{tc.tool_name} {tc.arguments.get('file_path', '?')}" for tc, _ in write_results
         ]
     else:
         state.consecutive_writes += batch_writes
 
+    # Stuck-loop detection: inject hint if needed
+    if (
+        len(state.recent_error_hashes) == state.stuck_threshold
+        and len(set(state.recent_error_hashes)) == 1
+    ):
+        logger.warning("Stuck loop detected: %d identical errors", state.stuck_threshold)
+        conversation.add_user_message(
+            f"You have failed {state.stuck_threshold} times with the same error. "
+            "Stop, explain what is wrong, and try a completely different approach."
+        )
+        state.recent_error_hashes.clear()
+
+    # Auto-stash check
     if (
         state.consecutive_writes >= state.stash_threshold
         and not state.auto_stashed
@@ -644,12 +673,11 @@ async def _post_process_results(
                 ),
             )
 
-    # Auto-commit tracking
-    for tc, r in zip(tool_calls, results, strict=True):
-        if not r.is_error and tc.tool_name in ("file_edit", "file_write"):
-            state.consecutive_successful_edits += 1
-            desc = f"{tc.tool_name} {tc.arguments.get('file_path', '?')}"
-            state.recent_change_descriptions.append(desc)
+    # Auto-commit tracking (uses write_results from single pass)
+    for tc, _r in write_results:
+        state.consecutive_successful_edits += 1
+        desc = f"{tc.tool_name} {tc.arguments.get('file_path', '?')}"
+        state.recent_change_descriptions.append(desc)
 
     if state.auto_commit and state.consecutive_successful_edits >= state.auto_commit_threshold:
         committed = await _try_auto_commit(
@@ -662,27 +690,6 @@ async def _post_process_results(
         if committed:
             state.consecutive_successful_edits = 0
             state.recent_change_descriptions.clear()
-
-    # Stuck-loop detection
-    for _tc, result in zip(tool_calls, results, strict=True):
-        if result.is_error:
-            error_hash = hashlib.sha256((result.error or "").encode()).hexdigest()
-            state.recent_error_hashes.append(error_hash)
-            if len(state.recent_error_hashes) > state.stuck_threshold:
-                state.recent_error_hashes.pop(0)
-        else:
-            state.recent_error_hashes.clear()
-
-    if (
-        len(state.recent_error_hashes) == state.stuck_threshold
-        and len(set(state.recent_error_hashes)) == 1
-    ):
-        logger.warning("Stuck loop detected: %d identical errors", state.stuck_threshold)
-        conversation.add_user_message(
-            f"You have failed {state.stuck_threshold} times with the same error. "
-            "Stop, explain what is wrong, and try a completely different approach."
-        )
-        state.recent_error_hashes.clear()
 
 
 async def _post_process_single_result(
@@ -1075,10 +1082,20 @@ def _speculative_dispatch(
     Parses each tool call and checks risk level. If READ_ONLY, dispatches
     immediately and stores the asyncio.Task in cache keyed by call_id.
     The main loop checks the cache before dispatching to avoid double work.
+
+    Enforces MAX_SPECULATIVE_CACHE_SIZE to prevent unbounded growth.
     """
     from godspeed.tools.base import RiskLevel
 
     for raw_tc in raw_tool_calls:
+        # Enforce cache size limit to prevent memory growth
+        if len(cache) >= MAX_SPECULATIVE_CACHE_SIZE:
+            logger.debug(
+                "Speculative cache full (max=%d), skipping remaining dispatches",
+                MAX_SPECULATIVE_CACHE_SIZE,
+            )
+            break
+
         parsed = _parse_tool_call(raw_tc)
         if parsed is None:
             continue

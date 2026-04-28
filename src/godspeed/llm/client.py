@@ -120,6 +120,8 @@ class LLMClient:
         max_cost_usd: float = 0.0,
     ) -> None:
         self.model = model
+        # Cache lowercased model name to avoid repeated .lower() calls
+        self._model_lower = model.lower()
         self.fallback_models = fallback_models or []
         self.timeout = timeout
         self.router = router or ModelRouter()
@@ -142,9 +144,8 @@ class LLMClient:
 
     def _supports_tool_calling(self) -> bool:
         """Check if current model likely supports native function calling."""
-        model_lower = self.model.lower()
-        if model_lower.startswith(("ollama/", "ollama_chat/")):
-            model_name = model_lower.split("/", 1)[-1].split(":")[0]
+        if self._model_lower.startswith(("ollama/", "ollama_chat/")):
+            model_name = self._model_lower.split("/", 1)[-1].split(":")[0]
             return any(cap in model_name for cap in self._TOOLS_CAPABLE_OLLAMA)
         return True
 
@@ -155,8 +156,7 @@ class LLMClient:
         since LiteLLM's ollama_chat provider supports native tool calling
         while the plain ollama provider does not.
         """
-        model_lower = self.model.lower()
-        if model_lower.startswith("ollama/") and self._supports_tool_calling():
+        if self._model_lower.startswith("ollama/") and self._supports_tool_calling():
             upgraded = "ollama_chat/" + self.model.split("/", 1)[1]
             logger.info("Upgrading model %s → %s for tool calling support", self.model, upgraded)
             return upgraded
@@ -245,11 +245,14 @@ class LLMClient:
         if routed_model != self.model:
             # Temporarily use the routed model
             original_model = self.model
+            original_model_lower = self._model_lower
             self.model = routed_model
+            self._model_lower = routed_model.lower()
             try:
                 return await self._chat_with_fallback(messages, tools)
             finally:
                 self.model = original_model
+                self._model_lower = original_model_lower
         return await self._chat_with_fallback(messages, tools)
 
     async def _chat_with_fallback(
@@ -350,8 +353,7 @@ class LLMClient:
     def _build_failure_error(self, last_error: Exception | None) -> RuntimeError:
         """Build an actionable error message based on the failure type."""
         if last_error and self._is_connection_error(last_error):
-            model_lower = self.model.lower()
-            if model_lower.startswith("ollama"):
+            if self._model_lower.startswith("ollama"):
                 return RuntimeError(
                     "Ollama is not running. Fix with one of:\n"
                     "  1. Start Ollama:  ollama serve\n"
@@ -364,12 +366,14 @@ class LLMClient:
             )
         return RuntimeError(f"All models failed. Last error: {last_error}")
 
-    # Providers that support anthropic-style cache_control
-    _ANTHROPIC_CACHING = frozenset({"claude", "anthropic", "deepseek"})
+    # Providers that support anthropic-style cache_control — use frozenset for O(1) lookup
+    _ANTHROPIC_CACHING_PREFIXES: frozenset[str] = frozenset({"claude", "anthropic", "deepseek"})
 
-    @staticmethod
-    def _supports_prompt_caching(model: str) -> bool:
-        return any(prefix in model for prefix in ("claude", "anthropic", "deepseek"))
+    @classmethod
+    def _supports_prompt_caching(cls, model: str) -> bool:
+        """Check if model supports prompt caching via cache_control markers."""
+        model_lower = model.lower()
+        return any(prefix in model_lower for prefix in cls._ANTHROPIC_CACHING_PREFIXES)
 
     @staticmethod
     def _apply_prompt_caching(
@@ -383,7 +387,8 @@ class LLMClient:
         handles caching automatically so we skip it there.
         """
         model_lower = model.lower()
-        supports_caching = any(prefix in model_lower for prefix in LLMClient._ANTHROPIC_CACHING)
+        prefixes = LLMClient._ANTHROPIC_CACHING_PREFIXES
+        supports_caching = any(prefix in model_lower for prefix in prefixes)
         if not supports_caching:
             return messages
 
@@ -413,10 +418,13 @@ class LLMClient:
             cached.append(msg)
         return cached
 
+    # Anthropic model prefixes for fast matching
+    _ANTHROPIC_PREFIXES: frozenset[str] = frozenset({"claude", "anthropic"})
+
     def _is_anthropic_model(self, model: str | None = None) -> bool:
         """Check if the model is an Anthropic/Claude model."""
-        name = (model or self.model).lower()
-        return any(prefix in name for prefix in ("claude", "anthropic"))
+        name = (model or self._model_lower).lower() if model else self._model_lower
+        return any(prefix in name for prefix in self._ANTHROPIC_PREFIXES)
 
     def _check_budget(self) -> None:
         """Raise BudgetExceededError if session cost exceeds the limit."""
@@ -553,8 +561,10 @@ class LLMClient:
         routed_model = self.router.route(self.model, task_type)
         swap_model = routed_model != self.model
         original_model = self.model
+        original_model_lower = self._model_lower
         if swap_model:
             self.model = routed_model
+            self._model_lower = routed_model.lower()
         try:
             async for chunk in self._stream_chat_inner(messages, tools):
                 yield chunk
@@ -564,10 +574,12 @@ class LLMClient:
         finally:
             if swap_model:
                 self.model = original_model
+                self._model_lower = original_model_lower
 
         # Retry streaming once
         if swap_model:
             self.model = routed_model
+            self._model_lower = routed_model.lower()
         try:
             async for chunk in self._stream_chat_inner(messages, tools):
                 yield chunk
@@ -577,6 +589,7 @@ class LLMClient:
         finally:
             if swap_model:
                 self.model = original_model
+                self._model_lower = original_model_lower
 
         # Fall back to batch with full retry/fallback chain
         response = await self.chat(messages=messages, tools=tools, task_type=task_type)

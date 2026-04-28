@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import signal
 import time
 from typing import Any
 
@@ -11,11 +12,13 @@ from prompt_toolkit import PromptSession
 from prompt_toolkit.formatted_text import HTML
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.keys import Keys
+from rich.status import Status
 
 from godspeed.agent.conversation import Conversation
 from godspeed.agent.loop import agent_loop
 from godspeed.agent.result import AgentCancelledError
 from godspeed.audit.trail import AuditTrail
+from godspeed.config import GodspeedSettings
 from godspeed.llm.client import LLMClient
 from godspeed.security.permissions import ALLOW, ASK, PermissionDecision, PermissionEngine
 from godspeed.tools.base import RiskLevel, ToolContext
@@ -23,6 +26,7 @@ from godspeed.tools.registry import ToolRegistry
 from godspeed.tui import output as _output
 from godspeed.tui.commands import Commands
 from godspeed.tui.completions import GodspeedCompleter
+from godspeed.tui.mentions import parse_mentions, resolve_mentions
 from godspeed.tui.output import (
     format_assistant_text,
     format_diff_review_prompt,
@@ -288,7 +292,6 @@ class TUIApp:
 
             # Parse @-mentions from input and resolve to content blocks
             effective_input = user_input
-            from godspeed.tui.mentions import parse_mentions, resolve_mentions
 
             cleaned_text, mentions = parse_mentions(user_input)
             if mentions:
@@ -400,9 +403,7 @@ class TUIApp:
             running_loop = asyncio.get_running_loop()
             _sigint_installed = False
             try:
-                import signal as _signal
-
-                running_loop.add_signal_handler(_signal.SIGINT, _on_sigint)
+                running_loop.add_signal_handler(signal.SIGINT, _on_sigint)
                 _sigint_installed = True
             except (NotImplementedError, RuntimeError):
                 # Windows: asyncio.ProactorEventLoop does not support
@@ -453,9 +454,7 @@ class TUIApp:
                     # the next prompt ΓÇö otherwise a Ctrl+C at the prompt would
                     # silently set an unused cancel_event and swallow the key.
                     try:
-                        import signal as _signal
-
-                        running_loop.remove_signal_handler(_signal.SIGINT)
+                        running_loop.remove_signal_handler(signal.SIGINT)
                     except (NotImplementedError, RuntimeError, ValueError):
                         logger.debug("Could not remove SIGINT handler")
 
@@ -470,8 +469,6 @@ class TUIApp:
                     else 0
                 )
                 preset_tag = ""
-                from godspeed.config import GodspeedSettings
-
                 for pname, pmodel in GodspeedSettings.MODEL_PRESETS.items():
                     if pmodel == self._llm_client.model:
                         preset_tag = pname
@@ -560,7 +557,6 @@ class _ThinkingSpinner:
     def start(self) -> None:
         if self._started:
             return
-        from rich.status import Status
 
         self._start_time = time.monotonic()
         self._tool_label = ""

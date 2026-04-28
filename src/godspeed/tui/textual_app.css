@@ -1,6 +1,4 @@
-/* ========================================================================
-   Godspeed Textual TUI — Simplified Design
-   ======================================================================== */
+/* Godspeed Minimal TUI */
 
 $bg-primary: #0d1117;
 $bg-secondary: #161b22;
@@ -20,173 +18,69 @@ $warning: #d29922;
 $error: #f85149;
 
 $user: #a371f7;
-$tool: #d29922;
 
 Screen {
     background: $bg-primary;
     color: $fg-primary;
 }
 
-/* Root layout: Horizontal splits main area (left) and info panel (right) */
-#app-root {
+/* Root: horizontal split */
+#root {
     height: 100%;
     width: 100%;
 }
 
-/* Left side: chat panel above, input bar below */
-#main-area {
+/* Left side: chat log + input */
+#left {
     width: 1fr;
     height: 100%;
 }
 
-/* Chat Panel */
-ChatPanel {
+/* Chat log */
+#chat-log {
     height: 1fr;
     width: 100%;
     background: $bg-primary;
     border-right: solid $border;
 }
 
-ChatPanel #messages-scroll {
-    height: 100%;
-    width: 100%;
-    background: $bg-primary;
-    border: none;
-}
-
 /* Messages */
-UserMessage {
-    margin: 1 0;
-    padding: 0 1;
-    width: 100%;
-}
-
-UserMessage .msg-label {
+.msg-user {
     color: $user;
     text-style: bold;
-}
-
-UserMessage .msg-body {
-    color: $fg-primary;
-    padding-left: 2;
-}
-
-AssistantMessage {
     margin: 1 0;
     padding: 0 1;
-    width: 100%;
 }
 
-AssistantMessage .msg-label {
+.msg-assistant {
     color: $accent;
     text-style: bold;
-}
-
-AssistantMessage .msg-body {
-    color: $fg-primary;
-    padding-left: 2;
-}
-
-SystemMessage {
-    margin: 0 0;
+    margin: 1 0;
     padding: 0 1;
-    width: 100%;
 }
 
-SystemMessage .msg-body {
+.msg-system {
     color: $fg-muted;
     text-style: dim;
-    padding-left: 2;
+    margin: 0 0;
+    padding: 0 1;
 }
 
-ErrorMessage {
+.msg-error {
+    color: $error;
     margin: 1 0;
     padding: 0 1;
-    width: 100%;
 }
 
-ErrorMessage .msg-label {
-    color: $error;
-    text-style: bold;
-}
-
-ErrorMessage .msg-body {
-    color: $error;
-    padding-left: 2;
-}
-
-/* Tool Call Blocks */
-ToolCallBlock {
-    margin: 1 0;
-    padding: 0;
-    background: $bg-secondary;
-    border: solid $border;
-    width: 100%;
-}
-
-ToolCallBlock .tool-header {
-    height: 1;
-    padding: 0 1;
-    background: $bg-tertiary;
-    color: $tool;
-    content-align: left middle;
-    text-style: bold;
-    border-bottom: solid $border;
-}
-
-ToolCallBlock .tool-header:hover {
-    background: $bg-secondary;
-}
-
-ToolCallBlock .tool-body {
-    padding: 1 2;
-    color: $fg-secondary;
-    background: $bg-secondary;
-    display: none;
-}
-
-ToolCallBlock .tool-body-expanded {
-    display: block;
-    padding: 1 2;
-    color: $fg-secondary;
-    background: $bg-secondary;
-}
-
-ToolCallBlock .tool-result {
-    padding: 0 1;
-    color: $success;
-    background: $bg-secondary;
-    border-top: solid $border;
-    height: 1;
-}
-
-ToolCallBlock .tool-result-error {
-    padding: 0 1;
-    color: $error;
-    background: $bg-secondary;
-    border-top: solid $border;
-    height: 1;
-}
-
-/* Streaming Indicator */
-StreamingIndicator {
-    height: 1;
-    color: $accent;
-    text-style: bold;
-    padding: 0 1;
-    margin: 1 0;
-}
-
-/* Input Bar */
-InputBar {
+/* Input area */
+#input-area {
     height: 3;
     background: $bg-secondary;
-    color: $fg-primary;
     border-top: solid $border;
     padding: 0 1;
 }
 
-InputBar Input {
+#input-area Input {
     width: 1fr;
     background: $bg-tertiary;
     color: $fg-primary;
@@ -195,11 +89,11 @@ InputBar Input {
     content-align: left middle;
 }
 
-InputBar Input:focus {
+#input-area Input:focus {
     border: solid $border-active;
 }
 
-InputBar Button {
+#input-area Button {
     width: 8;
     margin-left: 1;
     background: $accent;
@@ -208,12 +102,8 @@ InputBar Button {
     text-style: bold;
 }
 
-InputBar Button:hover {
-    text-style: bold underline;
-}
-
-/* Info Panel (right side) */
-InfoPanel {
+/* Info panel */
+#info-panel {
     width: 26;
     height: 100%;
     background: $bg-secondary;
@@ -221,7 +111,7 @@ InfoPanel {
     padding: 1 1;
 }
 
-InfoPanel .section-title {
+#info-panel .section-title {
     color: $fg-muted;
     text-style: bold;
     padding: 1 0 0 0;
@@ -230,7 +120,7 @@ InfoPanel .section-title {
     height: 1;
 }
 
-InfoPanel .info-footer {
+#info-panel .info-footer {
     height: 1;
     dock: bottom;
     color: $fg-dim;
@@ -241,7 +131,7 @@ InfoPanel .info-footer {
     padding-top: 1;
 }
 
-/* Modal Screens */
+/* Modal screens */
 PermissionScreen, DiffReviewScreen, CommandPaletteScreen {
     align: center middle;
     background: rgba(13, 17, 23, 0.95);
@@ -294,22 +184,8 @@ PermissionScreen Button#btn-yes, DiffReviewScreen Button#btn-accept {
     border: none;
 }
 
-PermissionScreen Button#btn-yes:hover, DiffReviewScreen Button#btn-accept:hover {
-    text-style: bold underline;
-}
-
 PermissionScreen Button#btn-no, DiffReviewScreen Button#btn-reject {
     background: $error;
-    color: $bg-primary;
-    border: none;
-}
-
-PermissionScreen Button#btn-no:hover, DiffReviewScreen Button#btn-reject:hover {
-    text-style: bold underline;
-}
-
-PermissionScreen Button#btn-always {
-    background: $accent;
     color: $bg-primary;
     border: none;
 }
@@ -321,7 +197,7 @@ PermissionScreen .shortcut-hint {
     margin-top: 1;
 }
 
-/* Command Palette */
+/* Command palette */
 CommandPaletteScreen .dialog {
     width: 80;
     height: auto;
@@ -354,11 +230,6 @@ CommandPaletteScreen ListItem {
 CommandPaletteScreen ListItem:hover {
     background: $bg-tertiary;
     color: $fg-primary;
-}
-
-CommandPaletteScreen ListItem:focus {
-    background: $accent;
-    color: $bg-primary;
 }
 
 /* Scrollbars */

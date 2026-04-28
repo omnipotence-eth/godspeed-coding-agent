@@ -9,16 +9,13 @@ from textual.app import App
 from textual.widgets import Button
 
 from godspeed.tui.textual_app import (
-    ChatPanel,
+    ChatLog,
     CommandPaletteScreen,
     DiffReviewScreen,
     GodspeedTextualApp,
     InfoPanel,
-    InputBar,
+    InputArea,
     PermissionScreen,
-    StreamingIndicator,
-    ToolCallBlock,
-    UserMessage,
 )
 
 
@@ -37,11 +34,6 @@ class _FakeRegistry:
             if t.name == name:
                 return t
         return None
-
-
-@pytest.fixture
-def fake_registry():
-    return _FakeRegistry()
 
 
 @pytest.fixture
@@ -74,8 +66,6 @@ def mock_deps():
 
 
 class TestWidgets:
-    """Unit tests for individual widgets."""
-
     @pytest.mark.asyncio
     async def test_info_panel_reactive(self):
         panel = InfoPanel()
@@ -97,38 +87,19 @@ class TestWidgets:
             assert panel.session_id == "abc123"
 
     @pytest.mark.asyncio
-    async def test_chat_panel_messages(self):
-        panel = ChatPanel()
+    async def test_chat_log_messages(self):
+        log = ChatLog()
         async with App().run_test() as pilot:
-            await pilot.app.mount(panel)
+            await pilot.app.mount(log)
             await pilot.pause()
-            panel.write_user("hello")
-            panel.write_assistant("hi there")
-            panel.write_system("info")
-            panel.write_error("boom")
+            log.write_user("hello")
+            log.write_assistant("hi there")
+            log.write_system("info")
+            log.write_error("boom")
 
     @pytest.mark.asyncio
-    async def test_chat_panel_tool_call(self):
-        panel = ChatPanel()
-        async with App().run_test() as pilot:
-            await pilot.app.mount(panel)
-            await pilot.pause()
-            block = panel.add_tool_call("shell", {"command": "ls"})
-            block.set_result("output", is_error=False)
-            assert block._tool_name == "shell"
-
-    @pytest.mark.asyncio
-    async def test_chat_panel_streaming_indicator(self):
-        panel = ChatPanel()
-        async with App().run_test() as pilot:
-            await pilot.app.mount(panel)
-            await pilot.pause()
-            ind = panel.add_streaming_indicator("Loading")
-            assert ind._base_text == "Loading"
-
-    @pytest.mark.asyncio
-    async def test_input_bar_get_clear(self):
-        bar = InputBar()
+    async def test_input_area_get_clear(self):
+        bar = InputArea()
         async with App().run_test() as pilot:
             await pilot.app.mount(bar)
             await pilot.pause()
@@ -138,36 +109,8 @@ class TestWidgets:
             bar.clear()
             assert bar.get_value() == ""
 
-    @pytest.mark.asyncio
-    async def test_tool_call_block_expands(self):
-        block = ToolCallBlock("shell", {"command": "ls"}, 0.0)
-        async with App().run_test() as pilot:
-            await pilot.app.mount(block)
-            await pilot.pause()
-            block.expanded = True
-            assert block.expanded is True
-            block.set_result("files listed", is_error=False)
-            assert block._result == "files listed"
-
-    @pytest.mark.asyncio
-    async def test_streaming_indicator_ticks(self):
-        ind = StreamingIndicator("Loading")
-        async with App().run_test() as pilot:
-            await pilot.app.mount(ind)
-            await pilot.pause()
-            assert ind._base_text == "Loading"
-
-    @pytest.mark.asyncio
-    async def test_user_message_compose(self):
-        msg = UserMessage("test message")
-        async with App().run_test() as pilot:
-            await pilot.app.mount(msg)
-            await pilot.pause()
-
 
 class TestScreens:
-    """Unit tests for modal screens."""
-
     @pytest.mark.asyncio
     async def test_permission_screen_dismiss(self):
         screen = PermissionScreen(
@@ -205,16 +148,14 @@ class TestScreens:
 
 
 class TestAppCompose:
-    """Integration-ish tests using Textual Pilot."""
-
     @pytest.mark.asyncio
     async def test_app_composes(self, mock_deps):
         app = GodspeedTextualApp(**mock_deps)
         async with app.run_test() as pilot:
             await pilot.pause()
-            assert app.query_one("#chat-panel", ChatPanel) is not None
+            assert app.query_one("#chat-log", ChatLog) is not None
             assert app.query_one("#info-panel", InfoPanel) is not None
-            assert app.query_one("#input-bar", InputBar) is not None
+            assert app.query_one("#input-area", InputArea) is not None
 
     @pytest.mark.asyncio
     async def test_info_panel_reactive_updates(self, mock_deps):
@@ -232,14 +173,6 @@ class TestAppCompose:
         async with app.run_test() as pilot:
             await pilot.pause()
             app._dispatch_command("/help")
-            assert app.turn_count == 0
-
-    @pytest.mark.asyncio
-    async def test_dispatch_command_unknown(self, mock_deps):
-        app = GodspeedTextualApp(**mock_deps)
-        async with app.run_test() as pilot:
-            await pilot.pause()
-            app._dispatch_command("/unknown")
             assert app.turn_count == 0
 
     @pytest.mark.asyncio
@@ -269,7 +202,7 @@ class TestAppCompose:
         app = GodspeedTextualApp(**mock_deps)
         async with app.run_test() as pilot:
             await pilot.pause()
-            chat = app.query_one("#chat-panel", ChatPanel)
+            chat = app.query_one("#chat-log", ChatLog)
             chat.write_user("test")
             app.action_clear_chat()
             await pilot.pause()

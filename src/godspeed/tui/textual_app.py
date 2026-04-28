@@ -1,16 +1,6 @@
-"""Simplified Textual TUI for Godspeed.
+"""Minimal working Textual TUI for Godspeed.
 
-Layout:
-- Main area (left): Chat panel on top, Input bar on bottom
-- Info panel (right): Session stats
-
-Built one piece at a time. Current features:
-- Chat display with user/assistant/system messages
-- Right-side info panel with live session data
-- Bottom input bar
-- Slash command dispatch
-- Permission modal
-- Command palette (Ctrl+K)
+Layout: chat (left) | info (right). Input at bottom of chat area.
 """
 
 from __future__ import annotations
@@ -42,24 +32,6 @@ from godspeed.tui.output import capture_output
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
-
-_TOOL_LABELS: dict[str, str] = {
-    "file_read": "Read",
-    "file_write": "Write",
-    "file_edit": "Edit",
-    "shell": "Shell",
-    "grep_search": "Grep",
-    "glob_search": "Glob",
-    "git": "Git",
-    "repo_map": "Map",
-    "complexity": "Complexity",
-    "system_optimizer": "System",
-    "default": "Tool",
-}
-
 _COMMANDS: list[tuple[str, str]] = [
     ("/quit", "Exit Godspeed"),
     ("/help", "Show available commands"),
@@ -76,13 +48,8 @@ _COMMANDS: list[tuple[str, str]] = [
 ]
 
 
-# ---------------------------------------------------------------------------
-# Info Panel (right side)
-# ---------------------------------------------------------------------------
-
-
 class InfoPanel(Static):
-    """Right-side panel showing live operational data."""
+    """Right panel with session info."""
 
     session_id: reactive[str] = reactive("")
     model: reactive[str] = reactive("")
@@ -190,175 +157,29 @@ class InfoPanel(Static):
         self._render_mode()
 
 
-# ---------------------------------------------------------------------------
-# Chat Components
-# ---------------------------------------------------------------------------
-
-
-class UserMessage(Static):
-    def __init__(self, text: str) -> None:
-        super().__init__()
-        self._text = text
-
-    def compose(self) -> ComposeResult:
-        yield Static("You", classes="msg-label")
-        yield Static(self._text, classes="msg-body")
-
-
-class AssistantMessage(Static):
-    def __init__(self, text: str) -> None:
-        super().__init__()
-        self._text = text
-
-    def compose(self) -> ComposeResult:
-        yield Static("Assistant", classes="msg-label")
-        yield Static(self._text, classes="msg-body")
-
-
-class SystemMessage(Static):
-    def __init__(self, text: str) -> None:
-        super().__init__()
-        self._text = text
-
-    def compose(self) -> ComposeResult:
-        yield Static(self._text, classes="msg-body")
-
-
-class ErrorMessage(Static):
-    def __init__(self, text: str) -> None:
-        super().__init__()
-        self._text = text
-
-    def compose(self) -> ComposeResult:
-        yield Static("Error", classes="msg-label")
-        yield Static(self._text, classes="msg-body")
-
-
-class ToolCallBlock(Static):
-    expanded: reactive[bool] = reactive(False)
-
-    def __init__(self, tool_name: str, args: dict[str, Any], start_time: float) -> None:
-        super().__init__()
-        self._tool_name = tool_name
-        self._args = args
-        self._start_time = start_time
-        self._end_time: float | None = None
-        self._result: str | None = None
-        self._is_error = False
-
-    def compose(self) -> ComposeResult:
-        label = _TOOL_LABELS.get(self._tool_name, self._tool_name)
-        args_str = self._format_args()
-        yield Static(f"{label} {args_str}", classes="tool-header")
-        yield Static("", classes="tool-body")
-        yield Static("", classes="tool-result")
-
-    def _format_args(self) -> str:
-        primary = (
-            self._args.get("file_path")
-            or self._args.get("command")
-            or self._args.get("pattern")
-            or ""
-        )
-        if primary:
-            if len(primary) > 35:
-                primary = "..." + primary[-32:]
-            return f"  {primary}"
-        return ""
-
-    def on_click(self) -> None:
-        self.expanded = not self.expanded
-
-    def watch_expanded(self, value: bool) -> None:
-        if not self.is_mounted:
-            return
-        body = self.query_one(".tool-body", Static)
-        body.set_class(value, "tool-body-expanded")
-        if value and self._result is not None:
-            body.update(self._result)
-        elif not value:
-            body.update("")
-
-    def set_result(self, result: str, is_error: bool = False) -> None:
-        self._end_time = time.monotonic()
-        self._result = result
-        self._is_error = is_error
-        elapsed = (self._end_time - self._start_time) * 1000
-        if not self.is_mounted:
-            return
-        result_widget = self.query_one(".tool-result", Static)
-        result_widget.set_class(is_error, "tool-result-error")
-        result_widget.set_class(not is_error, "tool-result")
-        status = "ERR" if is_error else "OK"
-        result_widget.update(f"{status}  {elapsed:.0f}ms  {result[:120]}")
-        if self.expanded:
-            self.query_one(".tool-body", Static).update(result)
-
-
-class StreamingIndicator(Static):
-    def __init__(self, text: str = "Thinking") -> None:
-        super().__init__()
-        self._base_text = text
-        self._dot_count = 0
-
-    def on_mount(self) -> None:
-        self.set_interval(0.5, self._tick)
-
-    def _tick(self) -> None:
-        self._dot_count = (self._dot_count + 1) % 4
-        self.update(f"{self._base_text}{'.' * self._dot_count}")
-
-
-# ---------------------------------------------------------------------------
-# Chat Panel
-# ---------------------------------------------------------------------------
-
-
-class ChatPanel(Static):
-    def compose(self) -> ComposeResult:
-        yield VerticalScroll(id="messages-scroll")
-
-    def _container(self) -> VerticalScroll:
-        return self.query_one("#messages-scroll", VerticalScroll)
+class ChatLog(VerticalScroll):
+    """Scrollable chat messages."""
 
     def write_user(self, text: str) -> None:
-        self._container().mount(UserMessage(text))
-        self._scroll()
+        self.mount(Static(f"You\n{text}", classes="msg-user"))
+        self.scroll_end(animate=False)
 
     def write_assistant(self, text: str) -> None:
-        self._container().mount(AssistantMessage(text))
-        self._scroll()
+        self.mount(Static(f"Assistant\n{text}", classes="msg-assistant"))
+        self.scroll_end(animate=False)
 
     def write_system(self, text: str) -> None:
-        self._container().mount(SystemMessage(text))
-        self._scroll()
+        self.mount(Static(text, classes="msg-system"))
+        self.scroll_end(animate=False)
 
     def write_error(self, text: str) -> None:
-        self._container().mount(ErrorMessage(text))
-        self._scroll()
-
-    def add_tool_call(self, name: str, args: dict[str, Any]) -> ToolCallBlock:
-        block = ToolCallBlock(name, args, time.monotonic())
-        self._container().mount(block)
-        self._scroll()
-        return block
-
-    def add_streaming_indicator(self, text: str = "Thinking") -> StreamingIndicator:
-        indicator = StreamingIndicator(text)
-        self._container().mount(indicator)
-        self._scroll()
-        return indicator
-
-    def _scroll(self) -> None:
-        self._container().scroll_end(animate=False)
+        self.mount(Static(f"Error\n{text}", classes="msg-error"))
+        self.scroll_end(animate=False)
 
 
-# ---------------------------------------------------------------------------
-# Input Bar
-# ---------------------------------------------------------------------------
+class InputArea(Horizontal):
+    """Input + send button at bottom."""
 
-
-class InputBar(Horizontal):
     def compose(self) -> ComposeResult:
         yield Input(placeholder="Ask Godspeed anything...", id="user-input")
         yield Button("Send", id="submit-btn", variant="primary")
@@ -374,11 +195,6 @@ class InputBar(Horizontal):
 
     def focus_input(self) -> None:
         self.query_one("#user-input", Input).focus()
-
-
-# ---------------------------------------------------------------------------
-# Modal Screens
-# ---------------------------------------------------------------------------
 
 
 class PermissionScreen(Screen[str]):
@@ -413,11 +229,7 @@ class PermissionScreen(Screen[str]):
             )
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        mapping = {
-            "btn-yes": "allow",
-            "btn-no": "deny",
-            "btn-always": "always",
-        }
+        mapping = {"btn-yes": "allow", "btn-no": "deny", "btn-always": "always"}
         btn_id = event.button.id or ""
         self.dismiss(mapping.get(btn_id, "deny"))
 
@@ -459,11 +271,7 @@ class DiffReviewScreen(Screen[str]):
             )
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        mapping = {
-            "btn-accept": "accept",
-            "btn-reject": "reject",
-            "btn-always": "always",
-        }
+        mapping = {"btn-accept": "accept", "btn-reject": "reject", "btn-always": "always"}
         btn_id = event.button.id or ""
         self.dismiss(mapping.get(btn_id, "reject"))
 
@@ -508,11 +316,6 @@ class CommandPaletteScreen(Screen[str | None]):
     def on_key(self, event: Any) -> None:
         if event.key == "escape":
             self.dismiss(None)
-
-
-# ---------------------------------------------------------------------------
-# Proxies
-# ---------------------------------------------------------------------------
 
 
 class _TextualPermissionProxy:
@@ -564,11 +367,6 @@ class _TextualDiffReviewer:
             self._always_accept = True
             return "accept"
         return answer if answer in ("accept", "reject") else "reject"
-
-
-# ---------------------------------------------------------------------------
-# Main App
-# ---------------------------------------------------------------------------
 
 
 class GodspeedTextualApp(App[None]):
@@ -625,10 +423,6 @@ class GodspeedTextualApp(App[None]):
         self._tool_denied_total = 0
         self._start_time = time.monotonic()
 
-        self._current_streaming_indicator: StreamingIndicator | None = None
-        self._current_tool_block: ToolCallBlock | None = None
-        self._current_assistant_msg: AssistantMessage | None = None
-
         self._commands = Commands(
             conversation=conversation,
             llm_client=llm_client,
@@ -648,10 +442,10 @@ class GodspeedTextualApp(App[None]):
             register_skill_commands(self._commands, conversation, skills)
 
     def compose(self) -> ComposeResult:
-        with Horizontal(id="app-root"):
-            with Vertical(id="main-area"):
-                yield ChatPanel(id="chat-panel")
-                yield InputBar(id="input-bar")
+        with Horizontal(id="root"):
+            with Vertical(id="left"):
+                yield ChatLog(id="chat-log")
+                yield InputArea(id="input-area")
             yield InfoPanel(id="info-panel")
 
     def on_mount(self) -> None:
@@ -659,7 +453,7 @@ class GodspeedTextualApp(App[None]):
         self.sub_title = self._llm_client.model
         self._update_info_panel()
         self._wire_permissions()
-        self.query_one("#input-bar", InputBar).focus_input()
+        self.query_one("#input-area", InputArea).focus_input()
 
     def _wire_permissions(self) -> None:
         if self._permission_engine is not None:
@@ -716,11 +510,11 @@ class GodspeedTextualApp(App[None]):
     def _handle_input(self) -> None:
         if self.running:
             return
-        input_bar = self.query_one("#input-bar", InputBar)
-        text = input_bar.get_value().strip()
+        input_area = self.query_one("#input-area", InputArea)
+        text = input_area.get_value().strip()
         if not text:
             return
-        input_bar.clear()
+        input_area.clear()
 
         if text.startswith("/"):
             self._dispatch_command(text)
@@ -729,7 +523,7 @@ class GodspeedTextualApp(App[None]):
         self.turn_count += 1
         self._update_info_panel()
 
-        chat = self.query_one("#chat-panel", ChatPanel)
+        chat = self.query_one("#chat-log", ChatLog)
         chat.write_user(text)
 
         if self._correction_tracker is not None:
@@ -738,7 +532,7 @@ class GodspeedTextualApp(App[None]):
         self.run_worker(self._agent_worker(text))
 
     def _dispatch_command(self, text: str) -> None:
-        chat = self.query_one("#chat-panel", ChatPanel)
+        chat = self.query_one("#chat-log", ChatLog)
 
         if text == "/cancel":
             self._cancel_event.set()
@@ -760,16 +554,13 @@ class GodspeedTextualApp(App[None]):
             self.exit()
 
         if text == "/clear":
-            scroll = self.query_one("#messages-scroll", VerticalScroll)
-            scroll.remove_children()
+            self.query_one("#chat-log", ChatLog).remove_children()
 
     async def _agent_worker(self, user_input: str) -> None:
         self.running = True
         self._update_info_panel()
-        chat = self.query_one("#chat-panel", ChatPanel)
+        chat = self.query_one("#chat-log", ChatLog)
         self._cancel_event.clear()
-
-        self._current_streaming_indicator = chat.add_streaming_indicator("Thinking")
 
         try:
             await agent_loop(
@@ -778,20 +569,15 @@ class GodspeedTextualApp(App[None]):
                 llm_client=self._llm_client,
                 tool_registry=self._tool_registry,
                 tool_context=self._tool_context,
-                on_assistant_text=lambda t: self.call_from_thread(
-                    lambda: self._on_assistant_text(t)
-                ),
+                on_assistant_text=lambda t: self.call_from_thread(lambda: chat.write_assistant(t)),
                 on_tool_call=lambda name, args: self.call_from_thread(
-                    lambda n=name, a=args: self._on_tool_call(n, a)
+                    lambda n=name, a=args: chat.write_system(f"Tool: {n} {a}")
                 ),
                 on_tool_result=lambda name, res: self.call_from_thread(
-                    lambda n=name, r=res: self._on_tool_result(n, r)
+                    lambda n=name, r=res: chat.write_system(f"Result: {n}")
                 ),
                 on_permission_denied=lambda name, reason: self.call_from_thread(
                     lambda n=name, r=reason: self._on_permission_denied(n, r)
-                ),
-                on_assistant_chunk=lambda chunk: self.call_from_thread(
-                    lambda c=chunk: self._on_assistant_chunk(c)
                 ),
                 max_iterations=self._commands.max_iterations or 25,
                 pause_event=self._pause_event,
@@ -799,11 +585,6 @@ class GodspeedTextualApp(App[None]):
                 hook_executor=self._hook_executor,
                 auto_commit=self._commands.auto_commit,
                 auto_commit_threshold=self._commands.auto_commit_threshold,
-                on_parallel_start=lambda calls: self.call_from_thread(
-                    lambda c=calls: chat.write_system(f"Running {len(c)} tools in parallel...")
-                ),
-                on_parallel_complete=lambda _results: None,
-                on_thinking=lambda t: self.call_from_thread(lambda txt=t: self._on_thinking(txt)),
             )
         except AgentCancelledError:
             chat.write_system("Agent cancelled.")
@@ -813,74 +594,17 @@ class GodspeedTextualApp(App[None]):
         finally:
             self.running = False
             self._update_info_panel()
-            if self._current_streaming_indicator is not None:
-                self._current_streaming_indicator.remove()
-                self._current_streaming_indicator = None
-            self._current_assistant_msg = None
-            self.query_one("#input-bar", InputBar).focus_input()
-
-    def _on_assistant_text(self, text: str) -> None:
-        chat = self.query_one("#chat-panel", ChatPanel)
-        if self._current_streaming_indicator is not None:
-            self._current_streaming_indicator.remove()
-            self._current_streaming_indicator = None
-        if self._current_assistant_msg is not None:
-            self._current_assistant_msg = None
-            return
-        chat.write_assistant(text)
-
-    def _on_assistant_chunk(self, chunk: str) -> None:
-        chat = self.query_one("#chat-panel", ChatPanel)
-        if self._current_streaming_indicator is not None:
-            self._current_streaming_indicator.remove()
-            self._current_streaming_indicator = None
-        if self._current_assistant_msg is None:
-            self._current_assistant_msg = AssistantMessage(chunk)
-            chat._container().mount(self._current_assistant_msg)
-        else:
-            self._current_assistant_msg._text += chunk
-            body = self._current_assistant_msg.query_one(".msg-body", Static)
-            body.update(self._current_assistant_msg._text)
-        chat._scroll()
-
-    def _on_tool_call(self, name: str, args: dict[str, Any]) -> None:
-        chat = self.query_one("#chat-panel", ChatPanel)
-        if self._current_streaming_indicator is not None:
-            self._current_streaming_indicator.remove()
-            self._current_streaming_indicator = None
-        self._current_tool_block = chat.add_tool_call(name, args)
-        self._tool_calls_total += 1
-        self._update_info_panel()
-
-    def _on_tool_result(self, name: str, result: Any) -> None:
-        is_error = getattr(result, "is_error", False)
-        if is_error:
-            self._tool_errors_total += 1
-        output = getattr(result, "output", str(result))
-        error = getattr(result, "error", None)
-        display = str(error) if is_error and error else str(output)
-
-        if self._current_tool_block is not None:
-            self._current_tool_block.set_result(display, is_error)
-            self._current_tool_block = None
-        self._update_info_panel()
+            self.query_one("#input-area", InputArea).focus_input()
 
     def _on_permission_denied(self, name: str, reason: str) -> None:
         self._tool_denied_total += 1
-        chat = self.query_one("#chat-panel", ChatPanel)
+        chat = self.query_one("#chat-log", ChatLog)
         chat.write_system(f"Permission denied: {name} ({reason})")
         self._update_info_panel()
 
-    def _on_thinking(self, text: str) -> None:
-        chat = self.query_one("#chat-panel", ChatPanel)
-        if self._current_streaming_indicator is None:
-            self._current_streaming_indicator = chat.add_streaming_indicator(f"Thinking: {text}")
-        else:
-            self._current_streaming_indicator.update(f"Thinking: {text}")
-
     def action_cancel(self) -> None:
         self._cancel_event.set()
-        chat = self.query_one("#chat-panel", ChatPanel)
+        chat = self.query_one("#chat-log", ChatLog)
         chat.write_system("Cancelling...")
 
     def action_command_palette(self) -> None:
@@ -890,16 +614,15 @@ class GodspeedTextualApp(App[None]):
         if result is None:
             return
         self._dispatch_command(result)
-        self.query_one("#input-bar", InputBar).focus_input()
+        self.query_one("#input-area", InputArea).focus_input()
 
     def action_clear_chat(self) -> None:
-        scroll = self.query_one("#messages-scroll", VerticalScroll)
-        scroll.remove_children()
-        self.query_one("#chat-panel", ChatPanel).write_system("Chat cleared.")
+        self.query_one("#chat-log", ChatLog).remove_children()
+        self.query_one("#chat-log", ChatLog).write_system("Chat cleared.")
 
     async def action_quit(self) -> None:
         duration = time.monotonic() - self._start_time
-        chat = self.query_one("#chat-panel", ChatPanel)
+        chat = self.query_one("#chat-log", ChatLog)
         chat.write_system(
             f"Session ended  {duration:.0f}s  "
             f"{self._tool_calls_total} calls  "

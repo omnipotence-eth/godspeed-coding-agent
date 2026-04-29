@@ -58,7 +58,7 @@ def _validate_tool_arguments(tool: Tool, arguments: dict[str, Any]) -> str | Non
                     "object": dict,
                 }
                 expected = type_map.get(expected_type)
-                if expected and not isinstance(value, expected):
+                if expected and not isinstance(value, expected):  # type: ignore[arg-type]
                     return (
                         f"Argument '{field_name}' expected type '{expected_type}', "
                         f"got '{type(value).__name__}'"

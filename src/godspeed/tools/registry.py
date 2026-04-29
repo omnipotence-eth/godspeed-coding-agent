@@ -1,4 +1,4 @@
-"""Tool registry — discovery, schema generation, and dispatch."""
+"""Tool registry — discovery, schema generation, validation, and dispatch."""
 
 from __future__ import annotations
 
@@ -9,18 +9,83 @@ from godspeed.tools.base import Tool, ToolCall, ToolContext, ToolResult
 
 logger = logging.getLogger(__name__)
 
+# Transient errors that warrant automatic retry.
+# Network timeouts, connection resets, and temporary resource exhaustion
+# are recoverable; logic errors and permission denials are not.
+_TRANSIENT_ERROR_PATTERNS = (
+    "timeout",
+    "connection refused",
+    "connection reset",
+    "connection aborted",
+    "temporary failure",
+    "resource temporarily unavailable",
+    "rate limit",
+    "too many requests",
+    "service unavailable",
+    "502",
+    "503",
+    "504",
+)
+
+
+def _validate_tool_arguments(tool: Tool, arguments: dict[str, Any]) -> str | None:
+    """Validate tool arguments against the tool's JSON Schema.
+
+    Returns an error message if validation fails, or None if valid.
+    """
+    schema = tool.get_schema()
+    if not schema:
+        return None
+
+    # Check required fields
+    required = schema.get("required", [])
+    for field_name in required:
+        if field_name not in arguments:
+            return f"Missing required argument: '{field_name}'"
+
+    # Check property types if defined
+    properties = schema.get("properties", {})
+    for field_name, value in arguments.items():
+        if field_name in properties:
+            expected_type = properties[field_name].get("type")
+            if expected_type:
+                type_map = {
+                    "string": str,
+                    "integer": int,
+                    "number": (int, float),
+                    "boolean": bool,
+                    "array": (list, tuple),
+                    "object": dict,
+                }
+                expected = type_map.get(expected_type)
+                if expected and not isinstance(value, expected):
+                    return (
+                        f"Argument '{field_name}' expected type '{expected_type}', "
+                        f"got '{type(value).__name__}'"
+                    )
+
+    return None
+
+
+def _is_transient_error(error_msg: str) -> bool:
+    """Check if an error message indicates a transient, retryable failure."""
+    error_lower = error_msg.lower()
+    return any(pattern in error_lower for pattern in _TRANSIENT_ERROR_PATTERNS)
+
 
 class ToolRegistry:
     """Central registry for all available tools.
 
     Handles tool registration, schema generation for LLM APIs,
-    and dispatching tool calls to the correct implementation.
+    argument validation, and dispatching tool calls with automatic
+    retry on transient failures.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, max_retries: int = 2) -> None:
         self._tools: dict[str, Tool] = {}
         self._description_overrides: dict[str, str] = {}  # tool_name -> override
         self._schema_cache: list[dict[str, Any]] | None = None
+        self._max_retries = max_retries  # retries beyond the initial attempt
 
     def register(self, tool: Tool) -> None:
         """Register a tool. Raises ValueError on duplicate names."""
@@ -103,6 +168,10 @@ class ToolRegistry:
     async def dispatch(self, tool_call: ToolCall, context: ToolContext) -> ToolResult:
         """Dispatch a tool call to the correct tool implementation.
 
+        Validates arguments against the tool's JSON Schema before execution.
+        Retries on transient failures (network timeouts, connection resets,
+        rate limits) with exponential backoff.
+
         Args:
             tool_call: The tool call to execute.
             context: Execution context.
@@ -117,13 +186,46 @@ class ToolRegistry:
                 f"Available: {', '.join(sorted(self._tools.keys()))}"
             )
 
-        try:
-            return await tool.execute(tool_call.arguments, context)
-        except Exception as exc:
-            logger.error(
-                "Tool execution failed tool=%s error=%s",
+        # Schema validation before execution
+        validation_error = _validate_tool_arguments(tool, tool_call.arguments)
+        if validation_error:
+            logger.warning(
+                "Schema validation failed tool=%s error=%s",
                 tool_call.tool_name,
-                exc,
-                exc_info=True,
+                validation_error,
             )
-            return ToolResult.failure(f"Tool '{tool_call.tool_name}' failed: {exc}")
+            return ToolResult.failure(
+                f"Invalid arguments for '{tool_call.tool_name}': {validation_error}"
+            )
+
+        # Execute with retry on transient failures
+        last_error: Exception | None = None
+        for attempt in range(self._max_retries + 1):
+            try:
+                return await tool.execute(tool_call.arguments, context)
+            except Exception as exc:
+                last_error = exc
+                error_msg = str(exc)
+                if not _is_transient_error(error_msg) or attempt >= self._max_retries:
+                    break
+                # Exponential backoff: 0.1s, 0.2s, 0.4s, ...
+                import asyncio
+
+                delay = 0.1 * (2**attempt)
+                logger.info(
+                    "Transient error on attempt %d for tool=%s, retrying in %.1fs: %s",
+                    attempt + 1,
+                    tool_call.tool_name,
+                    delay,
+                    error_msg,
+                )
+                await asyncio.sleep(delay)
+
+        logger.error(
+            "Tool execution failed after %d attempts tool=%s error=%s",
+            self._max_retries + 1,
+            tool_call.tool_name,
+            last_error,
+            exc_info=True,
+        )
+        return ToolResult.failure(f"Tool '{tool_call.tool_name}' failed: {last_error}")

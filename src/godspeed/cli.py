@@ -401,6 +401,7 @@ async def _run_app(
     project_dir: Path,
     verbose: bool,
     audit_dir: Path | None,
+    permission_mode: str | None = None,
 ) -> None:
     """Wire up all components and launch the Textual TUI."""
     from godspeed.agent.conversation import Conversation
@@ -416,6 +417,8 @@ async def _run_app(
     overrides: dict = {}
     if model:
         overrides["model"] = model
+    if permission_mode:
+        overrides["permission_mode"] = permission_mode
     settings = GodspeedSettings(**overrides)
 
     effective_model = model or settings.model
@@ -678,6 +681,16 @@ async def _run_app(
     default=None,
     help="Directory for audit logs (default: ~/.godspeed/audit).",
 )
+@click.option(
+    "--permission-mode",
+    type=click.Choice(["strict", "normal", "yolo"]),
+    default=None,
+    help=(
+        "Permission mode: 'strict' (deny most, ask for everything), "
+        "'normal' (default deny-first with allow rules), "
+        "'yolo' (no permission checks, maximum speed)."
+    ),
+)
 @click.pass_context
 def main(
     ctx: click.Context,
@@ -685,8 +698,9 @@ def main(
     project_dir: Path,
     verbose: bool,
     audit_dir: Path | None,
+    permission_mode: str | None,
 ) -> None:
-    """Godspeed -- Security-first open-source coding agent."""
+    """Godspeed -- Trusted production coding agent."""
     _setup_logging(verbose)
 
     # Auto-load env files so API keys in ~/.godspeed/.env.local (and the
@@ -701,11 +715,12 @@ def main(
     ctx.obj["project_dir"] = project_dir
     ctx.obj["verbose"] = verbose
     ctx.obj["audit_dir"] = audit_dir
+    ctx.obj["permission_mode"] = permission_mode
 
     # If no subcommand, launch the TUI
     if ctx.invoked_subcommand is None:
         with contextlib.suppress(KeyboardInterrupt):
-            asyncio.run(_run_app(model, project_dir, verbose, audit_dir))
+            asyncio.run(_run_app(model, project_dir, verbose, audit_dir, permission_mode))
 
 
 @main.command()

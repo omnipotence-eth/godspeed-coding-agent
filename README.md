@@ -2,7 +2,7 @@
 
 # Godspeed
 
-**Security-first open-source coding agent.**
+**Trusted open-source coding agent for production code.**
 
 [![CI](https://github.com/omnipotence-eth/godspeed-coding-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/omnipotence-eth/godspeed-coding-agent/actions/workflows/ci.yml)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue?style=flat-square)](https://www.python.org/downloads/)
@@ -10,7 +10,7 @@
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json&style=flat-square)](https://github.com/astral-sh/ruff)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 
-An AI coding agent that treats security as a first-class concern -- not an afterthought.
+A coding agent you can point at a production codebase and trust. Built-in permissions, audit trails, schema-validated tool calls, and automatic retries — so the agent writes safe code without babysitting.
 
 [Getting Started](#getting-started) | [Features](#features) | [Architecture](#architecture) | [Configuration](#configuration) | [Contributing](CONTRIBUTING.md)
 
@@ -36,21 +36,24 @@ platform-specific setup (Miniconda, `PYTHONIOENCODING`, WSL for SWE-bench).
 
 ## Why
 
-Every open-source coding agent gives an LLM the ability to read files, write code, and run shell commands. None of them ship with a deny-first permission engine, a tamper-evident audit trail, or multi-layer secret protection out of the box. You are expected to bolt security on yourself, or trust the model not to `rm -rf /`.
+Every open-source coding agent gives an LLM the ability to read files, write code, and run shell commands. Most of them assume the model will behave — and when it doesn't, you get broken files, leaked secrets, or worse. Godspeed is built for the reality that LLMs make mistakes, hallucinate tool calls, and sometimes go off-track.
 
-Godspeed closes that gap. It pairs full coding capability (25 built-in tools, 200+ LLM providers, sub-agents, MCP) with a security model that fails closed by default. Every tool call passes through a 4-tier permission engine. Every action is recorded in a hash-chained audit log you can cryptographically verify. Secrets are caught at four separate layers before they ever reach the model or the log file.
+Godspeed pairs full coding capability (30+ built-in tools, 200+ LLM providers, MCP support, parallel execution) with a trust model that fails safe by default. Every tool call is validated against its JSON Schema before execution. Transient failures are automatically retried with exponential backoff. Every action passes through a configurable permission engine (strict, normal, or yolo mode) and is recorded in a hash-chained audit log you can cryptographically verify. Secrets are caught at multiple layers before they reach the model or the log file.
 
-If you want a coding agent you can actually point at a production codebase, this is it.
+If you want a coding agent you can actually point at a production codebase — one that catches its own mistakes, retries on transient failures, and leaves a verifiable trail of every action — this is it.
 
 ## Features
 
-### Security
+### Trust & Reliability
 
-- **4-tier permission engine** -- deny-first evaluation with pattern matching, dangerous command detection (71 patterns), and fail-closed defaults. No tool call executes without explicit permission.
+- **Schema-validated tool calls** — every tool argument is validated against its JSON Schema before execution. Missing required fields, wrong types, and invalid values are caught with clear error messages — no silent failures.
+- **Automatic retry on transient failures** — network timeouts, connection resets, and rate limits trigger automatic retries with exponential backoff. Logic errors and permission denials fail immediately.
+- **3-tier permission modes** — `strict` (deny most, ask for everything), `normal` (deny-first with allow rules), `yolo` (no permission checks, maximum speed). Configure via CLI (`--permission-mode`) or settings.yaml.
+- **4-tier permission engine** -- deny-first evaluation with pattern matching, dangerous command detection (71 patterns), and fail-closed defaults. No tool call executes without explicit permission in strict/normal mode.
 - **Hash-chained audit trail** -- SHA-256 JSONL log where each entry chains to the previous. Tamper-evident, compressible, and verifiable with `godspeed audit verify`. Writes fail closed: any I/O error raises `AuditWriteError` and the chain state does not advance.
 - **Secret protection** -- 4 layers of defense: file deny-listing, context cleaning, output filtering, and audit redaction. 27 regex patterns plus Shannon entropy analysis catch API keys, tokens, and credentials before they leak.
-- **Plan mode** -- `/plan` toggles read-only mode where only READ_ONLY tools are allowed, letting you explore safely before committing to changes.
-- **Rich permission prompts** -- contextual detail in permission dialogs: file edits show mini-diffs, shell commands are syntax-highlighted, file writes show previews.
+- **Post-edit syntax gate** -- `.py` / `.pyi` / `.json` edits that break parse are rejected before write. Lint-fix retry loop up to 3 rounds auto-corrects common issues.
+- **Diff approve-before-write** -- `file_edit` / `file_write` / `diff_apply` prompt with a side-by-side diff before hitting disk. `(y)es · (n)o · (a)lways` keys. Two independent axes of consent: permission engine ("may this tool run?") + diff reviewer ("apply THIS specific diff?").
 
 ### Capability
 
@@ -66,7 +69,7 @@ If you want a coding agent you can actually point at a production codebase, this
 - **MCP client** -- connect to Model Context Protocol servers via stdio or SSE transport. Remote tools are auto-adapted to Godspeed's Tool ABC with HIGH risk level.
 - **Model routing** -- route LLM calls by task type (plan/edit/chat) to different models. Use a cheap model for edits and a frontier model for planning.
 - **Human-in-the-loop** -- `/pause` stops the agent at the next iteration, `/guidance <msg>` injects mid-conversation correction and resumes.
-- **Conversation compaction** -- model-aware summarization when approaching the token limit. Small models get aggressive compaction, frontier models get detailed preservation. Uses cheapest model in fallback chain.
+- **Conversation compaction** -- model-aware summarization when approaching the token limit. Small models (Ollama defaults) get aggressive compaction to preserve context slots; frontier models (Claude, GPT-4) get detailed preservation with structured summaries. Uses the cheapest model in the fallback chain to minimize cost. Compaction preserves: tool call history, file paths mentioned, key decisions, and user guidance. Summarized content is marked with `[compacted: N messages → M messages]` so the agent knows context was condensed.
 - **Background commands** -- `shell` tool gains `background: true` parameter. `BackgroundRegistry` tracks processes. `background_check` tool for status/output/kill.
 - **Checkpoint save/restore** -- `/checkpoint name` saves conversation state, `/restore name` loads it back. Never lose context again.
 - **Memory** -- SQLite-backed persistent preferences, session event logging, and automatic correction tracking across sessions.
@@ -137,6 +140,25 @@ Real numbers from the 20-task suite in `benchmarks/tasks.jsonl`, run against det
 
 Full run outputs in `experiments/bench_*/` and the aggregated table in `experiments/benchmark_shootout_2026_04.md`. Reproduce with `scripts/run_benchmark.py --model <id>`.
 
+## How Godspeed Compares
+
+| Feature | Godspeed | Claude Code | Aider | Cursor Agent |
+|---|---|---|---|---|
+| **Tool-call validation** | JSON Schema validation before every execution | Implicit (model-dependent) | Implicit (model-dependent) | Implicit (model-dependent) |
+| **Automatic retry** | Transient failures retried with exponential backoff | No | No | No |
+| **Permission modes** | `strict` / `normal` / `yolo` via CLI flag | Always asks | `--yes` flag | Always asks |
+| **Audit trail** | Hash-chained SHA-256 JSONL, cryptographically verifiable | No | No | No |
+| **Parallel tool execution** | READ_ONLY tools run concurrently via `asyncio.gather()` | Yes | Sequential | Yes |
+| **MCP client** | Built-in (stdio + SSE) | Built-in | No | Built-in |
+| **Post-edit syntax gate** | Auto-rejects broken `.py`/`.json` edits, retries lint fixes | No | No | No |
+| **Diff approve-before-write** | Two-axis consent: permission + diff review | No | No | No |
+| **Secret protection** | 4-layer: file deny-list, context cleaning, output filtering, audit redaction | Basic | No | Basic |
+| **Conversation compaction** | Model-aware summarization (aggressive for small models, detailed for frontier) | Yes | No | Yes |
+| **Open-source** | MIT | Proprietary | Apache 2.0 | Proprietary |
+| **Self-hosted** | Full local mode with Ollama, $0 API cost | No | Yes (with local models) | No |
+
+Godspeed's differentiator: **trust through verification**. Every tool call is validated, every failure is retried, every action is auditable. You don't have to trust the model — you can verify what it did.
+
 ## Architecture
 
 ```mermaid
@@ -148,7 +170,7 @@ flowchart LR
     Spec -->|READ_ONLY| Tools
     LLM -->|tool calls| Perm["Permission\nEngine"]
     Perm -->|allowed| Dispatch["Parallel/Serial\nDispatch"]
-    Dispatch --> Tools["Tools\n(25 built-in + MCP)"]
+    Dispatch --> Tools["Tools\n(30+ built-in + MCP)"]
     Perm -->|denied| Deny[Deny + Log]
     Tools --> Audit["Audit Trail\n(SHA-256 JSONL)"]
     Deny --> Audit

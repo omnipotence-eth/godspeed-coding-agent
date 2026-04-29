@@ -13,19 +13,21 @@ from godspeed.context.chunker import chunk_file
 
 logger = logging.getLogger(__name__)
 
-# Default exclusions for indexing
-DEFAULT_EXCLUDES = [
-    "node_modules",
-    ".venv",
-    "__pycache__",
-    ".git",
-    ".godspeed",
-    "*.pyc",
-    "*.pyo",
-    ".egg-info",
-    "dist",
-    "build",
-]
+# Default exclusions for indexing — frozenset for O(1) lookups and efficient union ops
+DEFAULT_EXCLUDES: frozenset[str] = frozenset(
+    {
+        "node_modules",
+        ".venv",
+        "__pycache__",
+        ".git",
+        ".godspeed",
+        "*.pyc",
+        "*.pyo",
+        ".egg-info",
+        "dist",
+        "build",
+    }
+)
 
 # File extensions to index
 INDEXABLE_EXTENSIONS = {
@@ -71,14 +73,20 @@ class SearchResult:
     score: float
 
 
-def _is_chromadb_available() -> bool:
-    """Check if chromadb is installed."""
-    try:
-        import chromadb  # noqa: F401
+_chromadb_available: bool | None = None
 
-        return True
-    except ImportError:
-        return False
+
+def _is_chromadb_available() -> bool:
+    """Check if chromadb is installed. Result is cached after first call."""
+    global _chromadb_available
+    if _chromadb_available is None:
+        try:
+            import chromadb  # noqa: F401
+
+            _chromadb_available = True
+        except ImportError:
+            _chromadb_available = False
+    return _chromadb_available
 
 
 class CodebaseIndex:
@@ -144,7 +152,7 @@ class CodebaseIndex:
             return 0
 
         self._building = True
-        excludes = set(DEFAULT_EXCLUDES + (exclude or []))
+        excludes = DEFAULT_EXCLUDES | set(exclude or [])
 
         try:
             collection = self._ensure_collection()
@@ -217,12 +225,13 @@ class CodebaseIndex:
 
         try:
             collection = self._ensure_collection()
-            if collection.count() == 0:
+            doc_count = collection.count()
+            if doc_count == 0:
                 return []
 
             results = collection.query(
                 query_texts=[query],
-                n_results=min(top_k, collection.count()),
+                n_results=min(top_k, doc_count),
             )
 
             search_results = []
@@ -273,10 +282,14 @@ class CodebaseIndex:
 
         return False
 
-    def _iter_files(self, excludes: set[str]) -> list[Path]:
-        """Iterate indexable files, skipping excluded directories eagerly."""
-        files = []
-        dirs_to_visit = [self._project_dir]
+    def _iter_files(self, excludes: set[str] | frozenset[str]) -> list[Path]:
+        """Iterate indexable files, skipping excluded directories eagerly.
+
+        Returns a sorted list for deterministic ordering during indexing.
+        Uses iterative DFS to avoid recursion limits on deep directory trees.
+        """
+        files: list[Path] = []
+        dirs_to_visit: list[Path] = [self._project_dir]
         while dirs_to_visit:
             current = dirs_to_visit.pop()
             try:
@@ -288,4 +301,5 @@ class CodebaseIndex:
                         files.append(entry)
             except (PermissionError, OSError):
                 continue
-        return sorted(files)
+        files.sort()
+        return files

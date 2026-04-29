@@ -205,7 +205,7 @@ DANGEROUS_PATTERNS: list[tuple[re.Pattern[str], str]] = [
 
 
 # Pre-filter keywords derived from pattern prefixes for fast short-circuit
-_DANGEROUS_KEYWORDS = frozenset(
+_DANGEROUS_KEYWORDS: frozenset[str] = frozenset(
     {
         "rm ",
         "rmdir",
@@ -297,14 +297,26 @@ _DANGEROUS_KEYWORDS = frozenset(
     }
 )
 
+# Pre-compute lowercase keywords for faster matching (avoids repeated .lower() calls)
+_DANGEROUS_KEYWORDS_LOWER: frozenset[str] = frozenset(kw.lower() for kw in _DANGEROUS_KEYWORDS)
+
 
 def _likely_dangerous(command: str) -> bool:
-    """Fast pre-check: does the command contain any dangerous indicators?"""
+    """Fast pre-check: does the command contain any dangerous indicators?
+
+    Uses pre-computed lowercase keywords to avoid repeated .lower() calls.
+    Returns True immediately on first match for short-circuit evaluation.
+    """
+    # Single .lower() call upfront
     cmd_lower = command.lower()
+
     # Pipes/semicolons indicate command chaining — always check via regex
-    if "|" in command or ";" in command:
+    if "|" in cmd_lower or ";" in cmd_lower:
         return True
-    return any(kw in cmd_lower for kw in _DANGEROUS_KEYWORDS)
+
+    # Check against pre-computed lowercase keywords
+    # Generator expression with any() short-circuits on first match
+    return any(kw in cmd_lower for kw in _DANGEROUS_KEYWORDS_LOWER)
 
 
 def detect_dangerous_command(command: str) -> list[str]:
@@ -326,5 +338,10 @@ def detect_dangerous_command(command: str) -> list[str]:
 
 
 def is_dangerous(command: str) -> bool:
-    """Quick check: is this command dangerous?"""
-    return len(detect_dangerous_command(command)) > 0
+    """Quick check: is this command dangerous?
+
+    Optimized to exit early on first pattern match without collecting all dangers.
+    """
+    if not _likely_dangerous(command):
+        return False
+    return any(pattern.search(command) for pattern, _ in DANGEROUS_PATTERNS)

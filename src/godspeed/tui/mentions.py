@@ -5,6 +5,7 @@ Supports @file:path, @folder:path, and @web:url syntax.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from dataclasses import dataclass
@@ -17,6 +18,9 @@ logger = logging.getLogger(__name__)
 
 # Match @file:path, @folder:path, @web:url — captures type and target
 _MENTION_PATTERN = re.compile(r"@(file|folder|web):(\S+)")
+
+# Collapse multiple spaces to single space — compiled to avoid recompilation
+_MULTI_SPACE_RE = re.compile(r" {2,}")
 
 
 @dataclass(frozen=True)
@@ -52,7 +56,7 @@ def parse_mentions(text: str) -> tuple[str, list[Mention]]:
 
     cleaned = _MENTION_PATTERN.sub("", text).strip()
     # Collapse multiple spaces left by stripping
-    cleaned = re.sub(r" {2,}", " ", cleaned)
+    cleaned = _MULTI_SPACE_RE.sub(" ", cleaned)
     return cleaned, mentions
 
 
@@ -74,7 +78,7 @@ async def resolve_mentions(
     for mention in mentions:
         try:
             if mention.type == "file":
-                content = _resolve_file(mention.target, cwd)
+                content = await _resolve_file(mention.target, cwd)
                 blocks.append(
                     {
                         "type": "text",
@@ -82,7 +86,7 @@ async def resolve_mentions(
                     }
                 )
             elif mention.type == "folder":
-                content = _resolve_folder(mention.target, cwd)
+                content = await _resolve_folder(mention.target, cwd)
                 blocks.append(
                     {
                         "type": "text",
@@ -109,27 +113,30 @@ async def resolve_mentions(
     return blocks
 
 
-def _resolve_file(target: str, cwd: Path) -> str:
+async def _resolve_file(target: str, cwd: Path) -> str:
     """Read file content with path traversal protection."""
     resolved = resolve_tool_path(target, cwd)
     if not resolved.is_file():
         msg = f"Not a file: {target}"
         raise ValueError(msg)
-    return resolved.read_text(encoding="utf-8", errors="replace")
+    # Offload blocking file I/O to thread pool
+    return await asyncio.to_thread(resolved.read_text, encoding="utf-8", errors="replace")
 
 
-def _resolve_folder(target: str, cwd: Path) -> str:
+async def _resolve_folder(target: str, cwd: Path) -> str:
     """List directory contents with path traversal protection."""
     resolved = resolve_tool_path(target, cwd)
     if not resolved.is_dir():
         msg = f"Not a directory: {target}"
         raise ValueError(msg)
 
-    entries = sorted(resolved.iterdir())
+    # Offload blocking directory I/O to thread pool
+    entries = await asyncio.to_thread(lambda: sorted(resolved.iterdir()))
     lines = []
+    cwd_resolved = cwd.resolve()
     for entry in entries[:100]:  # Cap at 100 entries
         suffix = "/" if entry.is_dir() else ""
-        rel = entry.relative_to(cwd.resolve()) if entry.is_relative_to(cwd.resolve()) else entry
+        rel = entry.relative_to(cwd_resolved) if entry.is_relative_to(cwd_resolved) else entry
         lines.append(f"{rel}{suffix}")
     if len(entries) > 100:
         lines.append(f"... and {len(entries) - 100} more entries")

@@ -25,6 +25,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   option must be set" section in `docs/troubleshooting.md` with the
   fix + the pre-v3.5.0 workaround.
 
+### Changed
+
+- **Performance optimizations across core modules**: reduced fsync
+  frequency in audit trail (1→10 with guaranteed first-write sync),
+  pre-computed lowercase keyword set in dangerous command detection,
+  cached model string in LLM client, single-pass post-processing in
+  agent loop, output caching in background process registry, async
+  file/folder I/O in mention resolution, compiled mention regex in
+  completions, and module-level imports in TUI app.
+- **Background process auto-cleanup**: completed processes are now
+  automatically removed from the registry to prevent memory leaks
+  during long sessions.
+
+### Fixed
+
+- **Background test compatibility**: `test_output_after_completion`
+  and `test_kill_already_exited` updated to handle auto-cleanup
+  behavior where completed processes are removed from the registry.
+- **Home directory expansion**: `~` now correctly expands in
+  `glob_search`, `grep_search`, and `resolve_tool_path`.
+- **Inaccessible file handling**: `glob_search` and `grep_search`
+  gracefully skip files with permission errors on Windows.
+
 ## [3.4.0] — 2026-04-22
 
 Phase 2 of the world-class UX push. Two independent additions on top

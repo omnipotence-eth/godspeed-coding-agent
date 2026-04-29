@@ -4,12 +4,12 @@
 
 Godspeed is a security-first open-source coding agent built in Python. It
 provides an interactive terminal UI (TUI) where an LLM can read files, write
-code, run shell commands, and use 25+ built-in tools — all gated by a 4-tier
+code, run shell commands, and use 30+ built-in tools — all gated by a 4-tier
 permission engine and recorded in a tamper-evident audit trail.
 
 ## Stack
 
-- Python 3.11–3.13, Pydantic v2, pydantic-settings
+- Python 3.11–3.14, Pydantic v2, pydantic-settings
 - LiteLLM for 200+ LLM provider support
 - prompt-toolkit + Rich for the TUI
 - pytest + pytest-asyncio + pytest-cov for testing
@@ -59,7 +59,7 @@ uv run python -m godspeed
   Every tool call is evaluated before execution.
 - **Audit trail** (`src/godspeed/audit/`) — SHA-256 hash-chained JSONL.
   Fail-closed on write errors.
-- **Tools** (`src/godspeed/tools/`) — 25 built-in tools with JSON Schema.
+- **Tools** (`src/godspeed/tools/`) — 30+ built-in tools with JSON Schema.
   New tools extend the `Tool` ABC.
 - **LLM layer** (`src/godspeed/llm/`) — LiteLLM wrapper with fallback chains,
   model routing by task type, token counting, cost tracking.

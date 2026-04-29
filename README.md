@@ -18,24 +18,18 @@ An AI coding agent that treats security as a first-class concern -- not an after
 
 ---
 
-## What's new in v3.3.0
+## What's new in v3.4.0
 
-Five UX-focused additions on top of the security-first core. Every one
-shipped with tests + CI-green.
+Five additions on top of the security-first core. Every one shipped with
+tests + CI-green across Python 3.11 / 3.12 / 3.13.
 
 | Area | What changed | Why |
 |---|---|---|
-| **Mid-turn cancel** | `Ctrl+C` now stops the agent mid-streaming-chunk, not at iteration boundary. Second press within 1 s hard-interrupts. | Previously you had to wait for the whole turn if the model went off-track. Cursor / Claude Code pattern — table stakes for a coding agent. |
-| **Diff approve-before-write** | `file_edit` / `file_write` / `diff_apply` now prompt with a side-by-side diff before hitting disk. `(y)es · (n)o · (a)lways` keys. | Two independent axes of consent: `PermissionEvaluator` ("may this tool run?") + `DiffReviewer` ("apply THIS specific diff?"). |
-| **Per-turn cost HUD** | Compact status line after every turn: `· 1,234 in + 567 out · $0.0024 · model · 3 turns`. Tints WARNING when budget < 20%. | `/stats` is great for a deep check but you want continuous awareness without typing. |
-| **Post-edit syntax gate** (v3.2.x) | `.py` / `.pyi` / `.json` edits that break parse are rejected before write. | Caught a multi-line-replace indentation bug surfaced by the production audit. See `docs/production_audit.md`. |
-| **Windows UTF-8 stdio** (v3.2.x) | CLI auto-wraps stdout/stderr with `errors='replace'` at startup. | Fixes `UnicodeEncodeError` on default cp1252 consoles when the agent emits arrows/em-dashes/smart quotes. |
-
-For the background on each — including the 6-task daily-use benchmark
-that surfaced the first two fixes — see
-`docs/production_audit.md` (once committed to the repo; currently on
-`C:\Users\ttimm\Desktop\godspeed_benchmark\production_audit.md`) and
-`docs/troubleshooting.md`.
+| **`/remember` command** | Persist permission rules from the TUI without editing YAML. | Friction-free rule management — `approve`, `deny`, `ask` with `--project` scoping. |
+| **Model routing** | Task-aware routing (`plan`/`edit`/`read`/`shell`) to different models. | Use cheap models for edits, frontier models for planning. Zero config with `cheap_model`/`strong_model` shortcuts. |
+| **Auto-load env files** | `~/.godspeed/.env.local` and project `.env` files loaded on startup. | No more `$env:NVIDIA_NIM_API_KEY = ...` every shell session. |
+| **Post-edit syntax gate** | `.py` / `.pyi` / `.json` edits that break parse are rejected before write. | Catches indentation and syntax errors from fuzzy matching. |
+| **Windows UTF-8 stdio** | CLI auto-wraps stdout/stderr with `errors='replace'` at startup. | Fixes `UnicodeEncodeError` on default cp1252 consoles. |
 
 **Platform docs:** Windows users should read [`docs/quickstart_windows.md`](docs/quickstart_windows.md) for
 platform-specific setup (Miniconda, `PYTHONIOENCODING`, WSL for SWE-bench).
@@ -61,7 +55,7 @@ If you want a coding agent you can actually point at a production codebase, this
 ### Capability
 
 - **200+ LLM providers** -- Claude, GPT, Gemini, Ollama, and everything else LiteLLM supports. Configure fallback chains so work never stops.
-- **25 built-in tools** -- `file_read` (images, PDFs, notebooks), `file_write`, `file_edit` (fuzzy matching), `notebook_edit`, `image_read`, `pdf_read`, `shell` (foreground + background), `glob`, `grep`, `git`, `github` (PR/issue workflow via `gh`), `diff_apply` (unified diffs), `verify` (6 languages), `test_runner` (5 frameworks), `web_search`, `web_fetch`, `repo_map`, `code_search`, `tasks`, and `background_check`.
+- **30+ built-in tools** -- `file_read` (images, PDFs, notebooks), `file_write`, `file_edit` (fuzzy matching), `notebook_edit`, `file_move`, `image_read`, `pdf_read`, `shell` (foreground + background), `glob`, `grep`, `git`, `github` (PR/issue workflow via `gh`), `diff_apply` (unified diffs), `verify` (6 languages), `test_runner` (5 frameworks), `web_search`, `web_fetch`, `repo_map`, `code_search`, `tasks`, `background_check`, `coverage`, `complexity`, `dep_audit`, `security_scan`, `generate_tests`, `traceback_analyzer`, `system_optimizer`, `stock_price`, `db_query`, and `ollama_manager`.
 - **Parallel tool execution** -- when the LLM returns multiple tool calls, they execute concurrently via `asyncio.gather()`. 3-phase dispatch: parse → permission check (sequential) → execute (parallel). READ_ONLY tools always parallel, write tools always serial.
 - **Speculative tool dispatch** -- during streaming, READ_ONLY tool calls are dispatched as background `asyncio.Task`s before the full response completes. The main loop awaits cached results instead of re-dispatching, eliminating dispatch latency for reads.
 - **Extended thinking** -- pass `thinking` parameter to Anthropic/Claude models with configurable token budget. `/think [budget]` slash command. Thinking blocks displayed in collapsed dim panel.
@@ -84,6 +78,8 @@ If you want a coding agent you can actually point at a production codebase, this
 - **Multi-language verify** -- auto-verification after edits supports Python (ruff), JS/TS (biome/eslint), Go (go vet), Rust (cargo check), C/C++ (clang-tidy). Lint-fix retry loop up to 3 rounds.
 - **Test runner** -- auto-detect pytest, jest, vitest, go test, cargo test. Run targeted or full test suites. Agent-accessible for edit-test-fix loops.
 - **Conversation export** -- `/export` saves the full session as formatted markdown for sharing or review.
+- **Session hooks** -- run shell commands at lifecycle events (`session_start`, `session_end`, `turn_end`). Configure in `~/.godspeed/hooks.yaml` for custom notifications, logging, or automation.
+- **Skills** -- markdown prompt files in `~/.godspeed/skills/` or `.godspeed/skills/` that extend Godspeed's capabilities. Each skill is a self-contained prompt with optional trigger patterns.
 - **Rich TUI** -- syntax highlighting, unified diff rendering, streaming output, and slash commands via Rich and prompt-toolkit.
 
 ### Training & Fine-Tuning
@@ -184,13 +180,15 @@ The agent loop is hand-rolled (no framework) following the same pattern proven b
 | Agent loop | `src/godspeed/agent/` | Conversation management, LLM interaction, parallel + speculative dispatch, sub-agent coordinator |
 | Security | `src/godspeed/security/` | Permission engine, dangerous command detection, secret scanning |
 | Audit | `src/godspeed/audit/` | Hash-chained event logging, redaction, verification, compression |
-| Tools | `src/godspeed/tools/` | 25 built-in tools with JSON schemas |
+| Tools | `src/godspeed/tools/` | 30+ built-in tools with JSON schemas |
 | LLM | `src/godspeed/llm/` | LiteLLM client wrapper, model routing, token counting, cost tracking |
 | Context | `src/godspeed/context/` | Project instructions, compaction, checkpoints, repo map |
 | MCP | `src/godspeed/mcp/` | Model Context Protocol client (stdio + SSE) and tool adapter |
 | Memory | `src/godspeed/memory/` | SQLite-backed preferences, session events, correction tracking |
 | Evolution | `src/godspeed/evolution/` | Trace analysis, GEPA mutations, LLM-as-judge fitness, safety gate, registry |
 | Training | `src/godspeed/training/` | Conversation logger, fine-tuning exporter (openai/chatml/sharegpt), reward annotations, benchmark suite |
+| Hooks | `src/godspeed/hooks/` | Lifecycle event hooks (session_start, session_end, turn_end) for custom automation |
+| Skills | `src/godspeed/skills/` | Markdown-based skill system for extending agent capabilities |
 | TUI | `src/godspeed/tui/` | Terminal UI, rich output, permission prompts, slash commands |
 
 ## Getting Started
@@ -257,6 +255,7 @@ The agent will read your code, answer questions, write files, and run commands -
 | `/undo` | Undo last git commit (`git reset --soft HEAD~1`) |
 | `/audit` | Show audit trail stats and verify chain integrity |
 | `/permissions` | Show current permission rules and session grants |
+| `/remember [action] [pattern]` | Persist a permission rule (approve/deny/ask) |
 | `/extend [N]` | Set max iterations per turn (default: 50) |
 | `/context` | Show context window usage (tokens, percentage) |
 | `/plan` | Toggle plan mode (read-only, explore and plan only) |

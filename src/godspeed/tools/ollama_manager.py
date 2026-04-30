@@ -7,6 +7,7 @@ a standalone module with functions callable from the CLI and slash commands.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import shutil
@@ -140,6 +141,7 @@ async def pull_model_async(
             on_progress("Ollama is not installed")
         return False
 
+    proc: asyncio.subprocess.Process | None = None
     try:
         proc = await asyncio.create_subprocess_exec(
             OLLAMA_BIN,
@@ -179,6 +181,10 @@ async def pull_model_async(
         if on_progress:
             on_progress("Ollama is not installed")
         return False
+    finally:
+        if proc is not None and proc.returncode is None:
+            with contextlib.suppress(Exception):
+                proc.kill()
 
 
 def delete_model(model: str) -> tuple[bool, str]:

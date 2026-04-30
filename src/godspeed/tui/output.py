@@ -668,7 +668,6 @@ def format_welcome(
     project_dir: str,
     tools: list[str] | None = None,
     deny_rules: list[str] | None = None,
-    audit_enabled: bool = True,
     permission_mode: str = "normal",
     preset: str = "",
 ) -> None:

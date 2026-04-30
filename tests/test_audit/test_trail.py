@@ -220,6 +220,29 @@ class TestAuditCompression:
         assert "3 records" in msg
 
 
+class TestAuditThreadSafety:
+    """Adversarial: sync record() must be safe across multiple threads."""
+
+    def test_concurrent_records_preserve_chain(self, audit_dir: Path) -> None:
+        import concurrent.futures
+        import threading
+
+        trail = AuditTrail(log_dir=audit_dir, session_id="thread-test")
+        barrier = threading.Barrier(10)
+
+        def _record_batch(_trail: AuditTrail) -> None:
+            barrier.wait()
+            for _ in range(10):
+                _trail.record(AuditEventType.TOOL_CALL, {"tool": "shell"})
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+            list(executor.map(_record_batch, [trail] * 10))
+
+        assert trail.record_count == 100
+        is_valid, msg = trail.verify_chain()
+        assert is_valid, msg
+
+
 class TestAuditFailClosed:
     """Adversarial: audit must fail closed when writes cannot persist.
 

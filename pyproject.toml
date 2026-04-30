@@ -175,4 +175,5 @@ fail_under = 80
 dev = [
     "bandit>=1.9.4",
     "pip-audit>=2.10.0",
+    "vulture>=2.16",
 ]

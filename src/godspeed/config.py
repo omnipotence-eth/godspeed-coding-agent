@@ -44,8 +44,6 @@ def _load_yaml_cached(path: Path) -> dict[str, Any] | None:
         _yaml_cache.popitem(last=False)
     _yaml_cache[path] = (mtime, data)
     return data
-
-
 _PERMISSION_MODES = ("strict", "normal", "yolo")
 _SANDBOX_MODES = ("none", "docker")
 

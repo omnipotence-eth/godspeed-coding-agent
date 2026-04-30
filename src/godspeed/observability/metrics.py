@@ -7,6 +7,7 @@ dependencies — everything is stdlib.
 from __future__ import annotations
 
 import contextlib
+import enum
 import json
 import logging
 import time
@@ -18,6 +19,214 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 _MAX_HISTOGRAM_BUCKETS = 100
+
+
+class AlertSeverity(enum.StrEnum):
+    WARNING = "warning"
+    CRITICAL = "critical"
+
+
+@dataclass(frozen=True, slots=True)
+class Alert:
+    """A single threshold breach alert."""
+
+    severity: AlertSeverity
+    metric: str
+    value: float
+    threshold: float
+    message: str
+
+
+@dataclass
+class MetricsThresholds:
+    """Configurable threshold levels for LoopMetrics.
+
+    All thresholds are optional — None disables the check.
+    """
+
+    token_velocity_warning: float | None = 10_000.0  # tokens/min
+    token_velocity_critical: float | None = 50_000.0
+    error_rate_warning: float | None = 0.10  # 10% of tool calls failing
+    error_rate_critical: float | None = 0.25
+    llm_latency_p99_warning_ms: float | None = 30_000.0
+    llm_latency_p99_critical_ms: float | None = 60_000.0
+    loop_duration_p99_warning_ms: float | None = 5_000.0
+    loop_duration_p99_critical_ms: float | None = 15_000.0
+    speculative_hit_rate_warning: float | None = 0.30  # below 30% is wasteful
+
+
+def check_thresholds(
+    metrics: LoopMetrics,
+    thresholds: MetricsThresholds | None = None,
+) -> list[Alert]:
+    """Evaluate *metrics* against *thresholds* and return triggered alerts.
+
+    Alerts are ordered by severity (critical first) then metric name.
+    """
+    if thresholds is None:
+        thresholds = MetricsThresholds()
+
+    alerts: list[Alert] = []
+
+    # Token velocity
+    velocity = metrics.token_velocity_per_min
+    if velocity is not None:
+        tv_crit = thresholds.token_velocity_critical
+        tv_warn = thresholds.token_velocity_warning
+        if tv_crit is not None and velocity > tv_crit:
+            alerts.append(
+                Alert(
+                    severity=AlertSeverity.CRITICAL,
+                    metric="token_velocity_per_min",
+                    value=velocity,
+                    threshold=tv_crit,
+                    message=(
+                        f"Token velocity {velocity:,.0f}/min exceeds "
+                        f"critical threshold {tv_crit:,.0f}/min"
+                    ),
+                )
+            )
+        elif tv_warn is not None and velocity > tv_warn:
+            alerts.append(
+                Alert(
+                    severity=AlertSeverity.WARNING,
+                    metric="token_velocity_per_min",
+                    value=velocity,
+                    threshold=tv_warn,
+                    message=(
+                        f"Token velocity {velocity:,.0f}/min exceeds "
+                        f"warning threshold {tv_warn:,.0f}/min"
+                    ),
+                )
+            )
+
+    # Error rate
+    if metrics.tool_calls_total > 0:
+        error_rate = metrics.tool_errors_total / metrics.tool_calls_total
+        er_crit = thresholds.error_rate_critical
+        er_warn = thresholds.error_rate_warning
+        if er_crit is not None and error_rate > er_crit:
+            alerts.append(
+                Alert(
+                    severity=AlertSeverity.CRITICAL,
+                    metric="error_rate",
+                    value=error_rate,
+                    threshold=er_crit,
+                    message=(
+                        f"Tool error rate {error_rate:.1%} exceeds "
+                        f"critical threshold {er_crit:.1%}"
+                    ),
+                )
+            )
+        elif er_warn is not None and error_rate > er_warn:
+            alerts.append(
+                Alert(
+                    severity=AlertSeverity.WARNING,
+                    metric="error_rate",
+                    value=error_rate,
+                    threshold=er_warn,
+                    message=(
+                        f"Tool error rate {error_rate:.1%} exceeds "
+                        f"warning threshold {er_warn:.1%}"
+                    ),
+                )
+            )
+
+    # LLM latency p99
+    llm_p99 = metrics._llm_latency_ms.p99
+    if llm_p99 is not None:
+        if (
+            thresholds.llm_latency_p99_critical_ms is not None
+            and llm_p99 > thresholds.llm_latency_p99_critical_ms
+        ):
+            alerts.append(
+                Alert(
+                    severity=AlertSeverity.CRITICAL,
+                    metric="llm_latency_p99_ms",
+                    value=llm_p99,
+                    threshold=thresholds.llm_latency_p99_critical_ms,
+                    message=(
+                        f"LLM p99 latency {llm_p99:,.0f}ms exceeds "
+                        f"critical threshold {thresholds.llm_latency_p99_critical_ms:,.0f}ms"
+                    ),
+                )
+            )
+        elif (
+            thresholds.llm_latency_p99_warning_ms is not None
+            and llm_p99 > thresholds.llm_latency_p99_warning_ms
+        ):
+            alerts.append(
+                Alert(
+                    severity=AlertSeverity.WARNING,
+                    metric="llm_latency_p99_ms",
+                    value=llm_p99,
+                    threshold=thresholds.llm_latency_p99_warning_ms,
+                    message=(
+                        f"LLM p99 latency {llm_p99:,.0f}ms exceeds "
+                        f"warning threshold {thresholds.llm_latency_p99_warning_ms:,.0f}ms"
+                    ),
+                )
+            )
+
+    # Loop duration p99
+    loop_p99 = metrics._loop_duration_ms.p99
+    if loop_p99 is not None:
+        if (
+            thresholds.loop_duration_p99_critical_ms is not None
+            and loop_p99 > thresholds.loop_duration_p99_critical_ms
+        ):
+            alerts.append(
+                Alert(
+                    severity=AlertSeverity.CRITICAL,
+                    metric="loop_duration_p99_ms",
+                    value=loop_p99,
+                    threshold=thresholds.loop_duration_p99_critical_ms,
+                    message=(
+                        f"Loop p99 duration {loop_p99:,.0f}ms exceeds "
+                        f"critical threshold {thresholds.loop_duration_p99_critical_ms:,.0f}ms"
+                    ),
+                )
+            )
+        elif (
+            thresholds.loop_duration_p99_warning_ms is not None
+            and loop_p99 > thresholds.loop_duration_p99_warning_ms
+        ):
+            alerts.append(
+                Alert(
+                    severity=AlertSeverity.WARNING,
+                    metric="loop_duration_p99_ms",
+                    value=loop_p99,
+                    threshold=thresholds.loop_duration_p99_warning_ms,
+                    message=(
+                        f"Loop p99 duration {loop_p99:,.0f}ms exceeds "
+                        f"warning threshold {thresholds.loop_duration_p99_warning_ms:,.0f}ms"
+                    ),
+                )
+            )
+
+    # Speculative hit rate (low is bad)
+    if metrics.speculative_hits + metrics.speculative_misses > 0:
+        hit_rate = metrics.speculative_hit_rate
+        if (
+            thresholds.speculative_hit_rate_warning is not None
+            and hit_rate < thresholds.speculative_hit_rate_warning
+        ):
+            alerts.append(
+                Alert(
+                    severity=AlertSeverity.WARNING,
+                    metric="speculative_hit_rate",
+                    value=hit_rate,
+                    threshold=thresholds.speculative_hit_rate_warning,
+                    message=(
+                        f"Speculative hit rate {hit_rate:.1%} below "
+                        f"warning threshold {thresholds.speculative_hit_rate_warning:.1%}"
+                    ),
+                )
+            )
+
+    # Sort: critical first, then by metric name
+    alerts.sort(key=lambda a: (0 if a.severity == AlertSeverity.CRITICAL else 1, a.metric))
+    return alerts
 
 
 @dataclass(slots=True)

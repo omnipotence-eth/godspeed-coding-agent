@@ -2,6 +2,20 @@
 
 from __future__ import annotations
 
-from godspeed.observability.metrics import LoopMetrics, MetricsSink
+from godspeed.observability.metrics import (
+    Alert,
+    AlertSeverity,
+    LoopMetrics,
+    MetricsSink,
+    MetricsThresholds,
+    check_thresholds,
+)
 
-__all__ = ["LoopMetrics", "MetricsSink"]
+__all__ = [
+    "Alert",
+    "AlertSeverity",
+    "LoopMetrics",
+    "MetricsSink",
+    "MetricsThresholds",
+    "check_thresholds",
+]

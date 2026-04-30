@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import logging
 import platform
@@ -16,6 +17,14 @@ logger = logging.getLogger(__name__)
 DEFAULT_TIMEOUT = 120
 MAX_TIMEOUT = 600
 MAX_COMMAND_LENGTH = 10000  # 10K characters max for shell commands
+
+
+class _ShellNotFoundError(Exception):
+    """Raised when the shell executable cannot be found."""
+
+
+class _ShellTimeoutError(Exception):
+    """Raised when a shell command exceeds its timeout."""
 
 
 def _kill_process_tree(pid: int) -> None:
@@ -169,43 +178,54 @@ class ShellTool(Tool):
         # we can explicitly kill the process tree on timeout. subprocess.run's
         # timeout cleanup is unreliable on Windows when the child has holding
         # pipes (see _kill_process_tree docstring).
-        try:
-            proc = subprocess.Popen(
-                [*shell_prefix, command],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                cwd=str(context.cwd),
-            )
-        except FileNotFoundError as exc:
-            return ToolResult.failure(f"Shell not found: {exc}")
+        def _run_sync() -> tuple[int, str, str]:
+            """Run the command synchronously; called via run_in_executor."""
+            try:
+                proc = subprocess.Popen(
+                    [*shell_prefix, command],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    cwd=str(context.cwd),
+                )
+            except FileNotFoundError as exc:
+                raise _ShellNotFoundError(exc) from exc
+
+            try:
+                stdout, stderr = proc.communicate(timeout=timeout)
+                return proc.returncode, stdout, stderr
+            except subprocess.TimeoutExpired:
+                logger.warning(
+                    "shell.timeout pid=%d command=%r timeout=%d - force-killing process tree",
+                    proc.pid,
+                    command,
+                    timeout,
+                )
+                _kill_process_tree(proc.pid)
+                # After killing the tree, drain any buffered output so the
+                # underlying pipe FDs close and we don't leak them. Give it
+                # a short window; if still blocked, move on with empty output.
+                try:
+                    stdout, stderr = proc.communicate(timeout=5)
+                except subprocess.TimeoutExpired:
+                    stdout, stderr = "", ""
+                tail = ""
+                if stdout:
+                    tail += f"\nSTDOUT tail:\n{stdout[-2000:]}"
+                if stderr:
+                    tail += f"\nSTDERR tail:\n{stderr[-2000:]}"
+                raise _ShellTimeoutError(tail) from None
 
         try:
-            stdout, stderr = proc.communicate(timeout=timeout)
-            returncode = proc.returncode
-        except subprocess.TimeoutExpired:
-            logger.warning(
-                "shell.timeout pid=%d command=%r timeout=%d - force-killing process tree",
-                proc.pid,
-                command,
-                timeout,
+            returncode, stdout, stderr = await asyncio.get_running_loop().run_in_executor(
+                None, _run_sync
             )
-            _kill_process_tree(proc.pid)
-            # After killing the tree, drain any buffered output so the
-            # underlying pipe FDs close and we don't leak them. Give it
-            # a short window; if still blocked, move on with empty output.
-            try:
-                stdout, stderr = proc.communicate(timeout=5)
-            except subprocess.TimeoutExpired:
-                stdout, stderr = "", ""
-            tail = ""
-            if stdout:
-                tail += f"\nSTDOUT tail:\n{stdout[-2000:]}"
-            if stderr:
-                tail += f"\nSTDERR tail:\n{stderr[-2000:]}"
+        except _ShellNotFoundError as exc:
+            return ToolResult.failure(f"Shell not found: {exc}")
+        except _ShellTimeoutError as exc:
             return ToolResult.failure(
                 f"Command timed out after {timeout}s and was force-killed "
-                f"(including any child processes).{tail}"
+                f"(including any child processes).{exc.args[0]}"
             )
 
         output_parts: list[str] = []

@@ -190,14 +190,19 @@ def redact_secrets(text: str) -> str:
     if not findings:
         return text
 
-    # Sort by position descending so replacements don't shift indices
-    sorted_findings = sorted(findings, key=lambda f: f.start, reverse=True)
-
-    result = text
+    # Build segments once — O(k + n) instead of O(k·n) string slicing
+    sorted_findings = sorted(findings, key=lambda f: f.start)
+    parts: list[str] = []
+    last_end = 0
     for finding in sorted_findings:
-        result = result[: finding.start] + REDACTED + result[finding.end :]
-
-    return result
+        if finding.start < last_end:
+            # Overlapping finding — skip (already redacted by previous)
+            continue
+        parts.append(text[last_end : finding.start])
+        parts.append(REDACTED)
+        last_end = finding.end
+    parts.append(text[last_end:])
+    return "".join(parts)
 
 
 def _shannon_entropy(data: str) -> float:

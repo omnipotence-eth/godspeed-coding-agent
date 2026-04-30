@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections import OrderedDict
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -15,9 +16,10 @@ logger = logging.getLogger(__name__)
 DEFAULT_GLOBAL_DIR = Path.home() / ".godspeed"
 
 # YAML config cache: path -> (mtime, data)
-# Bounded to 32 entries to avoid unbounded growth in long-running processes.
+# Bounded to 32 entries with LRU eviction to avoid unbounded growth in
+# long-running processes while keeping frequently-accessed configs hot.
 _MAX_YAML_CACHE_SIZE: int = 32
-_yaml_cache: dict[Path, tuple[float, dict[str, Any]]] = {}
+_yaml_cache: OrderedDict[Path, tuple[float, dict[str, Any]]] = OrderedDict()
 
 
 def _load_yaml_cached(path: Path) -> dict[str, Any] | None:
@@ -30,15 +32,16 @@ def _load_yaml_cached(path: Path) -> dict[str, Any] | None:
     mtime = path.stat().st_mtime
     cached = _yaml_cache.get(path)
     if cached is not None and cached[0] == mtime:
+        # Promote to most-recently-used
+        _yaml_cache.move_to_end(path)
         return cached[1]
     with open(path, encoding="utf-8") as fh:
         data = yaml.safe_load(fh) or {}
     if not isinstance(data, dict):
         data = {}
-    # Evict oldest entries when cache grows beyond limit
-    if len(_yaml_cache) >= _MAX_YAML_CACHE_SIZE:
-        for old_key in list(_yaml_cache.keys())[: len(_yaml_cache) - _MAX_YAML_CACHE_SIZE + 1]:
-            del _yaml_cache[old_key]
+    # Evict least-recently-used entries when cache grows beyond limit
+    while len(_yaml_cache) >= _MAX_YAML_CACHE_SIZE:
+        _yaml_cache.popitem(last=False)
     _yaml_cache[path] = (mtime, data)
     return data
 

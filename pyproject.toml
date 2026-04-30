@@ -170,3 +170,9 @@ omit = [
 [tool.coverage.report]
 show_missing = true
 fail_under = 80
+
+[dependency-groups]
+dev = [
+    "bandit>=1.9.4",
+    "pip-audit>=2.10.0",
+]

@@ -6,6 +6,7 @@ import asyncio
 import logging
 import random
 import re
+import threading
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass, field
 from typing import Any
@@ -28,19 +29,25 @@ _RETRY_AFTER_RE = re.compile(r"retry-?after[:\s]+(\d+)", re.IGNORECASE)
 
 logger = logging.getLogger(__name__)
 
+__all__ = ["BudgetExceededError", "ChatResponse", "LLMClient"]
+
 # Lazy import — litellm pulls in 2000+ modules (~1.5s cold start).
 # We defer it to first use so the TUI appears instantly.
 _litellm = None
+_litellm_lock = threading.Lock()
 
 
 def _get_litellm():
-    """Import litellm on first use and cache it."""
+    """Import litellm on first use and cache it (thread-safe)."""
     global _litellm
-    if _litellm is None:
-        import litellm
+    if _litellm is not None:
+        return _litellm
+    with _litellm_lock:
+        if _litellm is None:
+            import litellm
 
-        litellm.suppress_debug_info = True
-        _litellm = litellm
+            litellm.suppress_debug_info = True
+            _litellm = litellm
     return _litellm
 
 

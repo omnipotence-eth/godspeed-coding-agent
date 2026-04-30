@@ -58,6 +58,37 @@ VERIFIABLE_EXTENSIONS = (
     ".hpp",
 )
 
+# Patterns that strip meta-commentary the model might emit despite prompt instructions
+_META_COMMENTARY_PATTERNS: tuple[str, ...] = (
+    "No function call is needed",
+    "No tool call is needed",
+    "I don't need to use any tools",
+    "I don't need any tools",
+    "No tools are needed",
+    "function call is not needed",
+    "tool call is not needed",
+    "No function call needed",
+    "No tool call needed",
+)
+
+
+def _strip_meta_commentary(text: str) -> str:
+    """Remove meta-commentary phrases the model emits despite prompt instructions.
+
+    Lightweight safety net — runs on every text-only response before display.
+    """
+    for phrase in _META_COMMENTARY_PATTERNS:
+        text = text.replace(phrase, "").strip()
+    # Clean up punctuation artifacts left by removal (". . " or leading ". ")
+    text = text.replace(". . ", ". ").replace(". .", ".")
+    if text.startswith(". "):
+        text = text[2:]
+    # Clean up double spaces
+    while "  " in text:
+        text = text.replace("  ", " ")
+    return text.strip()
+
+
 # Callback type aliases for clarity
 OnAssistantText = Callable[[str], None]
 OnToolCall = Callable[[str, dict[str, Any]], None]
@@ -275,7 +306,7 @@ async def agent_loop(
 
         # Handle text response (model decided to stop)
         if not response.has_tool_calls:
-            final_text = response.content
+            final_text = _strip_meta_commentary(response.content)
             if final_text:
                 conversation.add_assistant_message(content=final_text)
                 # Skip Markdown re-render if we already streamed the text

@@ -8,6 +8,7 @@ import logging
 import platform
 import shutil
 import subprocess
+import threading
 from typing import Any
 
 from godspeed.tools.base import RiskLevel, Tool, ToolContext, ToolResult
@@ -69,18 +70,21 @@ def _kill_process_tree(pid: int) -> None:
 
 
 _shell_cache: list[str] | None = None
+_shell_lock = threading.Lock()
 
 
 def _detect_shell() -> list[str]:
-    """Return the shell command prefix for the current platform (cached)."""
+    """Return the shell command prefix for the current platform (cached, thread-safe)."""
     global _shell_cache
     if _shell_cache is not None:
         return _shell_cache
-    if platform.system() != "Windows":
-        _shell_cache = ["/bin/bash", "-c"]
-    else:
-        git_bash = shutil.which("bash")
-        _shell_cache = [git_bash, "-c"] if git_bash else ["cmd.exe", "/c"]
+    with _shell_lock:
+        if _shell_cache is None:
+            if platform.system() != "Windows":
+                _shell_cache = ["/bin/bash", "-c"]
+            else:
+                git_bash = shutil.which("bash")
+                _shell_cache = [git_bash, "-c"] if git_bash else ["cmd.exe", "/c"]
     return _shell_cache
 
 

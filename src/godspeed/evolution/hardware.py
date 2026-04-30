@@ -12,6 +12,7 @@ import os as _os
 import platform
 import shutil
 import subprocess
+import threading
 
 logger = logging.getLogger(__name__)
 
@@ -21,14 +22,17 @@ logger = logging.getLogger(__name__)
 # (also returned as None by detect_vram_mb).
 _cached_vram: int | None = None
 _cached_vram_checked: bool = False
+_vram_lock = threading.Lock()
 
 
 def _get_cached_vram() -> int | None:
-    """Return cached VRAM, running detection on first call."""
+    """Return cached VRAM, running detection on first call (thread-safe)."""
     global _cached_vram, _cached_vram_checked
     if not _cached_vram_checked:
-        _cached_vram = detect_vram_mb()
-        _cached_vram_checked = True
+        with _vram_lock:
+            if not _cached_vram_checked:
+                _cached_vram = detect_vram_mb()
+                _cached_vram_checked = True
     return _cached_vram
 
 

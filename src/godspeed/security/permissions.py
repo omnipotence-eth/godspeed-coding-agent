@@ -43,6 +43,17 @@ DENY = "deny"
 ASK = "ask"
 
 
+def _extract_tool_prefix(pattern: str) -> str | None:
+    """Extract the tool-name prefix from a rule pattern.
+
+    Returns ``None`` for wildcard patterns like ``*(*)``.
+    """
+    if pattern.startswith("*("):
+        return None
+    idx = pattern.find("(")
+    return pattern[:idx] if idx > 0 else None
+
+
 class PermissionEngine:
     """4-tier permission engine with deny-first evaluation.
 
@@ -77,6 +88,39 @@ class PermissionEngine:
         self._grants_lock = threading.Lock()
         self.plan_mode: bool = False
 
+        # Build tool-name indexes for O(1) rule lookup. Wildcard rules
+        # (e.g., "*(*)") are kept in a separate list checked every time.
+        self._deny_index: dict[str, list] = {}
+        self._deny_wildcards: list = []
+        self._allow_index: dict[str, list] = {}
+        self._allow_wildcards: list = []
+        self._ask_index: dict[str, list] = {}
+        self._ask_wildcards: list = []
+        self._rebuild_indexes()
+
+    def _rebuild_indexes(self) -> None:
+        """Rebuild rule indexes after rules change."""
+        self._deny_index, self._deny_wildcards = self._build_index(self._deny_rules)
+        self._allow_index, self._allow_wildcards = self._build_index(self._allow_rules)
+        self._ask_index, self._ask_wildcards = self._build_index(self._ask_rules)
+
+    @staticmethod
+    def _build_index(rules: list) -> tuple[dict[str, list], list]:
+        """Partition rules into per-tool-name index + wildcard list."""
+        index: dict[str, list] = {}
+        wildcards: list = []
+        for rule in rules:
+            prefix = _extract_tool_prefix(rule.pattern)
+            if prefix is None:
+                wildcards.append(rule)
+            else:
+                index.setdefault(prefix, []).append(rule)
+        return index, wildcards
+
+    def _rules_for_tool(self, index: dict[str, list], wildcards: list, tool_name: str) -> list:
+        """Return rules that might match the given tool name."""
+        return index.get(tool_name, []) + wildcards
+
     def evaluate(self, tool_call: ToolCall) -> PermissionDecision:
         """Evaluate a tool call against all rules.
 
@@ -89,15 +133,16 @@ class PermissionEngine:
                 return PermissionDecision(DENY, "Plan mode active — read-only tools only")
 
         formatted = tool_call.format_for_permission()
+        tool_name = tool_call.tool_name
 
-        # 1. Deny rules first — always win
-        for rule in self._deny_rules:
+        # 1. Deny rules first — always win (indexed lookup)
+        for rule in self._rules_for_tool(self._deny_index, self._deny_wildcards, tool_name):
             if rule.matches(formatted):
                 return PermissionDecision(DENY, f"Matched deny rule: {rule.pattern}")
 
         # 2. Dangerous command detection (for shell commands) — BEFORE session grants
         #    so that a session grant like "Bash(npm *)" cannot bypass dangerous detection
-        if tool_call.tool_name.lower() in ("bash", "shell"):
+        if tool_name.lower() in ("bash", "shell"):
             command = ""
             if isinstance(tool_call.arguments, dict):
                 # Prefer the 'command' key — do NOT use first string value,
@@ -130,13 +175,13 @@ class PermissionEngine:
         if self._check_session_grant(formatted):
             return PermissionDecision(ALLOW, "Session grant (time-limited)")
 
-        # 4. Allow rules
-        for rule in self._allow_rules:
+        # 4. Allow rules (indexed lookup)
+        for rule in self._rules_for_tool(self._allow_index, self._allow_wildcards, tool_name):
             if rule.matches(formatted):
                 return PermissionDecision(ALLOW, f"Matched allow rule: {rule.pattern}")
 
-        # 5. Ask rules
-        for rule in self._ask_rules:
+        # 5. Ask rules (indexed lookup)
+        for rule in self._rules_for_tool(self._ask_index, self._ask_wildcards, tool_name):
             if rule.matches(formatted):
                 return PermissionDecision(ASK, f"Matched ask rule: {rule.pattern}")
 
@@ -165,6 +210,7 @@ class PermissionEngine:
         else:
             msg = f"action must be 'allow' | 'deny' | 'ask', got {action!r}"
             raise ValueError(msg)
+        self._rebuild_indexes()
         logger.info("Runtime rule added action=%s pattern=%s", action_lc, pattern)
 
     def grant_session_permission(self, pattern: str) -> None:

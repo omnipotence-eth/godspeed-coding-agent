@@ -696,6 +696,20 @@ class LLMClient:
                         chunk_usage = dict(chunk.usage)
 
                     collected_content = "".join(_content_chunks)
+
+                    # Local models (Ollama) may embed tool calls in markdown
+                    # JSON blocks rather than native tool_calls. Parse them
+                    # when no structured calls were collected.
+                    if not final_tool_calls and collected_content:
+                        from godspeed.llm.json_markdown_parser import (
+                            extract_json_markdown_tool_calls,
+                        )
+
+                        parsed = extract_json_markdown_tool_calls(collected_content)
+                        if parsed:
+                            final_tool_calls = parsed
+                            collected_content = ""
+
                     yield ChatResponse(
                         content=collected_content,
                         tool_calls=final_tool_calls,

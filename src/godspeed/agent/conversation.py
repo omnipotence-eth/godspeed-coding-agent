@@ -35,17 +35,21 @@ class Conversation:
         self._messages: list[dict[str, Any]] = []
         self._logger = conversation_logger
         self._token_count_cache: int | None = None
+        self._messages_cache: list[dict[str, Any]] | None = None
         if self._logger is not None:
             self._logger.log_system(system_prompt)
 
-    def _invalidate_token_cache(self) -> None:
-        """Mark the token count cache as dirty."""
+    def _invalidate_caches(self) -> None:
+        """Mark the token count and messages caches as dirty."""
         self._token_count_cache = None
+        self._messages_cache = None
 
     @property
     def messages(self) -> list[dict[str, Any]]:
-        """Return full message list including system prompt."""
-        return [self._system_message, *self._messages]
+        """Return full message list including system prompt (cached)."""
+        if self._messages_cache is None:
+            self._messages_cache = [self._system_message, *self._messages]
+        return self._messages_cache
 
     @property
     def token_count(self) -> int:
@@ -67,7 +71,7 @@ class Conversation:
                 (e.g. text + image blocks in OpenAI multimodal format).
         """
         self._messages.append({"role": "user", "content": content})
-        self._invalidate_token_cache()
+        self._invalidate_caches()
         if self._logger is not None:
             self._logger.log_user(content)
 
@@ -88,7 +92,7 @@ class Conversation:
                 normalized.append(entry)
             msg["tool_calls"] = normalized
         self._messages.append(msg)
-        self._invalidate_token_cache()
+        self._invalidate_caches()
         if self._logger is not None:
             self._logger.log_assistant(
                 content=content,
@@ -106,7 +110,7 @@ class Conversation:
                 "content": content,
             }
         )
-        self._invalidate_token_cache()
+        self._invalidate_caches()
         if self._logger is not None:
             self._logger.log_tool_result(
                 tool_call_id=tool_call_id,
@@ -142,7 +146,7 @@ class Conversation:
                 ),
             }
         ]
-        self._invalidate_token_cache()
+        self._invalidate_caches()
         logger.info("Compacted to tokens=%d", self.token_count)
 
     def get_compaction_context(self) -> str:
@@ -162,7 +166,7 @@ class Conversation:
     def clear(self) -> None:
         """Clear all messages (keeps system prompt)."""
         self._messages.clear()
-        self._invalidate_token_cache()
+        self._invalidate_caches()
 
 
 def build_image_content_block(image_url: str) -> dict[str, Any]:

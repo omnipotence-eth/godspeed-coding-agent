@@ -184,6 +184,7 @@ class ShellTool(Tool):
         # pipes (see _kill_process_tree docstring).
         def _run_sync() -> tuple[int, str, str]:
             """Run the command synchronously; called via run_in_executor."""
+            proc: subprocess.Popen[str] | None = None
             try:
                 proc = subprocess.Popen(
                     [*shell_prefix, command],
@@ -212,6 +213,7 @@ class ShellTool(Tool):
                 try:
                     stdout, stderr = proc.communicate(timeout=5)
                 except subprocess.TimeoutExpired:
+                    proc.kill()
                     stdout, stderr = "", ""
                 tail = ""
                 if stdout:
@@ -219,6 +221,10 @@ class ShellTool(Tool):
                 if stderr:
                     tail += f"\nSTDERR tail:\n{stderr[-2000:]}"
                 raise _ShellTimeoutError(tail) from None
+            finally:
+                if proc is not None and proc.returncode is None:
+                    with contextlib.suppress(Exception):
+                        proc.kill()
 
         try:
             returncode, stdout, stderr = await asyncio.get_running_loop().run_in_executor(

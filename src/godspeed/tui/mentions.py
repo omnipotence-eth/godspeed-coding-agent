@@ -149,6 +149,13 @@ async def _resolve_web(url: str) -> str:
         msg = f"Only HTTPS URLs are allowed, got: {url}"
         raise ValueError(msg)
 
+    # Reuse the same SSRF guard as web_fetch tool
+    from godspeed.tools.web_fetch import _is_local_url
+
+    if _is_local_url(url):
+        msg = f"Cannot fetch local/private network URLs: {url}"
+        raise ValueError(msg)
+
     try:
         import httpx
     except ImportError as exc:

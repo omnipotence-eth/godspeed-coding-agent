@@ -518,6 +518,17 @@ class LLMClient:
                 tool_calls = parsed
                 content_text = ""
 
+        # Many local models (Qwen2.5-Coder, DeepSeek via Ollama) wrap tool
+        # calls in markdown JSON blocks instead of native tool_calls arrays.
+        # Parse those when no structured calls were found.
+        if not tool_calls and content_text:
+            from godspeed.llm.json_markdown_parser import extract_json_markdown_tool_calls
+
+            parsed = extract_json_markdown_tool_calls(content_text)
+            if parsed:
+                tool_calls = parsed
+                content_text = ""
+
         # Track usage and cost
         input_tokens = 0
         output_tokens = 0

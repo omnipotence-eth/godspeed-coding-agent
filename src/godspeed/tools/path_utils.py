@@ -17,8 +17,9 @@ def resolve_tool_path(file_path: str, cwd: Path) -> Path:
     Raises:
         ValueError: If the resolved path is outside the project directory.
     """
-    # Reject Windows drive letter paths on any platform (e.g., C:\... or D:/)
-    if re.match(r"^[A-Za-z]:[\\\/]", str(file_path)):
+    # On non-Windows platforms, defensively reject Windows drive-letter paths
+    # that can never be inside the project directory.
+    if os.name != "nt" and re.match(r"^[A-Za-z]:[\\\/]", str(file_path)):
         raise ValueError(
             f"Access denied: path '{file_path}' is a Windows absolute path "
             f"which is outside the project directory '{cwd.resolve()}'"

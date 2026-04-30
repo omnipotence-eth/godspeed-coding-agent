@@ -455,7 +455,7 @@ async def _dispatch_parallel(
         if metrics is not None:
             metrics.record_tool_call(tool_call.tool_name, result.is_error)
         if tool_context.audit is not None:
-            tool_context.audit.record(
+            await tool_context.audit.arecord(
                 event_type="tool_call",
                 detail={
                     "tool": tool_call.tool_name,
@@ -531,7 +531,7 @@ async def _dispatch_sequential(
         if metrics is not None:
             metrics.record_tool_call(tool_call.tool_name, result.is_error)
         if tool_context.audit is not None:
-            tool_context.audit.record(
+            await tool_context.audit.arecord(
                 event_type="tool_call",
                 detail={
                     "tool": tool_call.tool_name,

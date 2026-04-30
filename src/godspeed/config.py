@@ -15,6 +15,8 @@ logger = logging.getLogger(__name__)
 DEFAULT_GLOBAL_DIR = Path.home() / ".godspeed"
 
 # YAML config cache: path -> (mtime, data)
+# Bounded to 32 entries to avoid unbounded growth in long-running processes.
+_MAX_YAML_CACHE_SIZE: int = 32
 _yaml_cache: dict[Path, tuple[float, dict[str, Any]]] = {}
 
 
@@ -33,6 +35,10 @@ def _load_yaml_cached(path: Path) -> dict[str, Any] | None:
         data = yaml.safe_load(fh) or {}
     if not isinstance(data, dict):
         data = {}
+    # Evict oldest entries when cache grows beyond limit
+    if len(_yaml_cache) >= _MAX_YAML_CACHE_SIZE:
+        for old_key in list(_yaml_cache.keys())[: len(_yaml_cache) - _MAX_YAML_CACHE_SIZE + 1]:
+            del _yaml_cache[old_key]
     _yaml_cache[path] = (mtime, data)
     return data
 

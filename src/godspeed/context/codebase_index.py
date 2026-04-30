@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -74,18 +75,21 @@ class SearchResult:
 
 
 _chromadb_available: bool | None = None
+_chromadb_lock = threading.Lock()
 
 
 def _is_chromadb_available() -> bool:
-    """Check if chromadb is installed. Result is cached after first call."""
+    """Check if chromadb is installed. Result is cached after first call (thread-safe)."""
     global _chromadb_available
     if _chromadb_available is None:
-        try:
-            import chromadb  # noqa: F401
+        with _chromadb_lock:
+            if _chromadb_available is None:
+                try:
+                    import chromadb  # noqa: F401
 
-            _chromadb_available = True
-        except ImportError:
-            _chromadb_available = False
+                    _chromadb_available = True
+                except ImportError:
+                    _chromadb_available = False
     return _chromadb_available
 
 

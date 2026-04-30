@@ -9,6 +9,7 @@ from __future__ import annotations
 import contextlib
 import json
 import logging
+import threading
 from io import StringIO
 from typing import Any
 
@@ -59,17 +60,20 @@ console = Console()
 
 # When True, reduce vertical whitespace and skip decorative elements.
 _compact_mode: bool = False
+_compact_lock = threading.Lock()
 
 
 def set_compact_mode(enabled: bool) -> None:
     """Toggle compact display mode (denser output, fewer blank lines)."""
     global _compact_mode
-    _compact_mode = enabled
+    with _compact_lock:
+        _compact_mode = enabled
 
 
 def is_compact_mode() -> bool:
     """Return whether compact display mode is active."""
-    return _compact_mode
+    with _compact_lock:
+        return _compact_mode
 
 
 @contextlib.contextmanager
@@ -117,7 +121,7 @@ def format_turn_separator(turn: int = 0) -> None:
     In compact mode the separator is a single short rule; otherwise it
     includes the turn number.
     """
-    if _compact_mode:
+    if is_compact_mode():
         console.print(f"  {styled('-' * 20, NEUTRAL)}")
     else:
         label = f" turn {turn} " if turn > 0 else ""

@@ -177,6 +177,21 @@ class TUIApp:
         self._diff_reviewer = _InteractiveDiffReviewer()
         tool_context.diff_reviewer = self._diff_reviewer
 
+        # Track last SIGINT time for the "press twice" pattern.
+        self._last_sigint_monotonic = 0.0
+
+    def _on_sigint(self) -> None:
+        """Handle Ctrl+C during agent execution.
+
+        First press sets cancel_event (clean unwind). Second press within
+        1s raises KeyboardInterrupt (hard interrupt).
+        """
+        now = time.monotonic()
+        if self._cancel_event.is_set() and (now - self._last_sigint_monotonic) < 1.0:
+            raise KeyboardInterrupt
+        self._last_sigint_monotonic = now
+        self._cancel_event.set()
+
     def _get_permission_mode(self) -> str:
         """Return the current permission mode string for display."""
         if self._permission_engine is None:
@@ -235,6 +250,18 @@ class TUIApp:
                 f" terminal, not through a pipe or non-interactive shell.[/{DIM}]"
             )
             return
+
+        # Install SIGINT handler once before the main loop. First Ctrl+C
+        # sets cancel_event (clean unwind via AgentCancelledError). Second
+        # press within 1s raises KeyboardInterrupt for hard exit.
+        running_loop = asyncio.get_running_loop()
+        _sigint_installed = False
+        try:
+            running_loop.add_signal_handler(signal.SIGINT, self._on_sigint)
+            _sigint_installed = True
+        except (NotImplementedError, RuntimeError):
+            # Windows: ProactorEventLoop does not support add_signal_handler
+            pass
 
         while True:
             # Compute context percentage for the prompt
@@ -381,36 +408,9 @@ class TUIApp:
 
             # Fresh cancel state per turn
             self._cancel_event.clear()
-
-            # Install a SIGINT handler on the running loop. First Ctrl+C
-            # sets cancel_event (the loop's next checkpoint raises
-            # AgentCancelledError and unwinds cleanly). Second Ctrl+C within 1s
-            # raises KeyboardInterrupt for a hard exit ΓÇö matches the
-            # Jupyter "press twice" pattern most developers expect.
+            # Reset SIGINT debounce timer so the "press twice" pattern
+            # starts fresh each turn.
             self._last_sigint_monotonic = 0.0
-
-            def _on_sigint(self_ref: TUIApp = self) -> None:
-                now = time.monotonic()
-                if (
-                    self_ref._cancel_event.is_set()
-                    and (now - self_ref._last_sigint_monotonic) < 1.0
-                ):
-                    # Second press within 1s ΓåÆ escalate to hard interrupt.
-                    raise KeyboardInterrupt
-                self_ref._last_sigint_monotonic = now
-                self_ref._cancel_event.set()
-
-            running_loop = asyncio.get_running_loop()
-            _sigint_installed = False
-            try:
-                running_loop.add_signal_handler(signal.SIGINT, _on_sigint)
-                _sigint_installed = True
-            except (NotImplementedError, RuntimeError):
-                # Windows: asyncio.ProactorEventLoop does not support
-                # add_signal_handler. Fall back to the default KeyboardInterrupt
-                # path and the AgentCancelledError will still fire if _cancel_event
-                # is set via another mechanism (e.g. /cancel slash command).
-                pass
 
             try:
                 spinner.start()

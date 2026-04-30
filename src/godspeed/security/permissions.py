@@ -106,7 +106,20 @@ class PermissionEngine:
                 if not isinstance(command, str):
                     command = ""
             if command:
-                dangers = detect_dangerous_command(command)
+                try:
+                    dangers = detect_dangerous_command(command)
+                except Exception as exc:
+                    # Security gate must fail closed — any error in dangerous
+                    # command detection blocks the tool rather than allowing it
+                    logger.error(
+                        "Dangerous command detection failed — fail closed: %s",
+                        exc,
+                        exc_info=True,
+                    )
+                    return PermissionDecision(
+                        DENY,
+                        "Dangerous command check failed — fail closed",
+                    )
                 if dangers:
                     return PermissionDecision(
                         DENY,

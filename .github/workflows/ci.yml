@@ -56,3 +56,17 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - run: uv sync --all-extras
       - run: uv run pytest --cov --cov-report=term-missing --cov-fail-under=80 -q
+
+  test-windows:
+    runs-on: windows-latest
+    needs: [type-check, security]
+    strategy:
+      matrix:
+        python-version: ["3.12"]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: uv sync --all-extras
+      - run: uv run pytest -q

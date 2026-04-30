@@ -31,7 +31,8 @@ Keep ONLY:
 - The current task and its status
 - File paths modified (just the paths, not contents)
 - The last error encountered (if any)
-- Key user instructions
+- Key user instructions and corrections
+- Active tool schemas the user was referencing
 
 Discard everything else. Be extremely brief — under 500 words.
 The summary replaces the full history, so omit anything non-essential.
@@ -45,7 +46,8 @@ You MUST preserve:
 - File paths that were modified or created
 - Unresolved issues or errors
 - The current task state and what was accomplished
-- Any user preferences or instructions given
+- User preferences, instructions, and corrections
+- Active tool schemas or conventions being used
 
 You MUST discard:
 - Redundant tool outputs (e.g., full file contents already edited)
@@ -65,6 +67,7 @@ You MUST preserve:
 - Unresolved issues, errors, and their context
 - Current task state — what was accomplished, what remains
 - User preferences, instructions, and corrections given
+- Active tool schemas or conventions being used
 - Last 3 tool results (summarized, not verbatim)
 - Key code patterns or conventions discovered
 

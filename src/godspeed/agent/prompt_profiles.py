@@ -48,15 +48,17 @@ _CATALOG_PATH = Path(__file__).resolve().parent.parent / "llm" / "driver_catalog
 
 PROFILE_PREAMBLES: dict[ProfileName, str] = {
     "default": (
-        "You are a careful senior software engineer. Read before writing, "
-        "test before declaring done, and prefer minimal targeted fixes."
+        "Read before writing, test before declaring done, and prefer minimal targeted fixes."
     ),
     "thinking": (
-        "You are a reasoning model. Think thoroughly before acting, but "
-        "keep visible output focused on the fix. Edit the smallest possible "
-        "set of files."
+        "Think step-by-step inside <think>...</think> tags, then provide the "
+        "final answer or tool calls outside the tags. Keep visible output "
+        "focused and edit the smallest possible set of files."
     ),
-    "minimal": ("Fix the bug. Read the failing test. Edit the source file. Stop."),
+    "minimal": (
+        "Read the failing test, edit the source file, run the test to verify. "
+        "Stop when the test passes."
+    ),
 }
 
 

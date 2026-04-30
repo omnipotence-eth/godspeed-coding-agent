@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from godspeed.agent.loop import _strip_meta_commentary
 
 

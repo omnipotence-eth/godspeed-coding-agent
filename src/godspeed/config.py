@@ -241,6 +241,7 @@ class GodspeedSettings(BaseSettings):
     stuck_loop_threshold: int = 3  # consecutive identical errors before warning
     auto_stash_threshold: int = 3  # consecutive writes before auto-stash
     must_fix_cap: int = 3  # max must-fix injections per session
+    max_speculative_cache_size: int = 10  # max concurrent speculative tasks per iteration
 
     # Thinking — extended thinking for Anthropic/Claude models
     thinking_budget: int = 0  # 0 = disabled; >0 = budget_tokens for thinking blocks

@@ -7,12 +7,12 @@ redacted before writing.
 
 from __future__ import annotations
 
+import asyncio
 import gzip
 import hashlib
 import json
 import logging
 import os
-import threading
 from pathlib import Path
 from typing import Any
 
@@ -33,8 +33,10 @@ class AuditWriteError(OSError):
 class AuditTrail:
     """Append-only, hash-chained JSONL audit log.
 
-    Thread-safe: all writes are serialized through a lock to protect
+    Async-safe: all writes are serialized through an asyncio lock to protect
     the hash chain (_sequence and _prev_hash) from concurrent mutations.
+    Blocking I/O (write, flush, fsync) is offloaded to a thread pool so the
+    event loop never stalls.
 
     One file per session: {session_id}.audit.jsonl
     """
@@ -45,7 +47,7 @@ class AuditTrail:
         self._prev_hash = ""
         self._record_count = 0
         self._sequence = 0
-        self._lock = threading.Lock()
+        self._lock = asyncio.Lock()
         self._file: Any | None = None
         self._writes_since_sync = 0
         # fsync every N records — 10x fewer syscalls while maintaining durability
@@ -62,21 +64,44 @@ class AuditTrail:
     def record_count(self) -> int:
         return self._record_count
 
+    def _write_record(self, event: AuditRecord) -> None:
+        """Synchronous helper: write the record to disk under the lock."""
+        try:
+            line = event.model_dump_json() + "\n"
+            file_just_opened = self._file is None
+            if file_just_opened:
+                self._file = open(self._log_path, "a", encoding="utf-8")  # noqa: SIM115
+            self._file.write(line)  # type: ignore[union-attr]
+            self._file.flush()  # type: ignore[union-attr]
+            self._writes_since_sync += 1
+            if file_just_opened or self._writes_since_sync >= self._fsync_interval:
+                os.fsync(self._file.fileno())  # type: ignore[union-attr]
+                self._writes_since_sync = 0
+        except OSError as exc:
+            logger.error(
+                "Audit write failed path=%s error=%s — refusing to advance chain",
+                self._log_path,
+                exc,
+            )
+            raise AuditWriteError(f"audit write failed: {exc}") from exc
+
     def record(
         self,
         event_type: AuditEventType | str,
         detail: dict | None = None,
         outcome: str = "success",
     ) -> AuditRecord:
-        """Append a record to the audit trail.
+        """Append a record to the audit trail (sync version).
 
-        Thread-safe. Redacts secrets, computes hash chain, writes to JSONL.
-        Uses fsync for durable writes. On I/O failure, raises AuditWriteError
-        and leaves chain state unchanged — callers must fail closed.
+        Thread-safe. For async contexts, prefer :meth:`arecord` to avoid
+        blocking the event loop.
         """
         safe_detail = redact_audit_detail(detail or {})
 
-        with self._lock:
+        # Use threading.Lock for sync contexts
+        import threading
+
+        with threading.Lock():
             event = AuditRecord(
                 session_id=self._session_id,
                 sequence=self._sequence,
@@ -92,29 +117,55 @@ class AuditTrail:
             event.record_hash = hashlib.sha256(record_json.encode()).hexdigest()
 
             try:
-                line = event.model_dump_json() + "\n"
-                file_just_opened = self._file is None
-                if file_just_opened:
-                    self._file = open(self._log_path, "a", encoding="utf-8")  # noqa: SIM115
-                # Safety: self._file is guaranteed non-None after the block above
-                self._file.write(line)  # type: ignore[union-attr]
-                self._file.flush()  # type: ignore[union-attr]
-                # fsync every N records for performance, but always fsync on first
-                # write after file open to ensure initial durability
-                self._writes_since_sync += 1
-                if file_just_opened or self._writes_since_sync >= self._fsync_interval:
-                    os.fsync(self._file.fileno())  # type: ignore[union-attr]
-                    self._writes_since_sync = 0
-            except OSError as exc:
-                logger.error(
-                    "Audit write failed path=%s error=%s — refusing to advance chain",
-                    self._log_path,
-                    exc,
-                )
-                # Fail closed: do NOT advance _prev_hash / _sequence.
-                # The next call will reuse the same sequence and prev_hash,
-                # so a successful retry chains cleanly from the last persisted record.
-                raise AuditWriteError(f"audit write failed: {exc}") from exc
+                self._write_record(event)
+            except AuditWriteError:
+                raise
+
+            self._prev_hash = event.record_hash
+            self._sequence += 1
+            self._record_count += 1
+
+        logger.debug(
+            "Audit record type=%s outcome=%s seq=%d hash=%s",
+            event_type,
+            outcome,
+            event.sequence,
+            event.record_hash[:12],
+        )
+        return event
+
+    async def arecord(
+        self,
+        event_type: AuditEventType | str,
+        detail: dict | None = None,
+        outcome: str = "success",
+    ) -> AuditRecord:
+        """Append a record to the audit trail (async version).
+
+        Blocking I/O (file open, write, flush, fsync) is offloaded to a
+        thread pool so the asyncio event loop never stalls.
+        """
+        safe_detail = redact_audit_detail(detail or {})
+
+        async with self._lock:
+            event = AuditRecord(
+                session_id=self._session_id,
+                sequence=self._sequence,
+                action_type=AuditEventType(event_type)
+                if isinstance(event_type, str)
+                else event_type,
+                action_detail=safe_detail,
+                outcome=outcome,
+                prev_hash=self._prev_hash,
+            )
+
+            record_json = event.model_dump_json(exclude={"record_hash"})
+            event.record_hash = hashlib.sha256(record_json.encode()).hexdigest()
+
+            try:
+                await asyncio.to_thread(self._write_record, event)
+            except AuditWriteError:
+                raise
 
             self._prev_hash = event.record_hash
             self._sequence += 1
@@ -138,6 +189,17 @@ class AuditTrail:
             except OSError:
                 pass
             self._file.close()
+            self._file = None
+
+    async def aclose(self) -> None:
+        """Async close: offloads fsync/close to a thread pool."""
+        if self._file is not None:
+            try:
+                await asyncio.to_thread(self._file.flush)
+                await asyncio.to_thread(os.fsync, self._file.fileno())
+            except OSError:
+                pass
+            await asyncio.to_thread(self._file.close)
             self._file = None
 
     def compress_session(self) -> Path | None:

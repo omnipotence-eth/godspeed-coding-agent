@@ -105,6 +105,15 @@ class AuditRecorder(Protocol):
         """Record an audit event. Returns the persisted record."""
         ...
 
+    async def arecord(
+        self,
+        event_type: str,
+        detail: dict[str, Any] | None = None,
+        outcome: str = "success",
+    ) -> Any:
+        """Async variant of record."""
+        ...
+
 
 @runtime_checkable
 class LLMInvoker(Protocol):

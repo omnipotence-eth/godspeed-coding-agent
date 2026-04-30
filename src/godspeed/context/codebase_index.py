@@ -141,6 +141,10 @@ class CodebaseIndex:
     def build_index(self, exclude: list[str] | None = None) -> int:
         """Build the index by scanning and chunking all source files.
 
+        Streams chunks to ChromaDB in fixed-size batches to avoid memory
+        exhaustion on large codebases. Previously accumulated all chunks
+        in memory before writing; now writes incrementally.
+
         Args:
             exclude: Additional directory/file patterns to exclude.
 
@@ -162,35 +166,30 @@ class CodebaseIndex:
             if existing > 0:
                 collection.delete(where={"indexed": True})
 
-            # Scan files
-            all_chunks = []
-            for path in self._iter_files(excludes):
-                chunks = chunk_file(path)
-                all_chunks.extend(chunks)
+            # Stream chunks to ChromaDB in batches — avoid accumulating all
+            # chunks in memory for large codebases.
+            batch_size = 100
+            batch: list[Any] = []
+            total = 0
+            chunk_counter = 0
 
-            if not all_chunks:
+            for path in self._iter_files(excludes):
+                for c in chunk_file(path):
+                    batch.append(c)
+                    chunk_counter += 1
+                    if len(batch) >= batch_size:
+                        self._add_batch(collection, batch, chunk_counter - len(batch))
+                        total += len(batch)
+                        batch = []
+
+            # Flush remaining chunks
+            if batch:
+                self._add_batch(collection, batch, chunk_counter - len(batch))
+                total += len(batch)
+
+            if total == 0:
                 logger.info("No files to index in %s", self._project_dir)
                 return 0
-
-            # Batch add to ChromaDB
-            batch_size = 100
-            total = 0
-            for i in range(0, len(all_chunks), batch_size):
-                batch = all_chunks[i : i + batch_size]
-                collection.add(
-                    ids=[f"chunk_{i + j}" for j in range(len(batch))],
-                    documents=[c.content for c in batch],
-                    metadatas=[
-                        {
-                            "file_path": c.file_path,
-                            "start_line": c.start_line,
-                            "end_line": c.end_line,
-                            "indexed": True,
-                        }
-                        for c in batch
-                    ],
-                )
-                total += len(batch)
 
             self._index_time = time.time()
             logger.info(
@@ -202,6 +201,23 @@ class CodebaseIndex:
 
         finally:
             self._building = False
+
+    @staticmethod
+    def _add_batch(collection: Any, batch: list[Any], base_id: int) -> None:
+        """Add a batch of chunks to the ChromaDB collection."""
+        collection.add(
+            ids=[f"chunk_{base_id + j}" for j in range(len(batch))],
+            documents=[c.content for c in batch],
+            metadatas=[
+                {
+                    "file_path": c.file_path,
+                    "start_line": c.start_line,
+                    "end_line": c.end_line,
+                    "indexed": True,
+                }
+                for c in batch
+            ],
+        )
 
     async def build_index_async(self, exclude: list[str] | None = None) -> int:
         """Build index in a background thread."""

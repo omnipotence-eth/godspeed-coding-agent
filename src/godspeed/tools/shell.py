@@ -106,6 +106,7 @@ class ShellTool(Tool):
             "Run a shell command and capture stdout/stderr. "
             "Each command runs independently (stateless). "
             "Use absolute paths or paths relative to the project root. "
+            "Confirm with the user before destructive commands (rm, git push --force, etc.). "
             "Set background=true for long-running commands, then use "
             "background_check to poll status.\n\n"
             "Example: shell(command='pytest tests/ -v')\n"

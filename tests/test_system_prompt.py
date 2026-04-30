@@ -32,7 +32,7 @@ def test_prompt_includes_core_and_workflow_and_quality() -> None:
     prompt = build_system_prompt(tools=[_StubTool()])
 
     # Existing sections still rendered
-    assert "security-first coding agent" in prompt
+    assert "trusted production coding agent" in prompt
     assert "Common Workflows" in prompt
     assert "Available Tools" in prompt
     assert "stub" in prompt

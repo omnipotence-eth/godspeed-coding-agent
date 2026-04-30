@@ -14,6 +14,29 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_GLOBAL_DIR = Path.home() / ".godspeed"
 
+# YAML config cache: path -> (mtime, data)
+_yaml_cache: dict[Path, tuple[float, dict[str, Any]]] = {}
+
+
+def _load_yaml_cached(path: Path) -> dict[str, Any] | None:
+    """Load YAML from *path* with mtime-based caching.
+
+    Returns the parsed dict, or ``None`` if the file does not exist.
+    """
+    if not path.exists():
+        return None
+    mtime = path.stat().st_mtime
+    cached = _yaml_cache.get(path)
+    if cached is not None and cached[0] == mtime:
+        return cached[1]
+    with open(path, encoding="utf-8") as fh:
+        data = yaml.safe_load(fh) or {}
+    if not isinstance(data, dict):
+        data = {}
+    _yaml_cache[path] = (mtime, data)
+    return data
+
+
 _PERMISSION_MODES = ("strict", "normal", "yolo")
 _SANDBOX_MODES = ("none", "docker")
 
@@ -429,30 +452,30 @@ class GodspeedSettings(BaseSettings):
     @model_validator(mode="before")
     @classmethod
     def load_yaml_configs(cls, data: dict[str, Any]) -> dict[str, Any]:
-        """Load and merge YAML config files (global > project). Env vars take precedence."""
+        """Load and merge YAML config files (global > project). Env vars take precedence.
+
+        Uses mtime-based caching to avoid re-parsing YAML on every
+        ``GodspeedSettings()`` instantiation.
+        """
         merged: dict[str, Any] = {}
 
-        # Load global config
+        # Load global config (cached)
         global_config = DEFAULT_GLOBAL_DIR / "settings.yaml"
-        if global_config.exists() and global_config.is_file():
-            try:
-                with open(global_config) as f:
-                    global_data = yaml.safe_load(f) or {}
-                if isinstance(global_data, dict):
-                    merged.update(global_data)
-            except yaml.YAMLError as exc:
-                logger.warning("Malformed global settings.yaml: %s — skipping", exc)
+        try:
+            global_data = _load_yaml_cached(global_config)
+            if global_data is not None:
+                merged.update(global_data)
+        except yaml.YAMLError as exc:
+            logger.warning("Malformed global settings.yaml: %s — skipping", exc)
 
         # Load project config (overrides global, except deny rules which merge)
         project_config = DEFAULT_PROJECT_DIR / "settings.yaml"
-        if project_config.exists() and project_config.is_file():
-            try:
-                with open(project_config) as f:
-                    project_data = yaml.safe_load(f) or {}
-                if isinstance(project_data, dict):
-                    _merge_configs(merged, project_data)
-            except yaml.YAMLError as exc:
-                logger.warning("Malformed project settings.yaml: %s — skipping", exc)
+        try:
+            project_data = _load_yaml_cached(project_config)
+            if project_data is not None:
+                _merge_configs(merged, project_data)
+        except yaml.YAMLError as exc:
+            logger.warning("Malformed project settings.yaml: %s — skipping", exc)
 
         # Env vars / constructor args take final precedence
         merged.update({k: v for k, v in data.items() if v is not None})

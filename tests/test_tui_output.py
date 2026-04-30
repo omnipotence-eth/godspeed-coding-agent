@@ -302,8 +302,10 @@ class TestDecorativeElements:
 
     def test_welcome_no_rule(self) -> None:
         output = _capture(format_welcome, "model", "/home/user")
-        # No horizontal rule in minimal design
-        assert "-" not in output  # no rule characters
+        # No horizontal rule in minimal design (multi-char rules only;
+        # single hyphens inside words like "self-discipline" are fine)
+        assert "---" not in output
+        assert "───" not in output
 
     def test_session_summary_no_rule(self) -> None:
         output = _capture(format_session_summary, 60.0, 1000, 500)

@@ -628,7 +628,7 @@ class LLMClient:
 
         try:
             response = await _get_litellm().acompletion(**kwargs)
-            collected_content = ""
+            _content_chunks: list[str] = []
             collected_tool_calls: list[dict[str, Any]] = []
 
             async for chunk in response:
@@ -638,7 +638,7 @@ class LLMClient:
                 finish_reason = chunk.choices[0].finish_reason
 
                 if delta.content:
-                    collected_content += delta.content
+                    _content_chunks.append(delta.content)
                     yield ChatResponse(
                         content=delta.content,
                         tool_calls=[],
@@ -684,6 +684,7 @@ class LLMClient:
                     if hasattr(chunk, "usage") and chunk.usage:
                         chunk_usage = dict(chunk.usage)
 
+                    collected_content = "".join(_content_chunks)
                     yield ChatResponse(
                         content=collected_content,
                         tool_calls=final_tool_calls,
@@ -693,6 +694,7 @@ class LLMClient:
                     return
 
             # Stream ended without finish_reason — return collected content
+            collected_content = "".join(_content_chunks)
             if collected_content or collected_tool_calls:
                 yield ChatResponse(
                     content=collected_content,

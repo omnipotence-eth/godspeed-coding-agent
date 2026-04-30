@@ -21,6 +21,7 @@ from godspeed.agent.conversation import Conversation
 from godspeed.agent.result import AgentCancelledError, AgentMetrics, ExitReason
 from godspeed.llm.client import ChatResponse, LLMClient
 from godspeed.llm.router import classify_task_type
+from godspeed.observability.metrics import LoopMetrics, MetricsSink
 from godspeed.tools.base import ToolCall, ToolContext, ToolResult
 from godspeed.tools.registry import ToolRegistry
 
@@ -35,6 +36,13 @@ AUTO_STASH_THRESHOLD = 3
 MUST_FIX_CAP = 3
 MAX_TOOL_OUTPUT_CHARS = 50000  # Prevent single tool call from blowing context window
 MAX_SPECULATIVE_CACHE_SIZE = 10  # Max concurrent speculative tasks per iteration
+# Tools that are idempotent and safe to dispatch speculatively even if their
+# formal risk level is LOW (e.g. web_fetch hits external servers but is
+# read-only from the local system perspective).
+_SPECULATIVE_ALLOWLIST: set[str] = {
+    "web_fetch",
+    "repo_map",
+}
 VERIFIABLE_EXTENSIONS = (
     ".py",
     ".pyi",
@@ -111,6 +119,7 @@ async def agent_loop(
     on_parallel_complete: OnParallelComplete | None = None,
     on_thinking: OnThinking | None = None,
     metrics: AgentMetrics | None = None,
+    metrics_sink: MetricsSink | None = None,
 ) -> str:
     """Run the agent loop until the model stops calling tools.
 
@@ -174,7 +183,11 @@ async def agent_loop(
         must_fix_cap=must_fix_cap if must_fix_cap is not None else MUST_FIX_CAP,
     )
 
+    loop_metrics = metrics.loop if metrics is not None else LoopMetrics()
+
     for iteration in range(iteration_limit):
+        iter_t0 = time.monotonic()
+
         # Cancel check: before pause check, so a cancel delivered during a
         # pause doesn't strand the loop. Raises AgentCancelledError; caller unwinds.
         _check_cancel(cancel_event)
@@ -198,6 +211,7 @@ async def agent_loop(
         # Check if we need to compact
         if conversation.is_near_limit:
             await _compact_conversation(conversation, llm_client)
+            loop_metrics.record_compaction()
 
         # Task-aware routing: classify the upcoming call from conversation
         # state. Cheap heuristic (no extra LLM call); resolves to one of
@@ -206,6 +220,7 @@ async def agent_loop(
         task_type = classify_task_type(conversation.messages)
 
         # Call LLM (streaming or batch)
+        llm_t0 = time.monotonic()
         try:
             if on_assistant_chunk is not None:
                 response = await _streaming_call(
@@ -225,6 +240,8 @@ async def agent_loop(
                     tools=tool_schemas if tool_schemas else None,
                     task_type=task_type,
                 )
+            loop_metrics.record_llm_call(time.monotonic() - llm_t0)
+            loop_metrics.record_token_count(conversation.token_count)
         except AgentCancelledError:
             # Finalize with INTERRUPTED and unwind — don't wrap in LLM_ERROR.
             logger.info("Agent loop cancelled mid-turn at iteration=%d", iteration)
@@ -314,6 +331,7 @@ async def agent_loop(
                 if decision == "deny":
                     reason = f"Permission denied for {tool_call.format_for_permission()}"
                     logger.info("Permission denied tool=%s", tool_call.tool_name)
+                    loop_metrics.record_tool_denial()
                     if on_permission_denied:
                         on_permission_denied(tool_call.tool_name, reason)
                     conversation.add_tool_result(
@@ -345,6 +363,9 @@ async def agent_loop(
 
         if not permitted:
             # All calls were malformed, denied, or blocked — continue to next LLM turn
+            loop_metrics.record_iteration(time.monotonic() - iter_t0)
+            if metrics_sink is not None:
+                metrics_sink.emit("loop_iteration", loop_metrics.to_dict())
             continue
 
         # --- Phase 3: Execute tools (parallel or sequential) ---
@@ -376,6 +397,10 @@ async def agent_loop(
                 cancel_event,
                 llm_client,
             )
+
+        loop_metrics.record_iteration(time.monotonic() - iter_t0)
+        if metrics_sink is not None:
+            metrics_sink.emit("loop_iteration", loop_metrics.to_dict())
 
     if metrics is not None:
         metrics.iterations_used = iteration_limit
@@ -425,8 +450,12 @@ async def _dispatch_parallel(
             cached_task = state.speculative_cache.pop(tc.call_id, None)
             if cached_task is not None:
                 logger.debug("Speculative hit tool=%s call_id=%s", tc.tool_name, tc.call_id)
+                if metrics is not None:
+                    metrics.loop.record_speculative_hit()
                 coros.append(cached_task)
             else:
+                if metrics is not None:
+                    metrics.loop.record_speculative_miss()
                 coros.append(asyncio.create_task(tool_registry.dispatch(tc, tool_context)))
         parallel_results = await asyncio.gather(*coros)
 
@@ -456,6 +485,11 @@ async def _dispatch_parallel(
             on_tool_result(tool_call.tool_name, result)
         if metrics is not None:
             metrics.record_tool_call(tool_call.tool_name, result.is_error)
+            metrics.loop.record_tool_call(
+                tool_call.tool_name,
+                duration_sec=batch_latency_ms / 1000 / len(permitted_ordered),
+                is_error=result.is_error,
+            )
         if tool_context.audit is not None:
             await tool_context.audit.arecord(
                 event_type="tool_call",
@@ -519,10 +553,14 @@ async def _dispatch_sequential(
                 tool_call.tool_name,
                 tool_call.call_id,
             )
+            if metrics is not None:
+                metrics.loop.record_speculative_hit()
             result = await cached_task
         else:
+            if metrics is not None:
+                metrics.loop.record_speculative_miss()
             result = await tool_registry.dispatch(tool_call, tool_context)
-        latency_ms = (time.monotonic() - t0) * 1000
+        latency_sec = time.monotonic() - t0
 
         if hook_executor is not None:
             await asyncio.get_running_loop().run_in_executor(
@@ -532,6 +570,11 @@ async def _dispatch_sequential(
             on_tool_result(tool_call.tool_name, result)
         if metrics is not None:
             metrics.record_tool_call(tool_call.tool_name, result.is_error)
+            metrics.loop.record_tool_call(
+                tool_call.tool_name,
+                duration_sec=latency_sec,
+                is_error=result.is_error,
+            )
         if tool_context.audit is not None:
             await tool_context.audit.arecord(
                 event_type="tool_call",
@@ -540,7 +583,7 @@ async def _dispatch_sequential(
                     "arguments": tool_call.arguments,
                     "output_length": len(result.output),
                     "is_error": result.is_error,
-                    "latency_ms": round(latency_ms, 1),
+                    "latency_ms": round(latency_sec * 1000, 1),
                 },
                 outcome="error" if result.is_error else "success",
             )
@@ -1079,11 +1122,12 @@ def _speculative_dispatch(
     tool_context: ToolContext,
     cache: dict[str, asyncio.Task[ToolResult]],
 ) -> None:
-    """Start READ_ONLY tool calls speculatively as background tasks.
+    """Start READ_ONLY (and allowlisted) tool calls speculatively as background tasks.
 
-    Parses each tool call and checks risk level. If READ_ONLY, dispatches
-    immediately and stores the asyncio.Task in cache keyed by call_id.
-    The main loop checks the cache before dispatching to avoid double work.
+    Parses each tool call and checks risk level. If READ_LOW or in the
+    _SPECULATIVE_ALLOWLIST, dispatches immediately and stores the
+    asyncio.Task in cache keyed by call_id. The main loop checks the cache
+    before dispatching to avoid double work.
 
     Enforces MAX_SPECULATIVE_CACHE_SIZE to prevent unbounded growth.
     """
@@ -1103,7 +1147,12 @@ def _speculative_dispatch(
             continue
 
         tool = tool_registry.get(parsed.tool_name)
-        if tool is None or tool.risk_level != RiskLevel.READ_ONLY:
+        if tool is None:
+            continue
+        is_safe = (
+            tool.risk_level == RiskLevel.READ_ONLY or parsed.tool_name in _SPECULATIVE_ALLOWLIST
+        )
+        if not is_safe:
             continue
 
         call_id = parsed.call_id

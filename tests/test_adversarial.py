@@ -373,6 +373,147 @@ class TestSecretDetectionEvasion:
         assert len(findings) == 0
 
 
+class TestUnicodePathTraversal:
+    """Unicode-encoded path traversal attempts."""
+
+    def test_unicode_dotdot_escape(self, tmp_path: Path) -> None:
+        """\u002e\u002e decodes to '..' but should still be blocked."""
+        # In a Python literal \u002e is just '.', so this is literally ../../etc/passwd
+        with pytest.raises(ValueError, match="outside the project"):
+            resolve_tool_path("../../etc/passwd", tmp_path)
+
+    def test_fullwidth_period_not_traversal(self, tmp_path: Path) -> None:
+        """Fullwidth period (U+FF0E) is NOT a real dot — Path won't resolve it as parent."""
+        # This should succeed because it's just a weird filename inside cwd
+        result = resolve_tool_path("..\uff0e\uff0e", tmp_path)
+        assert result.relative_to(tmp_path.resolve())
+
+    def test_url_encoded_traversal_rejected(self, tmp_path: Path) -> None:
+        """URL-encoded %2f should NOT be decoded by Path — treated as literal filename."""
+        result = resolve_tool_path("..%2f..%2fetc%2fpasswd", tmp_path)
+        # Since %2f is not a path separator to Path, this is a single filename
+        assert result.relative_to(tmp_path.resolve())
+
+
+class TestMentionInjection:
+    """Prompt injection and SSRF via @-mentions."""
+
+    @pytest.mark.asyncio
+    async def test_web_mention_localhost_blocked(self, tmp_path: Path) -> None:
+        """@web:https://127.0.0.1/ must be blocked (SSRF)."""
+        from godspeed.tui.mentions import Mention, resolve_mentions
+
+        mentions = [
+            Mention(
+                type="web",
+                raw="@web:https://127.0.0.1/admin",
+                target="https://127.0.0.1/admin",
+            )
+        ]
+        blocks = await resolve_mentions(mentions, tmp_path)
+        texts = [str(b.get("text", "")).lower() for b in blocks]
+        assert any("cannot fetch" in t or "local" in t for t in texts)
+
+    @pytest.mark.asyncio
+    async def test_web_mention_private_ip_blocked(self, tmp_path: Path) -> None:
+        """@web:https://192.168.1.1/ must be blocked (SSRF)."""
+        from godspeed.tui.mentions import Mention, resolve_mentions
+
+        mentions = [
+            Mention(
+                type="web",
+                raw="@web:https://192.168.1.1/",
+                target="https://192.168.1.1/",
+            )
+        ]
+        blocks = await resolve_mentions(mentions, tmp_path)
+        texts = [str(b.get("text", "")).lower() for b in blocks]
+        assert any("cannot fetch" in t or "local" in t for t in texts)
+
+    @pytest.mark.asyncio
+    async def test_file_mention_traversal_blocked(self, tmp_path: Path) -> None:
+        """@file:../../etc/passwd must be blocked."""
+        from godspeed.tui.mentions import Mention, resolve_mentions
+
+        mentions = [
+            Mention(
+                type="file",
+                raw="@file:../../etc/passwd",
+                target="../../etc/passwd",
+            )
+        ]
+        blocks = await resolve_mentions(mentions, tmp_path)
+        texts = [str(b.get("text", "")).lower() for b in blocks]
+        assert any("outside" in t or "denied" in t for t in texts)
+
+
+class TestToolCallInjection:
+    """Malformed or injected tool-call arguments."""
+
+    def test_nested_json_in_command(self) -> None:
+        """Dict passed where string expected should fail gracefully."""
+        tc = ToolCall(
+            tool_name="shell",
+            arguments={"command": {"__class__": "os.system", "arg": "rm -rf /"}},
+        )
+        formatted = tc.format_for_permission()
+        assert "shell(" in formatted
+        # Should not crash or leak the nested structure as executable
+
+    def test_null_byte_in_file_path(self, tmp_path: Path) -> None:
+        """Null bytes should not cause truncation or escape."""
+        try:
+            result = resolve_tool_path("file\x00.txt", tmp_path)
+            assert result.relative_to(tmp_path.resolve())
+        except (ValueError, OSError):
+            pass  # Also acceptable
+
+
+class TestAuditAppendOnlyBypass:
+    """Try to bypass audit trail append-only semantics."""
+
+    def test_appending_fake_record_detected(self, tmp_path: Path) -> None:
+        """Manually appending a well-formed but unchained record breaks verification."""
+        from godspeed.audit.events import AuditEventType
+        from godspeed.audit.trail import AuditTrail
+
+        trail = AuditTrail(log_dir=tmp_path, session_id="append-test")
+        trail.record(AuditEventType.SESSION_START)
+        trail.record(AuditEventType.TOOL_CALL, {"tool": "shell"})
+
+        # Attacker appends a fake record with a fabricated hash
+        fake_record = (
+            '{"session_id":"append-test","sequence":2,"action_type":"tool_call",'
+            '"action_detail":{"tool":"file_delete"},"outcome":"success",'
+            '"prev_hash":"0000000000000000000000000000000000000000000000000000000000000000",'
+            '"record_hash":"0000000000000000000000000000000000000000000000000000000000000000"}\n'
+        )
+        with open(trail.log_path, "a", encoding="utf-8") as f:
+            f.write(fake_record)
+
+        is_valid, msg = trail.verify_chain()
+        assert not is_valid
+        assert "mismatch" in msg.lower()
+
+    def test_replay_attack_detected(self, tmp_path: Path) -> None:
+        """Duplicating a valid record changes the sequence and breaks the chain."""
+        from godspeed.audit.events import AuditEventType
+        from godspeed.audit.trail import AuditTrail
+
+        trail = AuditTrail(log_dir=tmp_path, session_id="replay-test")
+        trail.record(AuditEventType.SESSION_START)
+        trail.record(AuditEventType.TOOL_CALL, {"tool": "shell"})
+
+        # Copy the last line and append it again
+        lines = trail.log_path.read_text().strip().split("\n")
+        with open(trail.log_path, "a", encoding="utf-8") as f:
+            f.write(lines[-1] + "\n")
+
+        is_valid, msg = trail.verify_chain()
+        assert not is_valid
+        assert "mismatch" in msg.lower()
+
+
 class TestAuditChainTampering:
     """Try to tamper with the audit trail."""
 

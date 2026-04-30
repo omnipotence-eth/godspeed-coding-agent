@@ -1129,6 +1129,7 @@ mcp = [
 dev = [
     { name = "bandit" },
     { name = "pip-audit" },
+    { name = "vulture" },
 ]
 
 [package.metadata]
@@ -1170,6 +1171,7 @@ provides-extras = ["dev", "context", "mcp", "index"]
 dev = [
     { name = "bandit", specifier = ">=1.9.4" },
     { name = "pip-audit", specifier = ">=2.10.0" },
+    { name = "vulture", specifier = ">=2.16" },
 ]
 
 [[package]]
@@ -4324,6 +4326,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/97/c5/aff062c66b42e2183201a7ace10c6b2e959a9a16525c8e8ca8e59410d27a/virtualenv-21.2.1.tar.gz", hash = "sha256:b66ffe81301766c0d5e2208fc3576652c59d44e7b731fc5f5ed701c9b537fa78", size = 5844770, upload-time = "2026-04-09T18:47:11.482Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/20/0e/f083a76cb590e60dff3868779558eefefb8dfb7c9ed020babc7aa014ccbf/virtualenv-21.2.1-py3-none-any.whl", hash = "sha256:bd16b49c53562b28cf1a3ad2f36edb805ad71301dee70ddc449e5c88a9f919a2", size = 5828326, upload-time = "2026-04-09T18:47:09.331Z" },
+]
+
+[[package]]
+name = "vulture"
+version = "2.16"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/66/3e/4d08c5903b2c0c70cad583c170cc4a663fc6a61e2ad00b711fcda61358cd/vulture-2.16.tar.gz", hash = "sha256:f8d9f6e2af03011664a3c6c240c9765b3f392917d3135fddca6d6a68d359f717", size = 52680, upload-time = "2026-03-25T14:41:27.141Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f5/be/f935130312330614811dae2ea9df3f395f6d63889eb6c2e68c14507152ee/vulture-2.16-py3-none-any.whl", hash = "sha256:6e0f1c312cef1c87856957e5c2ca9608834a7c794c2180477f30bf0e4cc58eee", size = 26993, upload-time = "2026-03-25T14:41:26.21Z" },
 ]
 
 [[package]]

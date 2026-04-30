@@ -76,7 +76,7 @@ class GodspeedCompleter(Completer):
         self._extra_commands = extra_commands or []
 
     def get_completions(
-        self, document: Document, complete_event: CompleteEvent
+        self, document: Document, _complete_event: CompleteEvent
     ) -> Iterable[Completion]:
         """Yield completions for the current input."""
         text = document.text_before_cursor

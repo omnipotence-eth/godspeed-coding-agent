@@ -8,11 +8,13 @@ redacted before writing.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import gzip
 import hashlib
 import json
 import logging
 import os
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -48,6 +50,7 @@ class AuditTrail:
         self._record_count = 0
         self._sequence = 0
         self._lock = asyncio.Lock()
+        self._sync_lock = threading.Lock()
         self._file: Any | None = None
         self._writes_since_sync = 0
         # fsync every N records — 10x fewer syscalls while maintaining durability
@@ -98,10 +101,7 @@ class AuditTrail:
         """
         safe_detail = redact_audit_detail(detail or {})
 
-        # Use threading.Lock for sync contexts
-        import threading
-
-        with threading.Lock():
+        with self._sync_lock:
             event = AuditRecord(
                 session_id=self._session_id,
                 sequence=self._sequence,
@@ -200,6 +200,25 @@ class AuditTrail:
             except OSError:
                 pass
             await asyncio.to_thread(self._file.close)
+            self._file = None
+
+    # ------------------------------------------------------------------
+    # Context manager support
+    # ------------------------------------------------------------------
+
+    def __enter__(self) -> AuditTrail:
+        return self
+
+    def __exit__(self, _exc_type: Any, _exc_val: Any, _exc_tb: Any) -> None:
+        self.close()
+
+    def __del__(self) -> None:
+        # Safety net: if the trail is GC'd without an explicit close(),
+        # flush and release the underlying file handle.  Swallow all
+        # errors — we are in a destructor and must not raise.
+        if self._file is not None:
+            with contextlib.suppress(Exception):
+                self._file.close()
             self._file = None
 
     def compress_session(self) -> Path | None:

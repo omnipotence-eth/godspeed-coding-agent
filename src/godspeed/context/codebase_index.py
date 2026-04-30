@@ -127,6 +127,15 @@ class CodebaseIndex:
         """Whether the index is currently being built."""
         return self._building
 
+    def close(self) -> None:
+        """Release ChromaDB client and collection references.
+
+        ChromaDB's PersistentClient holds open file handles; dropping
+        references allows the underlying resources to be reclaimed.
+        """
+        self._collection = None
+        self._client = None
+
     def _ensure_collection(self) -> Any:
         """Get or create the ChromaDB collection."""
         if self._collection is not None:

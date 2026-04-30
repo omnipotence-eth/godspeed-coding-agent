@@ -15,6 +15,8 @@ import dataclasses
 import enum
 import time
 
+from godspeed.observability.metrics import LoopMetrics
+
 
 class ExitCode(enum.IntEnum):
     """Headless exit codes. Documented and stable across minor versions.
@@ -80,7 +82,7 @@ class ToolCallRecord:
     is_error: bool
 
 
-@dataclasses.dataclass(slots=True)
+@dataclasses.dataclass
 class AgentMetrics:
     """Mutable accumulator populated by the agent loop as it runs.
 
@@ -94,6 +96,7 @@ class AgentMetrics:
     must_fix_injections: int = 0
     start_time: float = dataclasses.field(default_factory=time.monotonic)
     end_time: float | None = None
+    loop: LoopMetrics = dataclasses.field(default_factory=LoopMetrics)
 
     def record_tool_call(self, name: str, is_error: bool) -> None:
         self.tool_calls.append(ToolCallRecord(name=name, is_error=is_error))

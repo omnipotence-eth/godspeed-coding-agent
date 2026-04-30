@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -16,6 +17,14 @@ def resolve_tool_path(file_path: str, cwd: Path) -> Path:
     Raises:
         ValueError: If the resolved path is outside the project directory.
     """
+    # On non-Windows platforms, defensively reject Windows drive-letter paths
+    # that can never be inside the project directory.
+    if os.name != "nt" and re.match(r"^[A-Za-z]:[\\\/]", str(file_path)):
+        raise ValueError(
+            f"Access denied: path '{file_path}' is a Windows absolute path "
+            f"which is outside the project directory '{cwd.resolve()}'"
+        )
+
     path = Path(file_path).expanduser()
     resolved = path.resolve() if path.is_absolute() else (cwd / path).resolve()
     cwd_resolved = cwd.resolve()

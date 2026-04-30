@@ -204,96 +204,190 @@ DANGEROUS_PATTERNS: list[tuple[re.Pattern[str], str]] = [
 ]
 
 
-# Pre-filter keywords derived from pattern prefixes for fast short-circuit
+# Pre-filter keywords derived from pattern prefixes for fast short-circuit.
+# CRITICAL: keep keywords SPECIFIC. Broad terms like "git" or "python"
+# force a full regex scan on every safe command and waste CPU.
 _DANGEROUS_KEYWORDS: frozenset[str] = frozenset(
     {
+        # Filesystem destruction
         "rm ",
         "rmdir",
-        "sudo ",
-        "chmod ",
-        "chown ",
-        "chroot",
+        "shred ",
+        "wipe ",
+        "srm ",
+        "mv ",
+        "cp -r",
+        "cp -rf",
+        "> /dev/",
+        "> /dev/sda",
+        "> /dev/hda",
+        "> /dev/sd",
+        "/dev/null",
+        "> /etc/",
+        "> ~/",
+        ".bashrc",
+        ".profile",
+        "cat /dev/zero",
+        "cat /dev/null",
+        # Disk / partition
         "mkfs.",
         "dd ",
-        "git push --force",
-        "git reset --hard",
-        "git clean -f",
-        "docker",
-        "pip",
-        "npm i",
-        "npm install",
-        "pip install",
-        "curl",
-        "wget",
-        "nc ",
-        "ncat",
-        "eval",
-        "exec",
+        "fdisk ",
+        "parted ",
+        # Permissions / ownership
+        "chmod ",
+        "chmod -r",
+        "chown ",
+        "chroot",
+        "chattr ",
+        # Privilege escalation
+        "sudo ",
+        "su ",
+        # Process termination
+        "kill -9",
+        "killall",
+        "pkill",
+        "xkill",
+        # System control
         "shutdown",
         "reboot",
         "halt",
         "poweroff",
         "init ",
         "systemctl",
-        "> /dev/",
-        "/dev/null",
-        "mv ",
-        "cp -r",
-        "cp -rf",
-        "mount",
-        "> /etc/",
-        "> ~/",
-        ".bashrc",
-        ".profile",
-        "sc stop",
-        "sc delete",
-        "--no-verify",
-        "--privileged",
-        "sed -i",
-        "perl -i",
-        "chattr",
+        "systemctl disable",
+        # Git destructive (specific subcommands only)
+        "git push --force",
+        "git push -f",
+        "git push --delete",
+        "git reset --hard",
+        "git clean -f",
+        "git branch -d",
+        "git branch -D",
+        "git tag -d",
+        # Package managers (install/run/publish only)
+        "pip install",
+        "pip install --force-reinstall",
+        "npm install",
+        "npm i ",
+        "npm publish",
+        "npm unpublish",
+        "npx ",
+        "dlx ",
+        "twine upload",
+        "cargo yank",
+        "gem yank",
+        # Network / download
+        "curl ",
+        "wget ",
+        "nc ",
+        "ncat ",
+        "socat ",
+        "/dev/tcp/",
+        # Execution / injection
+        "eval ",
+        "eval(",
+        "exec ",
+        "exec(",
+        "python -c",
+        "python -m",
+        "python2 -c",
+        "python3 -c",
+        "bash -c",
+        "sh -c",
+        "perl -e",
+        "ruby -e",
+        "node -e",
+        # Pipe-to-shell patterns
+        "| bash",
+        "| sh",
+        "| python",
+        # Fork bomb
+        "fork bomb",
+        ":(){",
+        # Containers
+        "docker ",
+        "docker rm -f",
+        "docker system prune",
+        "docker push",
+        "podman run",
+        "podman run --privileged",
+        "nsenter ",
+        # Kubernetes
+        "kubectl delete",
+        "helm uninstall",
+        # Cloud destruction
+        "terraform destroy",
+        # SQL destructive
         "drop table",
         "drop database",
         "delete from",
-        "truncate",
-        "kill -9",
-        "killall",
-        "pkill",
-        "xkill",
-        "fork bomb",
-        ":(){",
-        "iptables",
-        "fdisk",
-        "parted",
-        "crontab",
-        "kubectl delete",
-        "systemctl disable",
-        "ssh-keygen",
-        "gpg --delete",
+        "truncate table",
+        # Firewall
+        "iptables ",
+        "nft ",
+        # Mount
+        "mount ",
+        "umount ",
+        # Scheduled tasks / persistence
+        "crontab ",
+        "schtasks ",
+        # History / env
+        "history -c",
+        "unset path",
+        "unset home",
+        "unset user",
+        # Find / xargs destructive
+        "find ",
+        "-exec ",
+        "-delete",
+        "xargs rm",
+        # In-place editing
+        "sed -i",
+        "perl -i",
+        # Windows destructive
         "del /f",
         "del /q",
+        "del /s",
+        "rmdir /s",
         "format ",
         "reg delete",
+        "reg add",
+        "reg import",
         "powershell -enc",
-        "nohup",
+        "takeown /f",
+        "icacls ",
+        "net user",
+        "net localgroup",
+        "sc stop",
+        "sc delete",
+        "sc config",
+        "wmic ",
+        "mshta ",
+        "rundll32 ",
+        "regsvr32 ",
+        "certutil -urlcache",
+        "bitsadmin /transfer",
+        # SSH / GPG
+        "ssh-keygen ",
+        "gpg --delete",
+        # Reverse shell
+        "base64 ",
+        "openssl enc",
+        "xxd -r",
+        # Environment exfiltration
+        "env | curl",
+        "env | nc",
+        "printenv | curl",
+        "cat /etc/passwd",
+        "cat /etc/shadow",
+        "cat /home/",
+        ".ssh/id_",
+        # Misc
+        "nohup ",
         "disown",
-        "su ",
-        "npm publish",
-        "twine upload",
-        "podman run",
-        "> /dev/sda",
-        "> /dev/hda",
-        "chmod -r",
-        "> /dev/sd",
-        "git push",
-        "del /",
-        "find ",
-        "-exec",
-        "exec(",
-        "git",
-        "python",
-        "bash ",
-        "sh ",
+        "awk ",
+        "tee /etc/",
     }
 )
 
@@ -305,10 +399,11 @@ def _likely_dangerous(command: str) -> bool:
     """Fast pre-check: does the command contain any dangerous indicators?
 
     Uses pre-computed lowercase keywords to avoid repeated .lower() calls.
+    Normalizes whitespace so "git   push   --force" matches "git push --force".
     Returns True immediately on first match for short-circuit evaluation.
     """
-    # Single .lower() call upfront
-    cmd_lower = command.lower()
+    # Single .lower() call upfront, collapse multiple whitespace to single space
+    cmd_lower = " ".join(command.lower().split())
 
     # Pipes/semicolons indicate command chaining — always check via regex
     if "|" in cmd_lower or ";" in cmd_lower:

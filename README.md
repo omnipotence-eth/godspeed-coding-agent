@@ -14,7 +14,7 @@
 > 
 > Godspeed is under active development by a solo maintainer. Breaking changes may occur between releases. We are looking for early adopters to test real-world workflows and report rough edges. See [ROADMAP.md](ROADMAP.md) for the path to v1.0 stable.
 
-A coding agent you can point at a production codebase and trust. Built-in permissions, audit trails, schema-validated tool calls, and automatic retries — so the agent writes safe code without babysitting.
+A coding agent you can point at a production codebase and trust. Built-in permissions, audit trails, schema-validated tool calls, and automatic retries.
 
 [Getting Started](#getting-started) | [Features](#features) | [Architecture](#architecture) | [Configuration](#configuration) | [Contributing](CONTRIBUTING.md)
 
@@ -38,13 +38,17 @@ tests + CI-green across Python 3.11 / 3.12 / 3.13.
 **Platform docs:** Windows users should read [`docs/quickstart_windows.md`](docs/quickstart_windows.md) for
 platform-specific setup (Miniconda, `PYTHONIOENCODING`, WSL for SWE-bench).
 
-## Why
+## The Problem
 
-Every open-source coding agent gives an LLM the ability to read files, write code, and run shell commands. Most of them assume the model will behave — and when it doesn't, you get broken files, leaked secrets, or worse. Godspeed is built for the reality that LLMs make mistakes, hallucinate tool calls, and sometimes go off-track.
+Every AI agent that touches your codebase — Claude Code, Cursor, Hermes, your custom agent — can read files, write code, and run shell commands. Most do not ship with a cryptographically verifiable record of what they actually did. Most do not fail closed by default when a tool call is ambiguous. Most do not catch secrets before they reach the model.
 
-Godspeed pairs full coding capability (30+ built-in tools, 200+ LLM providers, MCP support, parallel execution) with a trust model that fails safe by default. Every tool call is validated against its JSON Schema before execution. Transient failures are automatically retried with exponential backoff. Every action passes through a configurable permission engine (strict, normal, or yolo mode) and is recorded in a hash-chained audit log you can cryptographically verify. Secrets are caught at multiple layers before they reach the model or the log file.
+You are expected to trust the model.
 
-If you want a coding agent you can actually point at a production codebase — one that catches its own mistakes, retries on transient failures, and leaves a verifiable trail of every action — this is it.
+## What Godspeed Does
+
+Godspeed is the secure execution layer for the MCP ecosystem. Run it as an MCP server and MCP-compatible agents can delegate file and shell operations through Godspeed's permission engine. Every action is logged in a hash-chained audit trail you can cryptographically verify. Secrets are filtered before they reach the model or the audit log.
+
+Use it standalone as a CLI coding agent, or plug it into your existing agent stack as a security-focused execution layer.
 
 ## Features
 
@@ -53,9 +57,9 @@ If you want a coding agent you can actually point at a production codebase — o
 - **Schema-validated tool calls** — every tool argument is validated against its JSON Schema before execution. Missing required fields, wrong types, and invalid values are caught with clear error messages — no silent failures.
 - **Automatic retry on transient failures** — network timeouts, connection resets, and rate limits trigger automatic retries with exponential backoff. Logic errors and permission denials fail immediately.
 - **3-tier permission modes** — `strict` (deny most, ask for everything), `normal` (deny-first with allow rules), `yolo` (no permission checks, maximum speed). Configure via CLI (`--permission-mode`) or settings.yaml.
-- **4-tier permission engine** -- deny-first evaluation with pattern matching, dangerous command detection (71 patterns), and fail-closed defaults. No tool call executes without explicit permission in strict/normal mode.
+- **4-tier permission engine** -- deny-first evaluation with pattern matching, dangerous command detection (100 patterns), and fail-closed defaults. No tool call executes without explicit permission in strict/normal mode.
 - **Hash-chained audit trail** -- SHA-256 JSONL log where each entry chains to the previous. Tamper-evident, compressible, and verifiable with `godspeed audit verify`. Writes fail closed: any I/O error raises `AuditWriteError` and the chain state does not advance.
-- **Secret protection** -- 4 layers of defense: file deny-listing, context cleaning, output filtering, and audit redaction. 27 regex patterns plus Shannon entropy analysis catch API keys, tokens, and credentials before they leak.
+- **Secret protection** -- 4 layers of defense: file deny-listing, context cleaning, output filtering, and audit redaction. Regex patterns plus Shannon entropy analysis catch API keys, tokens, and credentials before they leak.
 - **Post-edit syntax gate** -- `.py` / `.pyi` / `.json` edits that break parse are rejected before write. Lint-fix retry loop up to 3 rounds auto-corrects common issues.
 - **Diff approve-before-write** -- `file_edit` / `file_write` / `diff_apply` prompt with a side-by-side diff before hitting disk. `(y)es · (n)o · (a)lways` keys. Two independent axes of consent: permission engine ("may this tool run?") + diff reviewer ("apply THIS specific diff?").
 
@@ -161,6 +165,7 @@ Full run outputs in `experiments/bench_*/` and the aggregated table in `experime
 | **Audit trail** | Hash-chained SHA-256 JSONL, cryptographically verifiable | No | No | No |
 | **Parallel tool execution** | READ_ONLY tools run concurrently via `asyncio.gather()` | Yes | Sequential | Yes |
 | **MCP client** | Built-in (stdio + SSE) | Built-in | No | Built-in |
+| **MCP server mode** | Yes | No | No | No |
 | **Post-edit syntax gate** | Auto-rejects broken `.py`/`.json` edits, retries lint fixes | No | No | No |
 | **Diff approve-before-write** | Two-axis consent: permission + diff review | No | No | No |
 | **Secret protection** | 4-layer: file deny-list, context cleaning, output filtering, audit redaction | Basic | No | Basic |
@@ -194,17 +199,22 @@ flowchart LR
     Loop -->|messages| Train["Training Logger\n(JSONL)"]
     Train -->|export| FT["Fine-Tuning\n(openai/chatml/sharegpt)"]
 
-    style Perm fill:#e74c3c,color:#fff
-    style Audit fill:#2ecc71,color:#fff
-    style Memory fill:#3498db,color:#fff
-    style Spec fill:#9b59b6,color:#fff
-    style Evo fill:#e67e22,color:#fff
-    style Train fill:#1abc9c,color:#fff
 ```
+
+```mermaid
+flowchart LR
+    anyMcpAgent[AnyMcpAgent] --> mcpProtocol[MCPProtocol]
+    mcpProtocol --> godspeedMcpServer[GodspeedMcpServer]
+    godspeedMcpServer --> permissionEngine[PermissionEngine]
+    godspeedMcpServer --> auditTrail[AuditTrail]
+    godspeedMcpServer --> builtInTools[BuiltInTools]
+```
+
+The CLI and MCP paths share the same permission engine and audit trail. Same rules, same log model, different caller attribution.
 
 **How it works:**
 
-The agent loop is hand-rolled (no framework) following the same pattern proven by top-performing coding agents. The LLM decides when to stop. On each turn, the LLM either responds with text (done) or requests tool calls. During streaming, **speculative dispatch** starts READ_ONLY tool calls as background `asyncio.Task`s before the full response completes — the main loop awaits cached results instead of re-dispatching. Every tool call passes through the **permission engine** before execution: deny rules are evaluated first and always win, then dangerous command detection (71 regex patterns) blocks destructive operations, then session grants and allow rules, and finally the tool's risk level determines the default. If anything is ambiguous, it fails closed. Permitted calls are split by risk level: **READ_ONLY tools run in parallel** via `asyncio.gather()`, **write tools run sequentially**. After execution, the tool call, its result, and the permission decision are recorded in the **audit trail** -- a hash-chained JSONL file where each record includes the SHA-256 hash of the previous record. Secrets are redacted at four layers: file access deny rules, context cleaning before the LLM sees content, output filtering on LLM responses, and audit log redaction. The loop also includes **stuck-loop detection** (3 identical errors triggers a replan), **auto-verification** (linter check after file edits in 6 languages with retry), **auto-stash** (git stash after 3+ consecutive writes), **cost budget enforcement**, and **pause/resume** for human-in-the-loop intervention. The **self-evolution system** mines audit trails for failure patterns and uses LLM-guided mutations to improve tool descriptions and prompts over time. The **training logger** captures the full conversation flow (user messages, assistant reasoning, tool results) to JSONL for fine-tuning tool-calling LLMs.
+The agent loop is hand-rolled (no framework) following the same pattern proven by top-performing coding agents. The LLM decides when to stop. On each turn, the LLM either responds with text (done) or requests tool calls. During streaming, **speculative dispatch** starts READ_ONLY tool calls as background `asyncio.Task`s before the full response completes — the main loop awaits cached results instead of re-dispatching. Every tool call passes through the **permission engine** before execution: deny rules are evaluated first and always win, then dangerous command detection blocks destructive operations, then session grants and allow rules, and finally the tool's risk level determines the default. If anything is ambiguous, it fails closed. Permitted calls are split by risk level: **READ_ONLY tools run in parallel** via `asyncio.gather()`, **write tools run sequentially**. After execution, the tool call, its result, and the permission decision are recorded in the **audit trail** -- a hash-chained JSONL file where each record includes the SHA-256 hash of the previous record. Secrets are redacted at four layers: file access deny rules, context cleaning before the LLM sees content, output filtering on LLM responses, and audit log redaction. The loop also includes **stuck-loop detection** (3 identical errors triggers a replan), **auto-verification** (linter check after file edits in 6 languages with retry), **auto-stash** (git stash after 3+ consecutive writes), **cost budget enforcement**, and **pause/resume** for human-in-the-loop intervention. The **self-evolution system** mines audit trails for failure patterns and uses LLM-guided mutations to improve tool descriptions and prompts over time. The **training logger** captures the full conversation flow (user messages, assistant reasoning, tool results) to JSONL for fine-tuning tool-calling LLMs.
 
 **Key modules:**
 
@@ -216,7 +226,8 @@ The agent loop is hand-rolled (no framework) following the same pattern proven b
 | Tools | `src/godspeed/tools/` | 30+ built-in tools with JSON schemas |
 | LLM | `src/godspeed/llm/` | LiteLLM client wrapper, model routing, token counting, cost tracking |
 | Context | `src/godspeed/context/` | Project instructions, compaction, checkpoints, repo map |
-| MCP | `src/godspeed/mcp/` | Model Context Protocol client (stdio + SSE) and tool adapter |
+| MCP client | `src/godspeed/mcp/` | Model Context Protocol client (stdio + SSE) and tool adapter |
+| MCP server | `src/godspeed/mcp_server/` | Model Context Protocol server wrapper for Godspeed tools with shared permission + audit controls |
 | Memory | `src/godspeed/memory/` | SQLite-backed preferences, session events, correction tracking |
 | Evolution | `src/godspeed/evolution/` | Trace analysis, GEPA mutations, LLM-as-judge fitness, safety gate, registry |
 | Training | `src/godspeed/training/` | Conversation logger, fine-tuning exporter (openai/chatml/sharegpt), reward annotations, benchmark suite |

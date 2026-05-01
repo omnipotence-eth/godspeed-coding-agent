@@ -10,6 +10,10 @@
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json&style=flat-square)](https://github.com/astral-sh/ruff)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 
+> **Project Status: Alpha — Seeking Testers**
+> 
+> Godspeed is under active development by a solo maintainer. Breaking changes may occur between releases. We are looking for early adopters to test real-world workflows and report rough edges. See [ROADMAP.md](ROADMAP.md) for the path to v1.0 stable.
+
 A coding agent you can point at a production codebase and trust. Built-in permissions, audit trails, schema-validated tool calls, and automatic retries — so the agent writes safe code without babysitting.
 
 [Getting Started](#getting-started) | [Features](#features) | [Architecture](#architecture) | [Configuration](#configuration) | [Contributing](CONTRIBUTING.md)
@@ -18,7 +22,7 @@ A coding agent you can point at a production codebase and trust. Built-in permis
 
 ---
 
-## What's new in v3.4.0
+## What's new in v0.4.0
 
 Five additions on top of the security-first core. Every one shipped with
 tests + CI-green across Python 3.11 / 3.12 / 3.13.
@@ -95,22 +99,29 @@ If you want a coding agent you can actually point at a production codebase — o
 
 ## Benchmarks
 
-### SWE-Bench Lite — progression across Godspeed releases (dev-23, free-tier)
+### SWE-Bench Lite — single-run results (dev-23, free-tier)
 
-Same 23-instance dev subset across rows; each row uses a different inference strategy. All free-tier (NVIDIA NIM R&D), $0 API spend. Numbers are from sb-cli; report JSONs live in [`experiments/swebench_lite/reports/`](experiments/swebench_lite/reports/).
+Same 23-instance dev subset across rows. All free-tier (NVIDIA NIM R&D), $0 API spend. Numbers are from sb-cli; report JSONs live in [`experiments/swebench_lite/reports/`](experiments/swebench_lite/reports/).
 
 | Godspeed | Method | Resolved | Rate |
 |---|---|---:|---:|
-| v2.11.0 | Qwen3.5-397B single-shot | 6 / 23 | 26.1% |
-| v2.12.0 | Kimi K2.5 single-shot *(driver swap)* | 8 / 23 | 34.8% |
-| v3.1 Phase 1 null result | Kimi K2.5 + agent-in-loop (single seed) | 7 / 23 | 30.4% |
-| **v3.1.0 headline** | **Oracle-selector best-of-5 (free-tier ensemble)** | **12 / 23** | **52.2%** |
+| v0.2.11 | Qwen3.5-397B single-shot | 6 / 23 | 26.1% |
+| v0.2.12 | Kimi K2.5 single-shot *(driver swap)* | 8 / 23 | 34.8% |
+| v0.3.1 | Kimi K2.5 + agent-in-loop (single seed) | 7 / 23 | 30.4% |
 
-**How we measured v3.1.0.** The headline is an `oracle_best_of_5` — the same best-of-N-with-oracle-selector methodology Aider and mini-swe-agent publish. Five constituent runs (Kimi K2.5 single-shot, GPT-OSS-120B, Qwen3.5-397B iter1, Qwen3.5-397B seed3, Kimi K2.5 + agent-in-loop) were each submitted to sb-cli standalone and paid their own dev-quota slot. `oracle_merge.py` then picks per instance the patch from whichever run resolved, preferring shortest among resolvers; falling back to shortest non-empty otherwise.
-
-The v3.1 Phase 1 single-run null result (Kimi K2.5 + agent-in-loop alone underperformed single-shot) is published honestly alongside the ensemble number — the row isn't a regression covered up by the ensemble. Single-driver agent-in-loop did contribute one unique resolve to the ensemble (marshmallow-code__marshmallow-1359) that no single-shot run landed.
+**Single-run performance** is what you get when you run Godspeed once against a task. The agent-in-loop result (30.4%) underperformed the single-shot baseline (34.8%) in this early experiment — we publish this null result honestly rather than hiding it.
 
 For context: published SOTA on full SWE-Bench Lite (April 2026) is Claude Opus 4.6 at 62.7%; top open-source agents with paid frontier drivers sit in the 40–50% band on the same benchmark.
+
+#### Ensemble / research results
+
+We also ran an `oracle_best_of_5` ensemble (same methodology Aider and mini-swe-agent publish) combining five constituent runs. This is **not** what you get in a single run — it is a research ceiling showing what is possible with model diversity and post-hoc selection:
+
+| Method | Resolved | Rate |
+|---|---|---:|
+| Oracle-selector best-of-5 (free-tier ensemble) | 12 / 23 | 52.2% |
+
+Constituent runs: Kimi K2.5 single-shot, GPT-OSS-120B, Qwen3.5-397B iter1, Qwen3.5-397B seed3, Kimi K2.5 + agent-in-loop. `oracle_merge.py` picks per instance the patch from whichever run resolved, preferring shortest among resolvers. The agent-in-loop run contributed one unique resolve (marshmallow-code__marshmallow-1359) that no single-shot run landed.
 
 **Full methodology, per-instance resolution map, constituent-run numbers, null-result discussion, and limitations:** [`experiments/swebench_lite/findings_2026_04_21.md`](experiments/swebench_lite/findings_2026_04_21.md).
 

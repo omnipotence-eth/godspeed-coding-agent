@@ -1,6 +1,6 @@
 [project]
 name = "godspeed-coding-agent"
-version = "3.4.0"
+version = "3.4.1"
 description = "Security-first open-source coding agent with parallel tool execution, multimodal input, 4-tier permissions, audit trails, and 200+ LLM provider support"
 readme = "README.md"
 license = "MIT"

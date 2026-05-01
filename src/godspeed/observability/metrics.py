@@ -113,8 +113,7 @@ def check_thresholds(
                     value=error_rate,
                     threshold=er_crit,
                     message=(
-                        f"Tool error rate {error_rate:.1%} exceeds "
-                        f"critical threshold {er_crit:.1%}"
+                        f"Tool error rate {error_rate:.1%} exceeds critical threshold {er_crit:.1%}"
                     ),
                 )
             )
@@ -126,8 +125,7 @@ def check_thresholds(
                     value=error_rate,
                     threshold=er_warn,
                     message=(
-                        f"Tool error rate {error_rate:.1%} exceeds "
-                        f"warning threshold {er_warn:.1%}"
+                        f"Tool error rate {error_rate:.1%} exceeds warning threshold {er_warn:.1%}"
                     ),
                 )
             )

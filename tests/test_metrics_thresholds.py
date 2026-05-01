@@ -50,9 +50,7 @@ class TestCheckThresholds:
             m.record_tool_call("x", 0.1, is_error=True)
         # 20% error rate > 10% warning
         alerts = check_thresholds(m)
-        assert any(
-            a.metric == "error_rate" and a.severity == AlertSeverity.WARNING for a in alerts
-        )
+        assert any(a.metric == "error_rate" and a.severity == AlertSeverity.WARNING for a in alerts)
 
     def test_error_rate_critical(self) -> None:
         m = LoopMetrics()
@@ -81,8 +79,7 @@ class TestCheckThresholds:
             m.record_llm_call(70.0)  # 70s = 70,000ms
         alerts = check_thresholds(m)
         assert any(
-            a.metric == "llm_latency_p99_ms"
-            and a.severity == AlertSeverity.CRITICAL
+            a.metric == "llm_latency_p99_ms" and a.severity == AlertSeverity.CRITICAL
             for a in alerts
         )
 

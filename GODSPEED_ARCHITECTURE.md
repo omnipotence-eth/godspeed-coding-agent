@@ -13,7 +13,7 @@
 
 ### ReAct Cycle
 
-The agent loop (`async agent_loop()`) follows the pattern proven by mini-swe-agent (74%+ SWE-bench), extended with parallel tool execution, speculative dispatch, and cost budget enforcement:
+The agent loop (`async agent_loop()`) follows patterns proven by top-performing open-source coding agents, extended with parallel tool execution, speculative dispatch, and cost budget enforcement:
 
 ```
 User input → Conversation → LLM call → Tool calls? → Parallel/Serial Split → Execute → Loop

@@ -129,13 +129,11 @@ deny > dangerous > session > allow > ask > default (risk level)
 
 ---
 
-### 13. `README.md` — Comparison Table Stale Numbers
+### 13. `README.md` — Product Comparison Table Removed
 
-**Issue:**
-- Line 346: "Aider ~75" — Aider supports many more providers now via OpenRouter and LiteLLM.
-- Line 346: "OpenCode 200+" — this was just updated from 75+, but OpenCode actually supports 75+ via Models.dev, not 200+. Godspeed is the one with 200+ via LiteLLM.
+**Issue:** The README previously included a feature-comparison table against other coding agents.
 
-**Fix:** Verify current provider counts for each competitor and correct.
+**Fix:** Table removed. Project positioning is now strictly feature-driven with no competitive comparisons.
 
 ---
 
@@ -172,7 +170,7 @@ uv run pytest --cov
 
 ### 17. Missing `CLAUDE.md` in Repo Root
 
-**Issue:** The README (line 253) and code both load `CLAUDE.md` for cross-agent compatibility, but the repo does not ship one. Every other agent in the comparison table (Claude Code, Cursor) has this file.
+**Issue:** The README and code both load `CLAUDE.md` for cross-agent compatibility, but the repo does not ship one. Other agents in the ecosystem typically ship this file.
 
 **Fix:** Add a `CLAUDE.md` with build commands, test commands, architecture notes, and coding standards — consistent with what the project already documents.
 
@@ -206,9 +204,9 @@ uv run pytest --cov
 
 ### 22. `GODSPEED_ARCHITECTURE.md` — Minor Inaccuracy
 
-**Issue:** Line 16 references "mini-swe-agent (74%+ SWE-bench)" as a proven pattern. The 74% claim is from a specific paper/configuration and may be misleading without citation.
+**Issue:** Line 16 referenced a specific open-source agent (74%+ SWE-bench) as a proven pattern. The 74% claim is from a specific paper/configuration and may be misleading without citation.
 
-**Fix:** Add a footnote citation or soften to "following patterns from top-performing coding agents (e.g., mini-swe-agent, Claude Code)".
+**Fix:** Softened to "following patterns from top-performing open-source coding agents" and removed specific product references.
 
 ---
 
@@ -238,7 +236,7 @@ uv run pytest --cov
 | **P1** | `docs/troubleshooting.md` | Change "v3.5.0+" to "v3.4.0+" |
 | **P1** | `GODSPEED_ARCHITECTURE.md` | Update version header and test count |
 | **P2** | `CONTRIBUTING.md` | Fix Makefile references or create Makefile |
-| **P2** | `README.md` | Fix comparison table numbers; update dangerous pattern count |
+| **P2** | `README.md` | Remove product comparison table; update dangerous pattern count |
 | **P2** | Root | Add `CLAUDE.md`; add docs for `/keys` and `/pull` |
 
 ---

@@ -84,7 +84,7 @@ mcp = [
     "mcp>=1.27.0,<2.0",
 ]
 index = [
-    "chromadb>=1.0.0,<2.0",
+    "chromadb>=1.5.8,<2.0",
 ]
 
 [project.scripts]

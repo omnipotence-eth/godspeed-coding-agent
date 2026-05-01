@@ -53,7 +53,7 @@ dependencies = [
     # Transitive pin-up: aiohttp is pulled in via litellm; versions < 3.13.4
     # have 10 CVEs (CVE-2026-34513..34525, CVE-2026-22815). Pin-up ensures CI
     # and consumers get the patched release regardless of litellm's own bound.
-    "aiohttp>=3.13.4",
+    "aiohttp>=3.13.5",
     # python-dotenv CVE-2026-28684 is known (fix in 1.2.2) but litellm pins
     # python-dotenv==1.0.1 strictly, making a pin-up unsatisfiable. CI's
     # pip-audit call suppresses this one CVE via --ignore-vuln below. We'll

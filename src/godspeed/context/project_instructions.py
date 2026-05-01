@@ -79,8 +79,8 @@ def load_project_instructions(
     Searches from cwd upward through parent directories. Loads:
     1. GODSPEED.md (primary — always loaded)
     2. AGENTS.md (Linux Foundation standard)
-    3. CLAUDE.md (Claude Code format)
-    4. .cursorrules (Cursor format)
+    3. CLAUDE.md (cross-agent convention)
+    4. .cursorrules (cross-agent convention)
 
     If filename is explicitly set to something other than the default,
     only that filename is loaded (backward-compatible behavior).

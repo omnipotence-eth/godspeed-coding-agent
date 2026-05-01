@@ -31,7 +31,7 @@ This roadmap describes the path from the current Alpha to a stable v1.0 release.
 
 **Goal:** Build trust through external usage, gather feedback, and establish governance.
 
-- [ ] Enable GitHub Discussions for informal feedback
+- [x] Enable GitHub Discussions for informal feedback
 - [ ] File `good first issue` items to guide new contributors
 - [ ] Add VS Code extension (basic: send prompt, display tool calls, diff viewer)
 - [ ] Improve error messages and onboarding (first-run wizard, `--tutorial` flag)

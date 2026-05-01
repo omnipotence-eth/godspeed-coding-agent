@@ -16,7 +16,7 @@
 
 A coding agent you can point at a production codebase and trust. Built-in permissions, audit trails, schema-validated tool calls, and automatic retries — so the agent writes safe code without babysitting.
 
-[Getting Started](#getting-started) | [Features](#features) | [Architecture](#architecture) | [Configuration](#configuration) | [Contributing](CONTRIBUTING.md)
+[Getting Started](#getting-started) | [Features](#features) | [Architecture](#architecture) | [Configuration](#configuration) | [Discussions](https://github.com/omnipotence-eth/godspeed-coding-agent/discussions) | [Contributing](CONTRIBUTING.md)
 
 </div>
 

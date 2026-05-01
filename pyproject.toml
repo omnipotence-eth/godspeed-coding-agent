@@ -1,6 +1,6 @@
 [project]
 name = "godspeed"
-version = "3.4.0"
+version = "0.4.0"
 description = "Security-first open-source coding agent with parallel tool execution, multimodal input, 4-tier permissions, audit trails, and 200+ LLM provider support"
 readme = "README.md"
 license = "MIT"
@@ -159,8 +159,6 @@ ignore_missing_imports = true
 source = ["src/godspeed"]
 branch = true
 omit = [
-    "src/godspeed/tui/*",
-    "src/godspeed/cli.py",
     "src/godspeed/__main__.py",
     "src/godspeed/llm/client.py",
     "src/godspeed/context/compaction.py",
@@ -169,7 +167,7 @@ omit = [
 
 [tool.coverage.report]
 show_missing = true
-fail_under = 80
+fail_under = 70  # Includes cli.py and tui/*; raise to 80 once TUI/CLI tests catch up
 
 [dependency-groups]
 dev = [

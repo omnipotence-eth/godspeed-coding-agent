@@ -48,7 +48,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Inaccessible file handling**: `glob_search` and `grep_search`
   gracefully skip files with permission errors on Windows.
 
-## [3.4.0] — 2026-04-22
+## [0.4.0] — 2026-04-22
 
 Phase 2 of the world-class UX push. Two independent additions on top
 of v3.3.0, both landed with full test coverage and CI-green across

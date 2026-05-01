@@ -1,0 +1,28 @@
+{
+  "name": "Godspeed Coding Agent",
+  "image": "mcr.microsoft.com/devcontainers/python:3.13",
+  "features": {
+    "ghcr.io/astral-sh/uv:1": {}
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "charliermarsh.ruff",
+        "ms-toolsai.jupyter"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "python.linting.enabled": true,
+        "python.formatting.provider": "ruff"
+      }
+    }
+  },
+  "postCreateCommand": "uv sync --all-extras && uv run pytest -q",
+  "postStartCommand": "git config --global --add safe.directory /workspaces/godspeed-coding-agent",
+  "remoteUser": "vscode",
+  "mounts": [
+    "source=${localWorkspaceFolder},target=/workspace,type=bind"
+  ]
+}

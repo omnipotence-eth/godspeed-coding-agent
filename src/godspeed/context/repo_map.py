@@ -95,7 +95,7 @@ class RepoMapper:
         if language not in self._parsers:
             from tree_sitter_language_pack import get_parser
 
-            self._parsers[language] = get_parser(language)
+            self._parsers[language] = get_parser(language)  # type: ignore[arg-type]
         return self._parsers[language]
 
     def parse_file(self, file_path: Path) -> list[Symbol]:

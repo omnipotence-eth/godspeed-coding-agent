@@ -58,6 +58,37 @@ VERIFIABLE_EXTENSIONS = (
     ".hpp",
 )
 
+# Patterns that strip meta-commentary the model might emit despite prompt instructions
+_META_COMMENTARY_PATTERNS: tuple[str, ...] = (
+    "No function call is needed",
+    "No tool call is needed",
+    "I don't need to use any tools",
+    "I don't need any tools",
+    "No tools are needed",
+    "function call is not needed",
+    "tool call is not needed",
+    "No function call needed",
+    "No tool call needed",
+)
+
+
+def _strip_meta_commentary(text: str) -> str:
+    """Remove meta-commentary phrases the model emits despite prompt instructions.
+
+    Lightweight safety net — runs on every text-only response before display.
+    """
+    for phrase in _META_COMMENTARY_PATTERNS:
+        text = text.replace(phrase, "").strip()
+    # Clean up punctuation artifacts left by removal (". . " or leading ". ")
+    text = text.replace(". . ", ". ").replace(". .", ".")
+    if text.startswith(". "):
+        text = text[2:]
+    # Clean up double spaces
+    while "  " in text:
+        text = text.replace("  ", " ")
+    return text.strip()
+
+
 # Callback type aliases for clarity
 OnAssistantText = Callable[[str], None]
 OnToolCall = Callable[[str, dict[str, Any]], None]
@@ -89,6 +120,7 @@ class _LoopState:
     stuck_threshold: int = 3
     stash_threshold: int = 3
     must_fix_cap: int = 3
+    max_speculative_cache_size: int = 10
 
 
 async def agent_loop(
@@ -115,6 +147,7 @@ async def agent_loop(
     stuck_loop_threshold: int | None = None,
     auto_stash_threshold: int | None = None,
     must_fix_cap: int | None = None,
+    max_speculative_cache_size: int | None = None,
     on_parallel_start: OnParallelStart | None = None,
     on_parallel_complete: OnParallelComplete | None = None,
     on_thinking: OnThinking | None = None,
@@ -181,6 +214,11 @@ async def agent_loop(
             auto_stash_threshold if auto_stash_threshold is not None else AUTO_STASH_THRESHOLD
         ),
         must_fix_cap=must_fix_cap if must_fix_cap is not None else MUST_FIX_CAP,
+        max_speculative_cache_size=(
+            max_speculative_cache_size
+            if max_speculative_cache_size is not None
+            else MAX_SPECULATIVE_CACHE_SIZE
+        ),
     )
 
     loop_metrics = metrics.loop if metrics is not None else LoopMetrics()
@@ -233,6 +271,7 @@ async def agent_loop(
                     speculative_cache=state.speculative_cache,
                     cancel_event=cancel_event,
                     task_type=task_type,
+                    max_speculative_cache_size=state.max_speculative_cache_size,
                 )
             else:
                 response = await llm_client.chat(
@@ -275,7 +314,7 @@ async def agent_loop(
 
         # Handle text response (model decided to stop)
         if not response.has_tool_calls:
-            final_text = response.content
+            final_text = _strip_meta_commentary(response.content)
             if final_text:
                 conversation.add_assistant_message(content=final_text)
                 # Skip Markdown re-render if we already streamed the text
@@ -1047,6 +1086,7 @@ async def _streaming_call(
     speculative_cache: dict[str, asyncio.Task[ToolResult]] | None = None,
     cancel_event: asyncio.Event | None = None,
     task_type: str | None = None,
+    max_speculative_cache_size: int = MAX_SPECULATIVE_CACHE_SIZE,
 ) -> ChatResponse:
     """Make a streaming LLM call, invoking on_chunk for each text delta.
 
@@ -1111,6 +1151,7 @@ async def _streaming_call(
             tool_registry,
             tool_context,
             speculative_cache,
+            max_size=max_speculative_cache_size,
         )
 
     return final_response
@@ -1121,6 +1162,7 @@ def _speculative_dispatch(
     tool_registry: ToolRegistry,
     tool_context: ToolContext,
     cache: dict[str, asyncio.Task[ToolResult]],
+    max_size: int = MAX_SPECULATIVE_CACHE_SIZE,
 ) -> None:
     """Start READ_ONLY (and allowlisted) tool calls speculatively as background tasks.
 
@@ -1129,16 +1171,16 @@ def _speculative_dispatch(
     asyncio.Task in cache keyed by call_id. The main loop checks the cache
     before dispatching to avoid double work.
 
-    Enforces MAX_SPECULATIVE_CACHE_SIZE to prevent unbounded growth.
+    Enforces *max_size* to prevent unbounded growth.
     """
     from godspeed.tools.base import RiskLevel
 
     for raw_tc in raw_tool_calls:
         # Enforce cache size limit to prevent memory growth
-        if len(cache) >= MAX_SPECULATIVE_CACHE_SIZE:
+        if len(cache) >= max_size:
             logger.debug(
                 "Speculative cache full (max=%d), skipping remaining dispatches",
-                MAX_SPECULATIVE_CACHE_SIZE,
+                max_size,
             )
             break
 

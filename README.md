@@ -212,13 +212,13 @@ The agent loop is hand-rolled (no framework) following the same pattern proven b
 ### Install
 
 ```bash
-pip install godspeed
+pip install godspeed-coding-agent
 ```
 
 Or with [uv](https://github.com/astral-sh/uv):
 
 ```bash
-uv tool install godspeed     # installs globally — run 'godspeed' from anywhere
+uv tool install godspeed-coding-agent     # installs globally — run 'godspeed' from anywhere
 ```
 
 ### Setup

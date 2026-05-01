@@ -1,6 +1,6 @@
 [project]
-name = "godspeed"
-version = "0.4.0"
+name = "godspeed-coding-agent"
+version = "3.4.0"
 description = "Security-first open-source coding agent with parallel tool execution, multimodal input, 4-tier permissions, audit trails, and 200+ LLM provider support"
 readme = "README.md"
 license = "MIT"
@@ -98,8 +98,11 @@ Documentation = "https://github.com/omnipotence-eth/godspeed-coding-agent#readme
 Changelog = "https://github.com/omnipotence-eth/godspeed-coding-agent/blob/main/CHANGELOG.md"
 
 [build-system]
-requires = ["uv_build>=0.11.2,<0.12.0"]
-build-backend = "uv_build"
+requires = ["hatchling>=1.26.0"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/godspeed"]
 
 [tool.ruff]
 line-length = 100

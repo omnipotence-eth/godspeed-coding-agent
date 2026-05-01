@@ -37,6 +37,11 @@ jobs:
             dist/*.tar.gz
             sbom.cdx.json
 
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          skip-existing: true
+
       - name: Create GitHub release
         uses: softprops/action-gh-release@v3
         with:

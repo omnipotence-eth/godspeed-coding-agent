@@ -39,6 +39,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   during long sessions.
 - **Removed competitive product comparisons** from README, CHANGELOG,
   and audit docs. Project positioning is now strictly feature-driven.
+- **Renamed PyPI package** from `godspeed` to `godspeed-coding-agent`
+  to resolve naming conflict with an existing project. Install command
+  updated throughout documentation.
 
 ### Fixed
 

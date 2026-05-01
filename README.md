@@ -22,7 +22,7 @@ A coding agent you can point at a production codebase and trust. Built-in permis
 
 ---
 
-## What's new in v0.4.0
+## What's new in v3.4.1
 
 Five additions on top of the security-first core. Every one shipped with
 tests + CI-green across Python 3.11 / 3.12 / 3.13.

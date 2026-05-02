@@ -80,16 +80,9 @@ class TestVramDetection:
             assert vram is None
 
     def test_detect_jetson_not_jetson(self):
-        # _detect_jetson checks Path("/sys/class/thermal/thermal_zone0/temp")
-        # Patch the specific path check by mocking Path.exists
-        original_exists = Path.exists
-
-        def mock_exists(self):
-            if "thermal" in str(self).lower() or "jetson" in str(self).lower():
-                return False
-            return original_exists(self)
-
-        with patch("pathlib.Path.exists", mock_exists):
+        # _detect_jetson reads /proc/meminfo directly with open()
+        # Mock open to raise FileNotFoundError to simulate non-Jetson
+        with patch("builtins.open", side_effect=FileNotFoundError):
             vram = _detect_jetson()
             assert vram is None
 

@@ -206,8 +206,8 @@ def _is_ollama_running() -> bool:
     try:
         import urllib.request
 
-        req = urllib.request.Request(OLLAMA_URL, method="GET")  # noqa: S310  # nosec B310
-        with urllib.request.urlopen(req, timeout=2):  # noqa: S310  # nosec B310
+        req = urllib.request.Request(OLLAMA_URL, method="GET")  # noqa: S310
+        with urllib.request.urlopen(req, timeout=2):  # noqa: S310
             return True
     except Exception:
         return False

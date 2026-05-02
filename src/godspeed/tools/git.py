@@ -129,7 +129,7 @@ class GitTool(Tool):
             # Check if there's anything to commit
             has_head = True
             try:
-                repo.head.commit  # noqa: B018
+                _ = repo.head.commit
             except ValueError:
                 has_head = False  # No HEAD yet — initial commit is fine
 
@@ -159,7 +159,7 @@ class GitTool(Tool):
     async def _undo(self, repo: Repo) -> ToolResult:
         """Undo the last commit (soft reset, keeps changes staged)."""
         try:
-            repo.head.commit  # noqa: B018 — verify HEAD exists
+            repo.head.commit  # noqa: B018
         except ValueError:
             return ToolResult.failure("No commits to undo")
 

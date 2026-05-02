@@ -3,18 +3,15 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
-from unittest.mock import MagicMock, patch
-
-import pytest
 
 import godspeed.cli as cli
-
 
 # ─── Helpers ──────────────────────────────────────────────────────────
 
 
-def _run_doctor(monkeypatch, tmp_path, *, ollama_running=True, env_vars=None, audit_writable=True, fix=False):
+def _run_doctor(
+    monkeypatch, tmp_path, *, ollama_running=True, env_vars=None, audit_writable=True, fix=False
+):
     """Patch out external deps and invoke the doctor command via Click's CliRunner."""
     from click.testing import CliRunner
 
@@ -33,7 +30,7 @@ def _run_doctor(monkeypatch, tmp_path, *, ollama_running=True, env_vars=None, au
         read_only.mkdir()
         monkeypatch.setattr(cli, "DEFAULT_GLOBAL_DIR", read_only)
         if os.name != "nt":
-            os.chmod(str(read_only), 0o555)
+            os.chmod(str(read_only), 0o555)  # noqa: S103
 
     # Patch out LiteLLM validation so tests don't need real keys
     def _fake_validate(*args, **kwargs):

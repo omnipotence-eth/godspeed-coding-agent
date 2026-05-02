@@ -77,12 +77,18 @@ def list_models() -> list[OllamaModelInfo]:
 
         # Parse size and modified time from remaining columns
         for i, part in enumerate(parts[1:], 1):
-            if part.endswith("GB") or part.endswith("MB"):
+            if (
+                part.replace(".", "").isdigit()
+                and i + 1 < len(parts)
+                and parts[i + 1] in ("GB", "MB")
+            ):
                 try:
-                    if part.endswith("GB"):
-                        info.size_bytes = int(float(part[:-2]) * 1024**3)
-                    elif part.endswith("MB"):
-                        info.size_bytes = int(float(part[:-2]) * 1024**2)
+                    size_val = float(part)
+                    unit = parts[i + 1]
+                    if unit == "GB":
+                        info.size_bytes = int(size_val * 1024**3)
+                    else:
+                        info.size_bytes = int(size_val * 1024**2)
                 except ValueError:
                     logger.debug("Could not parse model size from listing")
             elif "ago" in part and i + 1 < len(parts):

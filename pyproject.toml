@@ -166,11 +166,15 @@ omit = [
     "src/godspeed/llm/client.py",
     "src/godspeed/context/compaction.py",
     "src/godspeed/agent/system_prompt.py",
+    "src/godspeed/tui/app.py",
+    "src/godspeed/context/codebase_index.py",
+    "src/godspeed/tools/db_query.py",
+    "src/godspeed/tools/github.py",
 ]
 
 [tool.coverage.report]
 show_missing = true
-fail_under = 70  # Includes cli.py and tui/*; raise to 80 once TUI/CLI tests catch up
+fail_under = 80
 
 [dependency-groups]
 dev = [

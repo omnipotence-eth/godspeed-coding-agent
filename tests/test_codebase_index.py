@@ -51,7 +51,9 @@ class TestIsChromadbAvailable:
         with patch("godspeed.context.codebase_index._chromadb_available", None):
             with patch("builtins.__import__", return_value=MagicMock()):
                 # Reset the cached value
-                import godspeed.context.codebase_index as mod
+                import sys
+
+                mod = sys.modules["godspeed.context.codebase_index"]
 
                 mod._chromadb_available = None
                 result = _is_chromadb_available()
@@ -59,7 +61,9 @@ class TestIsChromadbAvailable:
 
     def test_import_failure(self):
         # Reset the cached value and make import fail
-        import godspeed.context.codebase_index as mod
+        import sys
+
+        mod = sys.modules["godspeed.context.codebase_index"]
 
         mod._chromadb_available = None
         with patch("builtins.__import__", side_effect=ImportError("no chromadb")):

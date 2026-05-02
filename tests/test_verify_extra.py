@@ -165,7 +165,7 @@ class TestOneShotVerify:
         test_file.write_text("x = 1\n")
         with patch("godspeed.tools.verify._verify_python") as mock_verify:
             mock_verify.return_value = MagicMock(is_error=False, output="passed")
-            _result = _one_shot_verify(test_file, "test.py", "python", tmp_path)
+            _one_shot_verify(test_file, "test.py", "python", tmp_path)
             mock_verify.assert_called_once()
 
     def test_unsupported_lang(self, tmp_path: Path) -> None:

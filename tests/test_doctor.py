@@ -36,7 +36,7 @@ def _run_doctor(
         read_only.mkdir()
         monkeypatch.setattr(cli, "DEFAULT_GLOBAL_DIR", read_only)
         if os.name != "nt":
-            os.chmod(str(read_only), 0o555)  # noqa: S103
+            os.chmod(str(read_only), 0o755)  # noqa: S103
 
     # Patch out LiteLLM validation so tests don't need real keys
     def _fake_validate(*args, **kwargs):

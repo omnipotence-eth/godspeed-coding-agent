@@ -311,6 +311,105 @@ class CodebaseIndex:
 
         return False
 
+    def get_stats(self) -> dict[str, Any]:
+        """Return statistics about the index.
+
+        Returns:
+            Dict with ``available`` (bool) and ``count`` (int).
+        """
+        if not self.is_available:
+            return {"available": False, "count": 0}
+        try:
+            collection = self._ensure_collection()
+            return {"available": True, "count": collection.count()}
+        except Exception:
+            return {"available": False, "count": 0}
+
+    def clear(self) -> bool:
+        """Clear all data from the index.
+
+        Returns:
+            ``True`` on success, ``False`` if chromadb is not available.
+        """
+        if not self.is_available:
+            return False
+        try:
+            collection = self._ensure_collection()
+            existing = collection.count()
+            if existing > 0:
+                collection.delete(where={"indexed": True})
+            return True
+        except Exception as exc:
+            logger.warning("Clear failed: %s", exc)
+            return False
+
+    async def build(self) -> bool:
+        """Build the index (async wrapper for ``build_index``).
+
+        Returns:
+            ``True`` on success, ``False`` if chromadb is not available.
+        """
+        if not self.is_available:
+            return False
+        result = await self.build_index_async()
+        return result > 0
+
+    def add_file(self, file_path: Path) -> bool:
+        """Add a single file to the index.
+
+        Args:
+            file_path: Path to the file to add.
+
+        Returns:
+            ``True`` on success, ``False`` if chromadb is not available.
+        """
+        if not self.is_available:
+            return False
+        try:
+            collection = self._ensure_collection()
+            chunks = list(chunk_file(file_path))
+            if not chunks:
+                return True
+            base_id = collection.count()
+            self._add_batch(collection, chunks, base_id)
+            return True
+        except Exception as exc:
+            logger.warning("Add file failed: %s", exc)
+            return False
+
+    def remove_file(self, file_path: Path) -> bool:
+        """Remove a file from the index.
+
+        Args:
+            file_path: Path to the file to remove.
+
+        Returns:
+            ``True`` on success, ``False`` if chromadb is not available.
+        """
+        if not self.is_available:
+            return False
+        try:
+            collection = self._ensure_collection()
+            collection.delete(where={"file_path": str(file_path)})
+            return True
+        except Exception as exc:
+            logger.warning("Remove file failed: %s", exc)
+            return False
+
+    def reindex_file(self, file_path: Path) -> bool:
+        """Reindex a single file (remove + add).
+
+        Args:
+            file_path: Path to the file to reindex.
+
+        Returns:
+            ``True`` on success, ``False`` if chromadb is not available.
+        """
+        if not self.is_available:
+            return False
+        self.remove_file(file_path)
+        return self.add_file(file_path)
+
     def _iter_files(self, excludes: set[str] | frozenset[str]) -> list[Path]:
         """Iterate indexable files, skipping excluded directories eagerly.
 

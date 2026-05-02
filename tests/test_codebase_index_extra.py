@@ -106,23 +106,26 @@ class TestCodebaseIndexMethods:
 
     def test_add_file_not_available(self, tmp_path):
         """Test add_file when chromadb is not available."""
-        index = CodebaseIndex(project_dir=tmp_path)
-        test_file = tmp_path / "test.py"
-        test_file.write_text("print('hello')")
-        result = index.add_file(test_file)
-        assert result is False
+        with patch("godspeed.context.codebase_index._is_chromadb_available", return_value=False):
+            index = CodebaseIndex(project_dir=tmp_path)
+            test_file = tmp_path / "test.py"
+            test_file.write_text("print('hello')")
+            result = index.add_file(test_file)
+            assert result is False
 
     def test_remove_file_not_available(self, tmp_path):
         """Test remove_file when chromadb is not available."""
-        index = CodebaseIndex(project_dir=tmp_path)
-        test_file = tmp_path / "test.py"
-        result = index.remove_file(test_file)
-        assert result is False
+        with patch("godspeed.context.codebase_index._is_chromadb_available", return_value=False):
+            index = CodebaseIndex(project_dir=tmp_path)
+            test_file = tmp_path / "test.py"
+            result = index.remove_file(test_file)
+            assert result is False
 
     def test_reindex_file_not_available(self, tmp_path):
         """Test reindex_file when chromadb is not available."""
-        index = CodebaseIndex(project_dir=tmp_path)
-        test_file = tmp_path / "test.py"
-        test_file.write_text("print('hello')")
-        result = index.reindex_file(test_file)
-        assert result is False
+        with patch("godspeed.context.codebase_index._is_chromadb_available", return_value=False):
+            index = CodebaseIndex(project_dir=tmp_path)
+            test_file = tmp_path / "test.py"
+            test_file.write_text("print('hello')")
+            result = index.reindex_file(test_file)
+            assert result is False

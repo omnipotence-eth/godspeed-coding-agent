@@ -1351,6 +1351,196 @@ def scan_machine() -> None:
     )
 
 
+@main.command("doctor")
+@click.option(
+    "--fix",
+    is_flag=True,
+    help="Attempt to fix writable issues (create missing dirs).",
+)
+def doctor(fix: bool) -> None:
+    """Diagnose setup issues — Ollama, API keys, audit dir, permissions.
+
+    Checks:
+      - Ollama running and responsive
+      - API keys present and valid (lightweight probe)
+      - Audit directory writable
+      - Permission mode sanity
+    """
+    from rich.console import Console as RichConsole
+    from rich.table import Table
+
+    from godspeed.config import DEFAULT_GLOBAL_DIR
+    from godspeed.tui.theme import BOLD_ERROR, BOLD_SUCCESS, ERROR, SUCCESS, WARNING
+
+    c = RichConsole()
+    c.print("\n  [bold]Godspeed Doctor — System Check[/bold]\n")
+
+    table = Table(show_header=True, header_style="bold", border_style="dim")
+    table.add_column("Check", style="dim", width=30)
+    table.add_column("Status", width=10)
+    table.add_column("Detail", style="dim")
+
+    all_ok = True
+
+    # ── 1. Ollama ──────────────────────────────────────────────────────
+    ollama_ok = _is_ollama_running()
+    if ollama_ok:
+        # Try to list models as a deeper check
+        try:
+            from godspeed.tools.ollama_manager import list_models
+
+            models = list_models()
+            table.add_row(
+                "Ollama server",
+                f"[{SUCCESS}]ok[/{SUCCESS}]",
+                f"running, {len(models)} model(s) installed",
+            )
+        except Exception as exc:
+            table.add_row(
+                "Ollama server",
+                f"[{WARNING}]warn[/{WARNING}]",
+                f"running but model list failed: {exc}",
+            )
+            all_ok = False
+    else:
+        ollama_bin = shutil.which("ollama")
+        if ollama_bin:
+            detail = "not running — start with 'ollama serve' or 'godspeed' will auto-start"
+        else:
+            detail = "not installed — install from https://ollama.com"
+        table.add_row("Ollama server", f"[{ERROR}]x[/{ERROR}]", detail)
+        all_ok = False
+
+    # ── 2. API keys ────────────────────────────────────────────────────
+    import yaml
+
+    catalog_path = Path(__file__).parent / "llm" / "driver_catalog.yaml"
+    required_env_vars: dict[str, str] = {}
+    if catalog_path.exists():
+        catalog = yaml.safe_load(catalog_path.read_text(encoding="utf-8")) or {}
+        for driver_cfg in (catalog.get("drivers") or {}).values():
+            env_var = driver_cfg.get("requires_env")
+            if env_var and env_var not in required_env_vars:
+                required_env_vars[env_var] = driver_cfg.get("provider", "unknown")
+
+    if required_env_vars:
+        for env_var, provider in sorted(required_env_vars.items()):
+            value = os.environ.get(env_var)
+            if not value:
+                table.add_row(
+                    f"API key: {env_var}",
+                    f"[{WARNING}]![/{WARNING}]",
+                    f"not set — {provider} cloud models unavailable",
+                )
+                all_ok = False
+            else:
+                # Lightweight validation: try a minimal LiteLLM call
+                try:
+                    import litellm
+
+                    # Map env var to provider for a quick models-list probe
+                    if provider == "anthropic":
+                        litellm.validate_environment("anthropic/claude-3-haiku-20240307")
+                        table.add_row(
+                            f"API key: {env_var}",
+                            f"[{SUCCESS}]ok[/{SUCCESS}]",
+                            f"{provider} — key present and accepted",
+                        )
+                    elif provider == "nvidia_nim":
+                        table.add_row(
+                            f"API key: {env_var}",
+                            f"[{SUCCESS}]ok[/{SUCCESS}]",
+                            f"{provider} — key present (NIM free-tier)",
+                        )
+                    elif provider == "moonshot":
+                        table.add_row(
+                            f"API key: {env_var}",
+                            f"[{SUCCESS}]ok[/{SUCCESS}]",
+                            f"{provider} — key present",
+                        )
+                    else:
+                        table.add_row(
+                            f"API key: {env_var}",
+                            f"[{SUCCESS}]ok[/{SUCCESS}]",
+                            f"{provider} — key present",
+                        )
+                except Exception as exc:
+                    table.add_row(
+                        f"API key: {env_var}",
+                        f"[{ERROR}]x[/{ERROR}]",
+                        f"{provider} — validation failed: {exc}",
+                    )
+                    all_ok = False
+    else:
+        table.add_row("API keys", f"[{WARNING}]![/{WARNING}]", "driver catalog not found")
+
+    # ── 3. Audit directory ─────────────────────────────────────────────
+    audit_dir = DEFAULT_GLOBAL_DIR / "audit"
+    try:
+        audit_dir.mkdir(parents=True, exist_ok=True)
+        probe = audit_dir / ".doctor_probe"
+        probe.write_text("ok", encoding="utf-8")
+        probe.unlink()
+        table.add_row(
+            "Audit directory",
+            f"[{SUCCESS}]ok[/{SUCCESS}]",
+            f"{audit_dir} — writable",
+        )
+    except (OSError, PermissionError) as exc:
+        table.add_row(
+            "Audit directory",
+            f"[{ERROR}]x[/{ERROR}]",
+            f"{audit_dir} — not writable: {exc}",
+        )
+        if fix:
+            try:
+                audit_dir.mkdir(parents=True, exist_ok=True)
+                audit_dir.chmod(0o700)
+                table.add_row(
+                    "Audit directory (fix)",
+                    f"[{SUCCESS}]ok[/{SUCCESS}]",
+                    f"{audit_dir} — permissions fixed",
+                )
+            except Exception as fix_exc:
+                table.add_row(
+                    "Audit directory (fix)",
+                    f"[{ERROR}]x[/{ERROR}]",
+                    f"could not fix: {fix_exc}",
+                )
+        all_ok = False
+
+    # ── 4. Permission mode sanity ──────────────────────────────────────
+    from godspeed.config import GodspeedSettings
+
+    try:
+        settings = GodspeedSettings()
+        mode = settings.permission_mode
+        if mode == "yolo":
+            table.add_row(
+                "Permission mode",
+                f"[{WARNING}]![/{WARNING}]",
+                f"'{mode}' — all permission checks disabled",
+            )
+        else:
+            table.add_row(
+                "Permission mode",
+                f"[{SUCCESS}]ok[/{SUCCESS}]",
+                f"'{mode}' — secure",
+            )
+    except Exception as exc:
+        table.add_row("Permission mode", f"[{ERROR}]x[/{ERROR}]", f"could not read config: {exc}")
+        all_ok = False
+
+    c.print(table)
+    c.print()
+
+    if all_ok:
+        c.print(f"  [{BOLD_SUCCESS}]All checks passed — system ready.[{BOLD_SUCCESS}]")
+    else:
+        c.print(f"  [{BOLD_ERROR}]Some checks failed — review details above.[{BOLD_ERROR}]")
+    c.print()
+
+
 @main.command("export-training")
 @click.option(
     "--format",

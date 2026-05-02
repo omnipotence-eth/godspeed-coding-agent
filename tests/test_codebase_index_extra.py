@@ -59,44 +59,50 @@ class TestCodebaseIndexInit:
         assert index._db_path == custom_path
 
     def test_initial_state(self, tmp_path):
-        index = CodebaseIndex(project_dir=tmp_path)
-        assert index.is_available is False  # chromadb not installed in test env
-        assert index.is_building is False
-        assert index._index_time is None
+        with patch("godspeed.context.codebase_index._is_chromadb_available", return_value=False):
+            index = CodebaseIndex(project_dir=tmp_path)
+            assert index.is_available is False
+            assert index.is_building is False
+            assert index._index_time is None
 
 
 class TestCodebaseIndexMethods:
     def test_search_not_available(self, tmp_path):
         """Test search when chromadb is not available."""
-        index = CodebaseIndex(project_dir=tmp_path)
-        results = index.search("test query")
-        assert results == []
+        with patch("godspeed.context.codebase_index._is_chromadb_available", return_value=False):
+            index = CodebaseIndex(project_dir=tmp_path)
+            results = index.search("test query")
+            assert results == []
 
     def test_search_empty_query(self, tmp_path):
         """Test search with empty query."""
-        index = CodebaseIndex(project_dir=tmp_path)
-        results = index.search("")
-        assert results == []
+        with patch("godspeed.context.codebase_index._is_chromadb_available", return_value=False):
+            index = CodebaseIndex(project_dir=tmp_path)
+            results = index.search("")
+            assert results == []
 
     def test_get_stats_not_available(self, tmp_path):
         """Test get_stats when chromadb is not available."""
-        index = CodebaseIndex(project_dir=tmp_path)
-        stats = index.get_stats()
-        assert stats["available"] is False
-        assert stats["count"] == 0
+        with patch("godspeed.context.codebase_index._is_chromadb_available", return_value=False):
+            index = CodebaseIndex(project_dir=tmp_path)
+            stats = index.get_stats()
+            assert stats["available"] is False
+            assert stats["count"] == 0
 
     def test_clear_not_available(self, tmp_path):
         """Test clear when chromadb is not available."""
-        index = CodebaseIndex(project_dir=tmp_path)
-        result = index.clear()
-        assert result is False
+        with patch("godspeed.context.codebase_index._is_chromadb_available", return_value=False):
+            index = CodebaseIndex(project_dir=tmp_path)
+            result = index.clear()
+            assert result is False
 
     @pytest.mark.asyncio
     async def test_build_not_available(self, tmp_path):
         """Test build when chromadb is not available."""
-        index = CodebaseIndex(project_dir=tmp_path)
-        result = await index.build()
-        assert result is False
+        with patch("godspeed.context.codebase_index._is_chromadb_available", return_value=False):
+            index = CodebaseIndex(project_dir=tmp_path)
+            result = await index.build()
+            assert result is False
 
     def test_add_file_not_available(self, tmp_path):
         """Test add_file when chromadb is not available."""

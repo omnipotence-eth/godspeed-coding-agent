@@ -61,9 +61,10 @@ class TestVramDetection:
         mock_result = MagicMock()
         mock_result.returncode = 0
         mock_result.stdout = "8192\n"
-        with patch("subprocess.run", return_value=mock_result):
-            vram = _detect_nvidia_smi()
-            assert vram == 8192
+        with patch("shutil.which", return_value="nvidia-smi"):
+            with patch("subprocess.run", return_value=mock_result):
+                vram = _detect_nvidia_smi()
+                assert vram == 8192
 
     def test_detect_nvidia_smi_not_found(self):
         with patch("subprocess.run", side_effect=FileNotFoundError):
@@ -93,10 +94,13 @@ class TestVramDetection:
             assert vram is None
 
     def test_detect_gpu_name_nvidia(self):
-        with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(returncode=0, stdout="NVIDIA GeForce RTX 5070 Ti\n")
-            name = _detect_gpu_name()
-            assert "NVIDIA" in name or "RTX" in name
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = "NVIDIA GeForce RTX 5070 Ti\n"
+        with patch("shutil.which", return_value="nvidia-smi"):
+            with patch("subprocess.run", return_value=mock_result):
+                name = _detect_gpu_name()
+                assert "NVIDIA" in name or "RTX" in name
 
     def test_detect_gpu_name_not_found(self):
         with patch("subprocess.run", side_effect=FileNotFoundError):

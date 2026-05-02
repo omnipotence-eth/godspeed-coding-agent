@@ -329,7 +329,8 @@ def _top_processes(psutil: Any, *, top: int, sort_by: str) -> list[str]:
                 mem = p.memory_info().rss
         except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
             continue
-        except Exception:  # noqa: S112 - per-process read is best-effort
+        except Exception:
+            logger.debug("Unexpected error reading process %s", pid, exc_info=True)
             continue
         procs.append((pid, name, cpu, mem))
 
@@ -560,7 +561,8 @@ def _collect_outlier_processes(
                 cpu = p.cpu_percent(interval=None)
         except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
             continue
-        except Exception:  # noqa: S112
+        except Exception:
+            logger.debug("Unexpected error reading process %s", pid, exc_info=True)
             continue
         # Skip synthetic OS accounting processes that psutil exposes but
         # that aren't real workloads. "System Idle Process" (PID 0 on

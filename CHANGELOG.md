@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-05-01
+
 ### Added
 
 - **Auto-load `~/.godspeed/.env.local` on startup** (`cli._load_env_files`).
@@ -37,6 +39,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Background process auto-cleanup**: completed processes are now
   automatically removed from the registry to prevent memory leaks
   during long sessions.
+- **Removed competitive product comparisons** from README, CHANGELOG,
+  and audit docs. Project positioning is now strictly feature-driven.
+- **Renamed PyPI package** from `godspeed` to `godspeed-coding-agent`
+  to resolve naming conflict with an existing project. Install command
+  updated throughout documentation.
 
 ### Fixed
 
@@ -211,7 +218,7 @@ the Benchmarks subsection below and `experiments/swebench_lite/findings_2026_04_
   Takes `predictions.jsonl:report.json` pairs and picks per instance the
   patch that actually resolved (preferring shortest among resolvers;
   falling back to shortest non-empty). Methodology is the same pattern
-  Aider and mini-swe-agent publish — explicitly labeled as
+  other open-source agent projects publish — explicitly labeled as
   `oracle_best_of_N` in output `model_name_or_path`.
 - **Driver registry** (`src/godspeed/llm/driver_catalog.yaml`,
   `src/godspeed/agent/prompt_profiles.py`, `scripts/validate_driver.py`,
@@ -295,7 +302,7 @@ agent-in-loop) were each submitted to sb-cli standalone and paid their
 own quota slot. The selector (`oracle_merge.py`) picks per instance the
 patch from whichever run resolved — preferring shortest among resolvers;
 falling back to shortest non-empty when no run resolved. This is the
-same pattern Aider and mini-swe-agent publish under; it is explicitly
+same pattern used in published open-source agent research; it is explicitly
 labeled as such.
 
 **Single-run result was a null result.** Kimi K2.5 + agent-in-loop
@@ -310,9 +317,9 @@ hard instances and stops early on easy ones.
 dev instances. Single-seed runs for most constituent drivers (Kimi
 seed 2 was contamination-affected by NVIDIA NIM concurrent-job
 contention and excluded). Test-50 and dev-300 headline validation is
-pending for v3.1.x. Published SOTA for context: Claude Opus 4.6 holds
-62.7% on full SWE-Bench Lite (April 2026); top open-source agents with
-paid frontier drivers sit in the 40-50% band on the same.
+pending for v3.1.x. Published SOTA on full SWE-Bench Lite (April 2026) is
+62.7%; top open-source agents with paid frontier drivers sit in the
+40-50% band on the same benchmark.
 
 Reproducibility:
 

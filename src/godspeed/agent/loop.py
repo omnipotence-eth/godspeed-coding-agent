@@ -1,7 +1,7 @@
 """Core agent loop — the heart of Godspeed.
 
-Hand-rolled loop following the pattern proven by mini-swe-agent (74%+ SWE-bench)
-and Claude Code. The model decides when to stop. No framework overhead.
+Hand-rolled loop following patterns proven by top-performing open-source
+coding agents. The model decides when to stop. No framework overhead.
 """
 
 from __future__ import annotations

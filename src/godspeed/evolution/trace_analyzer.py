@@ -432,10 +432,10 @@ class TraceAnalyzer:
         records: list[AuditRecord] = []
         try:
             if str(path).endswith(".gz"):
-                ctx = gzip.open(path, "rt", encoding="utf-8")  # noqa: SIM115
+                _open = gzip.open(path, "rt", encoding="utf-8")  # noqa: SIM115
             else:
-                ctx = open(path, encoding="utf-8")  # noqa: SIM115
-            with ctx as f:
+                _open = open(path, encoding="utf-8")  # noqa: SIM115
+            with _open as f:
                 for line in f:
                     line = line.strip()
                     if not line:

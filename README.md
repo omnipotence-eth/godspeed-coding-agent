@@ -111,11 +111,11 @@ Same 23-instance dev subset across rows. All free-tier (NVIDIA NIM R&D), $0 API 
 
 **Single-run performance** is what you get when you run Godspeed once against a task. The agent-in-loop result (30.4%) underperformed the single-shot baseline (34.8%) in this early experiment — we publish this null result honestly rather than hiding it.
 
-For context: published SOTA on full SWE-Bench Lite (April 2026) is Claude Opus 4.6 at 62.7%; top open-source agents with paid frontier drivers sit in the 40–50% band on the same benchmark.
+For context: published SOTA on full SWE-Bench Lite (April 2026) is 62.7%; top open-source agents with paid frontier drivers sit in the 40–50% band on the same benchmark.
 
 #### Ensemble / research results
 
-We also ran an `oracle_best_of_5` ensemble (same methodology Aider and mini-swe-agent publish) combining five constituent runs. This is **not** what you get in a single run — it is a research ceiling showing what is possible with model diversity and post-hoc selection:
+We also ran an `oracle_best_of_5` ensemble (published ensemble methodology) combining five constituent runs. This is **not** what you get in a single run — it is a research ceiling showing what is possible with model diversity and post-hoc selection:
 
 | Method | Resolved | Rate |
 |---|---|---:|
@@ -151,24 +151,7 @@ Real numbers from the 20-task suite in `benchmarks/tasks.jsonl`, run against det
 
 Full run outputs in `experiments/bench_*/` and the aggregated table in `experiments/benchmark_shootout_2026_04.md`. Reproduce with `scripts/run_benchmark.py --model <id>`.
 
-## How Godspeed Compares
 
-| Feature | Godspeed | Claude Code | Aider | Cursor Agent |
-|---|---|---|---|---|
-| **Tool-call validation** | JSON Schema validation before every execution | Implicit (model-dependent) | Implicit (model-dependent) | Implicit (model-dependent) |
-| **Automatic retry** | Transient failures retried with exponential backoff | No | No | No |
-| **Permission modes** | `strict` / `normal` / `yolo` via CLI flag | Always asks | `--yes` flag | Always asks |
-| **Audit trail** | Hash-chained SHA-256 JSONL, cryptographically verifiable | No | No | No |
-| **Parallel tool execution** | READ_ONLY tools run concurrently via `asyncio.gather()` | Yes | Sequential | Yes |
-| **MCP client** | Built-in (stdio + SSE) | Built-in | No | Built-in |
-| **Post-edit syntax gate** | Auto-rejects broken `.py`/`.json` edits, retries lint fixes | No | No | No |
-| **Diff approve-before-write** | Two-axis consent: permission + diff review | No | No | No |
-| **Secret protection** | 4-layer: file deny-list, context cleaning, output filtering, audit redaction | Basic | No | Basic |
-| **Conversation compaction** | Model-aware summarization (aggressive for small models, detailed for frontier) | Yes | No | Yes |
-| **Open-source** | MIT | Proprietary | Apache 2.0 | Proprietary |
-| **Self-hosted** | Full local mode with Ollama, $0 API cost | No | Yes (with local models) | No |
-
-Godspeed's differentiator: **trust through verification**. Every tool call is validated, every failure is retried, every action is auditable. You don't have to trust the model — you can verify what it did.
 
 ## Architecture
 
@@ -229,13 +212,13 @@ The agent loop is hand-rolled (no framework) following the same pattern proven b
 ### Install
 
 ```bash
-pip install godspeed
+pip install godspeed-coding-agent
 ```
 
 Or with [uv](https://github.com/astral-sh/uv):
 
 ```bash
-uv tool install godspeed     # installs globally — run 'godspeed' from anywhere
+uv tool install godspeed-coding-agent     # installs globally — run 'godspeed' from anywhere
 ```
 
 ### Setup
@@ -367,7 +350,7 @@ Permission rules use glob-style matching against `ToolName(argument)` strings. D
 
 Godspeed stands on the shoulders of excellent prior work:
 
-- **Agent loop pattern** — Inspired by the hand-rolled ReAct loops in [mini-swe-agent](https://github.com/SWE-agent/SWE-agent) and [Claude Code](https://docs.anthropic.com/en/docs/agents/claude-code). The core insight that the LLM decides when to stop, combined with permission gating at every tool call, is borrowed from these systems.
+- **Agent loop pattern** — Inspired by hand-rolled ReAct loops from open-source agent research and the proven design that the LLM decides when to stop. Permission gating at every tool call is an original extension.
 - **Dangerous command detection** — Inspired by [Hermes Agent's Tirith security scanner](https://github.com/monocle-ai/tirith). The regex-based approach to blocking destructive shell commands follows their design.
 - **LiteLLM** — Unified provider access via the [LiteLLM](https://github.com/BerriAI/litellm) library. Godspeed would not support 200+ providers without it.
 - **Prompt-toolkit + Rich** — The TUI is built on [prompt-toolkit](https://github.com/prompt-toolkit/python-prompt-toolkit) for input handling and [Rich](https://github.com/Textualize/rich) for output rendering.

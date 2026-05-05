@@ -95,6 +95,11 @@ class TestGenericPatterns:
         findings = detect_secrets(text)
         assert any(f.secret_type == "database_connection_string" for f in findings)
 
+    def test_api_key_assignment_unquoted(self) -> None:
+        text = "api_key: sk-ant-api03-abcdefghijklmnopqrstuvwxyz1234"
+        findings = detect_secrets(text)
+        assert any("api_key_assignment" in f.secret_type for f in findings)
+
 
 class TestEntropyDetection:
     """Test high-entropy string detection."""
@@ -139,6 +144,48 @@ class TestRedaction:
         redacted = redact_secrets(text)
         assert redacted.startswith("before ")
         assert redacted.endswith(" after")
+
+
+class TestSecretBypassRegressions:
+    """Regression tests for common secret-scanning bypass tricks."""
+
+    def test_key_split_across_lines_detected(self) -> None:
+        text = "token = sk-ant-api03-abcdefghijklmn\nopqrstuvwxyz1234"
+        findings = detect_secrets(text)
+        assert findings
+        assert REDACTED in redact_secrets(text)
+
+    def test_key_with_inserted_spaces_detected(self) -> None:
+        text = "old: sk- ant- api03- abcdefghijklmnopqrstuvwxyz1234"
+        findings = detect_secrets(text)
+        assert findings
+        assert REDACTED in redact_secrets(text)
+
+    def test_key_in_comment_detected(self) -> None:
+        text = "# old key was sk-ant-api03-abcdefghijklmnopqrstuvwxyz1234"
+        findings = detect_secrets(text)
+        assert findings
+        assert REDACTED in redact_secrets(text)
+
+    def test_key_with_noise_detected(self) -> None:
+        text = "xx__sk-ant-api03-abcdefghijklmnopqrstuvwxyz1234__yy"
+        findings = detect_secrets(text)
+        assert findings
+
+    def test_key_embedded_in_json_detected(self) -> None:
+        text = '{"api_key": "sk-ant-api03-abcdefghijklmnopqrstuvwxyz1234"}'
+        findings = detect_secrets(text)
+        assert findings
+
+    def test_key_embedded_in_yaml_detected(self) -> None:
+        text = "api_key: sk-ant-api03-abcdefghijklmnopqrstuvwxyz1234"
+        findings = detect_secrets(text)
+        assert findings
+
+    def test_key_embedded_in_env_assignment_detected(self) -> None:
+        text = "ANTHROPIC_KEY=sk-ant-api03-abcdefghijklmnopqrstuvwxyz1234"
+        findings = detect_secrets(text)
+        assert findings
 
 
 class TestShannonEntropy:

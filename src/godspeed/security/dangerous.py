@@ -14,8 +14,13 @@ DANGEROUS_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     # Filesystem destruction
     (re.compile(r"rm\s+(?:-[a-zA-Z]{1,20}\s+){0,5}[/~]"), "recursive delete from root/home"),
     (re.compile(r"rm\s+-[a-zA-Z]*[rf]"), "recursive/force delete"),
+    (re.compile(r"rm\s+-\$\w+\s+[/~]"), "recursive/force delete via variable expansion"),
     (re.compile(r"rm\s+(?:--recursive|--force|--dir)"), "recursive/force delete (long flags)"),
     (re.compile(r"rm\s+-r\s+-f\b"), "recursive force delete (separate flags)"),
+    (
+        re.compile(r"\$\(\s*echo\s+rm\s*\)\s+-[a-zA-Z]*[rf]\s+[/~]"),
+        "recursive delete via command substitution",
+    ),
     (re.compile(r"\brmdir\s+/[sS]"), "Windows recursive directory removal"),
     (re.compile(r"\bshred\b"), "secure file deletion"),
     (re.compile(r"\bwipe\b"), "secure file wipe"),
@@ -147,6 +152,14 @@ DANGEROUS_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"\bprintenv\b.*\|\s*curl"), "environment exfiltration via curl"),
     # Pipe to interpreter (broader)
     (re.compile(r"echo\s.*\|\s*(?:python|perl|ruby|node|sh|bash)"), "echo pipe to interpreter"),
+    (
+        re.compile(r"(?:ba)?sh\s+-c\s+['\"].*rm\s+-[a-zA-Z]*[rf].*['\"]"),
+        "indirect shell execution of destructive rm",
+    ),
+    (
+        re.compile(r"(?:ba)?sh\s+-c\s+['\"].*(?:curl|wget).*\|\s*(?:ba)?sh.*['\"]"),
+        "indirect shell execution of pipe-to-shell",
+    ),
     # Container destruction
     (re.compile(r"docker\s+rm\s+-f"), "force remove container"),
     (re.compile(r"docker\s+system\s+prune"), "docker system prune"),
@@ -388,6 +401,7 @@ _DANGEROUS_KEYWORDS: frozenset[str] = frozenset(
         "disown",
         "awk ",
         "tee /etc/",
+        "$(echo rm)",
     }
 )
 

@@ -350,7 +350,11 @@ async def agent_loop(
         if not response.has_tool_calls:
             final_text = _strip_meta_commentary(response.content)
             if final_text:
-                conversation.add_assistant_message(content=final_text)
+                # NEW: Pass reasoning_content for DeepSeek V4 multi-turn
+                conversation.add_assistant_message(
+                    content=final_text,
+                    reasoning_content=response.thinking  # Store thinking/reasoning
+                )
                 # Skip Markdown re-render if we already streamed the text
                 if on_assistant_text and on_assistant_chunk is None:
                     on_assistant_text(final_text)
@@ -360,9 +364,12 @@ async def agent_loop(
             return final_text
 
         # Handle tool calls
+        # Always use standard message handling to maintain proper API compatibility
+        # DeepSeek V4: reasoning_content stripped before API calls in _call_deepseek_direct
         conversation.add_assistant_message(
             content=response.content,
             tool_calls=response.tool_calls,
+            reasoning_content=response.thinking,
         )
 
         if response.content and on_assistant_text:
@@ -726,7 +733,7 @@ async def _post_process_results(
                     file_path, tc.call_id, tool_registry, tool_context, state.auto_fix_retries
                 )
                 conversation.add_tool_result(
-                    tool_call_id=f"{tc.call_id}_verify",
+                    tool_call_id=tc.call_id,
                     content=verify_result.output or "",
                 )
                 verify_text = verify_result.error or verify_result.output or ""
@@ -771,7 +778,7 @@ async def _post_process_results(
         stash_call = ToolCall(
             tool_name="git",
             arguments={"action": "stash"},
-            call_id=f"{tool_calls[-1].call_id}_autostash",
+            call_id=tool_calls[-1].call_id,
         )
         stash_result = await tool_registry.dispatch(stash_call, tool_context)
         if (
@@ -832,7 +839,7 @@ async def _post_process_single_result(
                 file_path, tool_call.call_id, tool_registry, tool_context, state.auto_fix_retries
             )
             conversation.add_tool_result(
-                tool_call_id=f"{tool_call.call_id}_verify",
+                tool_call_id=tool_call.call_id,
                 content=verify_result.output or "",
             )
             verify_text = verify_result.error or verify_result.output or ""
@@ -855,7 +862,7 @@ async def _post_process_single_result(
             stash_call = ToolCall(
                 tool_name="git",
                 arguments={"action": "stash"},
-                call_id=f"{tool_call.call_id}_autostash",
+                call_id=tool_call.call_id,
             )
             stash_result = await tool_registry.dispatch(stash_call, tool_context)
             if (
@@ -947,7 +954,7 @@ async def _auto_verify_file(
     verify_call = ToolCall(
         tool_name="verify",
         arguments={"file_path": file_path},
-        call_id=f"{parent_call_id}_verify",
+        call_id=parent_call_id,
     )
     return await tool_registry.dispatch(verify_call, tool_context)
 

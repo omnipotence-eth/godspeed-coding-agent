@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import random
 import re
@@ -10,6 +11,9 @@ import threading
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass, field
 from typing import Any
+
+# Import estimate_cost at module level to avoid scoping issues in async methods
+from godspeed.llm.cost import estimate_cost
 
 # Rate-limit retry policy
 RATE_LIMIT_MAX_RETRIES = 4
@@ -35,6 +39,10 @@ __all__ = ["BudgetExceededError", "ChatResponse", "LLMClient"]
 # We defer it to first use so the TUI appears instantly.
 _litellm = None
 _litellm_lock = threading.Lock()
+
+# DeepSeek API configuration
+_DEEPSEEK_API_BASE = "https://api.deepseek.com/v1"
+_DEEPSEEK_MODELS = {"deepseek-v4-pro", "deepseek-v4-flash", "deepseek-chat", "deepseek-reasoner"}
 
 
 def _get_litellm():
@@ -438,6 +446,199 @@ class LLMClient:
         if self.max_cost_usd > 0 and self.total_cost_usd > self.max_cost_usd:
             raise BudgetExceededError(self.total_cost_usd, self.max_cost_usd)
 
+    async def _call_deepseek_direct(
+        self,
+        model: str,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None,
+        ) -> ChatResponse:
+        """Make a direct API call to DeepSeek (bypassing LiteLLM).
+
+        LiteLLM's deepseek provider has authentication issues ("Authentication Fails (governor)").
+        This method calls the DeepSeek API directly using OpenAI library.
+
+        DeepSeek V4 requires reasoning_content to be passed back in multi-turn conversations.
+        We handle this by disabling thinking mode to simplify the interaction.
+        """
+        # Clean model name (remove provider prefix if present)
+        clean_model = model.replace("deepseek/", "").strip()
+
+        # DeepSeek V4: Use OpenAI library directly (handles formatting automatically)
+        if clean_model in _DEEPSEEK_MODELS:
+            import os
+            from openai import OpenAI
+
+            # Get API key
+            api_key = os.environ.get("DEEPSEEK_API_KEY") or os.environ.get("DEEPEK_API_KEY", "")
+            if not api_key:
+                raise RuntimeError(
+                    "DEEPSEEK_API_KEY or DEEPEK_API_KEY environment variable not set. "
+                    "DeepSeek direct API call requires this key."
+                )
+
+            # Create OpenAI client configured for DeepSeek API
+            client = OpenAI(
+                api_key=api_key,
+                base_url=_DEEPSEEK_API_BASE
+            )
+
+            # Build kwargs for API call
+            # DeepSeek V4 requires clean message ordering - strip reasoning_content
+            # from assistant messages to avoid API rejection on multi-turn
+            cleaned_messages = []
+            for msg in messages:
+                if msg.get("role") == "assistant" and "reasoning_content" in msg:
+                    # Create clean copy without reasoning_content for API
+                    clean_msg = {k: v for k, v in msg.items() if k != "reasoning_content"}
+                    # Ensure content field exists (even if empty) for tool_calls messages
+                    if "tool_calls" in clean_msg and "content" not in clean_msg:
+                        clean_msg["content"] = ""
+                    cleaned_messages.append(clean_msg)
+                else:
+                    cleaned_messages.append(msg)
+
+            # DeepSeek V4 strictness: tool messages must immediately follow
+            # an assistant message with tool_calls. Standard OpenAI format allows:
+            #   assistant(tool_calls=[A,B]) -> tool(A) -> tool(B)
+            # DeepSeek V4 requires:
+            #   assistant(tool_calls=[A]) -> tool(A) -> assistant(tool_calls=[B]) -> tool(B)
+            if "deepseek" in model.lower():
+                restructured = []
+                i = 0
+                while i < len(cleaned_messages):
+                    msg = cleaned_messages[i]
+                    # Restructure ANY assistant with tool_calls (not just >1)
+                    if (msg.get("role") == "assistant" and
+                            "tool_calls" in msg and
+                            len(msg.get("tool_calls", [])) >= 1):
+                        tool_calls = msg["tool_calls"]
+                        content = msg.get("content", "")
+                        # Collect all following tool messages
+                        tool_results = {}
+                        j = i + 1
+                        while j < len(cleaned_messages) and cleaned_messages[j].get("role") == "tool":
+                            tc_id = cleaned_messages[j].get("tool_call_id", "")
+                            tool_results[tc_id] = cleaned_messages[j]
+                            j += 1
+                        # Emit assistant+tool pair for each tool_call
+                        for k, tc in enumerate(tool_calls):
+                            a_msg = {"role": "assistant"}
+                            a_msg["content"] = content if k == 0 else ""
+                            a_msg["tool_calls"] = [tc]
+                            restructured.append(a_msg)
+                            tc_id = tc.get("id", "")
+                            if tc_id in tool_results:
+                                restructured.append(tool_results[tc_id])
+                        # Skip past original assistant + all its tool messages
+                        i = j
+                    else:
+                        restructured.append(msg)
+                        i += 1
+                cleaned_messages = restructured
+                logger.info("[DeepSeek] After restructuring: %s", [m.get("role") for m in cleaned_messages[-12:]])
+                # Log restructured message roles for debugging
+                _msg_roles = [m.get("role", "?") for m in cleaned_messages]
+                logger.info("[DeepSeek] Restructured messages roles: %s", _msg_roles[-12:])
+
+            # Debug: log message roles to check ordering
+            _msg_roles = [m.get("role", "?") for m in cleaned_messages]
+            logger.info("[DeepSeek] Sending messages roles: %s", _msg_roles[-10:])
+
+            # Validate tool message ordering for DeepSeek API strictness
+            for i, msg in enumerate(cleaned_messages):
+                if msg.get("role") == "tool":
+                    if i == 0:
+                        logger.error("[DeepSeek] tool message at index 0 with no preceding message")
+                    else:
+                        prev = cleaned_messages[i-1]
+                        if prev.get("role") != "assistant" or "tool_calls" not in prev:
+                            logger.error(
+                                "[DeepSeek] tool message at index %d not preceded by assistant+tool_calls. "
+                                "Preceding: role=%s has_tool_calls=%s",
+                                i, prev.get("role"), "tool_calls" in prev
+                            )
+
+            # Apply prompt caching (Anthropic-compatible cache_control) for ~75% input cost reduction.
+            # DeepSeek supports cache_control: mark all messages except the last 2 as ephemeral cache.
+            num_to_cache = max(0, len(cleaned_messages) - 2)
+            for i in range(num_to_cache):
+                content = cleaned_messages[i].get("content", "")
+                if isinstance(content, str) and content:
+                    cleaned_messages[i]["content"] = [
+                        {"type": "text", "text": content, "cache_control": {"type": "ephemeral"}}
+                    ]
+
+            kwargs = {
+                "model": clean_model,
+                "messages": cleaned_messages,
+                "max_tokens": 4096,
+                "extra_body": {"thinking": {"type": "disabled"}},  # Disable thinking to avoid message ordering issues
+            }
+
+            if tools:
+                kwargs["tools"] = tools
+                kwargs["tool_choice"] = "auto"
+
+            # Make API call using OpenAI library (handles formatting automatically)
+            import asyncio
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(
+                None,
+                lambda: client.chat.completions.create(**kwargs)
+            )
+
+            # Parse response
+            choice = response.choices[0]
+            message = choice.message
+
+            # Extract content
+            content_text = message.content or ""
+
+            # Extract reasoning_content (DeepSeek V4 thinking/reasoning)
+            reasoning_content = getattr(message, "reasoning_content", "") or ""
+
+            # Extract tool calls
+            tool_calls = []
+            has_tool_calls = False
+            if message.tool_calls:
+                has_tool_calls = True
+                for tc in message.tool_calls:
+                    tool_calls.append({
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {
+                            "name": tc.function.name,
+                            "arguments": tc.function.arguments,
+                        },
+                    })
+
+            # Track usage and cost
+            input_tokens = 0
+            output_tokens = 0
+            if response.usage:
+                input_tokens = response.usage.prompt_tokens or 0
+                output_tokens = response.usage.completion_tokens or 0
+                self.total_input_tokens += input_tokens
+                self.total_output_tokens += output_tokens
+
+            call_cost = estimate_cost(model, input_tokens, output_tokens)
+            self.total_cost_usd += call_cost
+            self._check_budget()
+
+            # Return response
+            response_obj = ChatResponse(
+                content=content_text,
+                tool_calls=tool_calls,
+                finish_reason=choice.finish_reason or "",
+                thinking=reasoning_content,  # Store in thinking field
+                usage={
+                    "input_tokens": input_tokens,
+                    "output_tokens": output_tokens,
+                },
+            )
+
+            return response_obj
+
     async def _call(
         self,
         model: str,
@@ -445,6 +646,13 @@ class LLMClient:
         tools: list[dict[str, Any]] | None,
     ) -> ChatResponse:
         """Make a single LLM API call."""
+        # Route DeepSeek models to direct API (bypasses LiteLLM's broken provider).
+        # Only intercept bare DeepSeek names or deepseek/ provider prefix; models
+        # served by other providers (nvidia_nim/, ollama/, etc.) go to LiteLLM.
+        clean_model = model.replace("deepseek/", "").strip()
+        if clean_model in _DEEPSEEK_MODELS or model.lower().startswith("deepseek/"):
+            return await self._call_deepseek_direct(model, messages, tools)
+
         from godspeed.llm.cost import estimate_cost
 
         # Apply prompt caching for supported providers

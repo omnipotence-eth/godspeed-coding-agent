@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import random
 import re
@@ -451,7 +450,7 @@ class LLMClient:
         model: str,
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]] | None,
-        ) -> ChatResponse:
+    ) -> ChatResponse:
         """Make a direct API call to DeepSeek (bypassing LiteLLM).
 
         LiteLLM's deepseek provider has authentication issues ("Authentication Fails (governor)").
@@ -466,6 +465,7 @@ class LLMClient:
         # DeepSeek V4: Use OpenAI library directly (handles formatting automatically)
         if clean_model in _DEEPSEEK_MODELS:
             import os
+
             from openai import OpenAI
 
             # Get API key
@@ -477,10 +477,7 @@ class LLMClient:
                 )
 
             # Create OpenAI client configured for DeepSeek API
-            client = OpenAI(
-                api_key=api_key,
-                base_url=_DEEPSEEK_API_BASE
-            )
+            client = OpenAI(api_key=api_key, base_url=_DEEPSEEK_API_BASE)
 
             # Build kwargs for API call
             # DeepSeek V4 requires clean message ordering - strip reasoning_content
@@ -508,15 +505,19 @@ class LLMClient:
                 while i < len(cleaned_messages):
                     msg = cleaned_messages[i]
                     # Restructure ANY assistant with tool_calls (not just >1)
-                    if (msg.get("role") == "assistant" and
-                            "tool_calls" in msg and
-                            len(msg.get("tool_calls", [])) >= 1):
+                    if (
+                        msg.get("role") == "assistant"
+                        and "tool_calls" in msg
+                        and len(msg.get("tool_calls", [])) >= 1
+                    ):
                         tool_calls = msg["tool_calls"]
                         content = msg.get("content", "")
                         # Collect all following tool messages
                         tool_results = {}
                         j = i + 1
-                        while j < len(cleaned_messages) and cleaned_messages[j].get("role") == "tool":
+                        while (
+                            j < len(cleaned_messages) and cleaned_messages[j].get("role") == "tool"
+                        ):
                             tc_id = cleaned_messages[j].get("tool_call_id", "")
                             tool_results[tc_id] = cleaned_messages[j]
                             j += 1
@@ -535,7 +536,10 @@ class LLMClient:
                         restructured.append(msg)
                         i += 1
                 cleaned_messages = restructured
-                logger.info("[DeepSeek] After restructuring: %s", [m.get("role") for m in cleaned_messages[-12:]])
+                logger.info(
+                    "[DeepSeek] After restructuring: %s",
+                    [m.get("role") for m in cleaned_messages[-12:]],
+                )
                 # Log restructured message roles for debugging
                 _msg_roles = [m.get("role", "?") for m in cleaned_messages]
                 logger.info("[DeepSeek] Restructured messages roles: %s", _msg_roles[-12:])
@@ -550,16 +554,20 @@ class LLMClient:
                     if i == 0:
                         logger.error("[DeepSeek] tool message at index 0 with no preceding message")
                     else:
-                        prev = cleaned_messages[i-1]
+                        prev = cleaned_messages[i - 1]
                         if prev.get("role") != "assistant" or "tool_calls" not in prev:
                             logger.error(
-                                "[DeepSeek] tool message at index %d not preceded by assistant+tool_calls. "
+                                "[DeepSeek] tool message at index %d not preceded"
+                                " by assistant+tool_calls. "
                                 "Preceding: role=%s has_tool_calls=%s",
-                                i, prev.get("role"), "tool_calls" in prev
+                                i,
+                                prev.get("role"),
+                                "tool_calls" in prev,
                             )
 
-            # Apply prompt caching (Anthropic-compatible cache_control) for ~75% input cost reduction.
-            # DeepSeek supports cache_control: mark all messages except the last 2 as ephemeral cache.
+            # Apply prompt caching (Anthropic-compatible cache_control)
+            # for ~75% input cost reduction. DeepSeek supports cache_control:
+            # mark all messages except the last 2 as ephemeral cache.
             num_to_cache = max(0, len(cleaned_messages) - 2)
             for i in range(num_to_cache):
                 content = cleaned_messages[i].get("content", "")
@@ -572,7 +580,8 @@ class LLMClient:
                 "model": clean_model,
                 "messages": cleaned_messages,
                 "max_tokens": 4096,
-                "extra_body": {"thinking": {"type": "disabled"}},  # Disable thinking to avoid message ordering issues
+                # Disable thinking to avoid message ordering issues
+                "extra_body": {"thinking": {"type": "disabled"}},
             }
 
             if tools:
@@ -581,10 +590,10 @@ class LLMClient:
 
             # Make API call using OpenAI library (handles formatting automatically)
             import asyncio
+
             loop = asyncio.get_event_loop()
             response = await loop.run_in_executor(
-                None,
-                lambda: client.chat.completions.create(**kwargs)
+                None, lambda: client.chat.completions.create(**kwargs)
             )
 
             # Parse response
@@ -599,18 +608,18 @@ class LLMClient:
 
             # Extract tool calls
             tool_calls = []
-            has_tool_calls = False
             if message.tool_calls:
-                has_tool_calls = True
                 for tc in message.tool_calls:
-                    tool_calls.append({
-                        "id": tc.id,
-                        "type": "function",
-                        "function": {
-                            "name": tc.function.name,
-                            "arguments": tc.function.arguments,
-                        },
-                    })
+                    tool_calls.append(
+                        {
+                            "id": tc.id,
+                            "type": "function",
+                            "function": {
+                                "name": tc.function.name,
+                                "arguments": tc.function.arguments,
+                            },
+                        }
+                    )
 
             # Track usage and cost
             input_tokens = 0

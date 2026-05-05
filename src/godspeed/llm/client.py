@@ -523,7 +523,7 @@ class LLMClient:
                             j += 1
                         # Emit assistant+tool pair for each tool_call
                         for k, tc in enumerate(tool_calls):
-                            a_msg = {"role": "assistant"}
+                            a_msg: dict[str, Any] = {"role": "assistant"}
                             a_msg["content"] = content if k == 0 else ""
                             a_msg["tool_calls"] = [tc]
                             restructured.append(a_msg)
@@ -593,7 +593,8 @@ class LLMClient:
 
             loop = asyncio.get_event_loop()
             response = await loop.run_in_executor(
-                None, lambda: client.chat.completions.create(**kwargs)
+                None,
+                lambda: client.chat.completions.create(**kwargs),  # type: ignore[call-overload]
             )
 
             # Parse response
@@ -647,6 +648,9 @@ class LLMClient:
             )
 
             return response_obj
+
+        # Fallback: model not in DeepSeek set (should not happen due to caller guard)
+        raise RuntimeError(f"DeepSeek direct call not supported for model: {clean_model}")
 
     async def _call(
         self,

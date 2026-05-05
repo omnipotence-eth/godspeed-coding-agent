@@ -650,7 +650,9 @@ class LLMClient:
             return response_obj
 
         # Fallback: model not in DeepSeek set (should not happen due to caller guard)
-        raise RuntimeError(f"DeepSeek direct call not supported for model: {clean_model}")
+        raise RuntimeError(  # pragma: no cover
+            f"DeepSeek direct call not supported for model: {clean_model}"
+        )
 
     async def _call(
         self,

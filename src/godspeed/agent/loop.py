@@ -122,6 +122,8 @@ class _LoopState:
     must_fix_cap: int = 3
     max_speculative_cache_size: int = 10
     competition_mode: bool = False
+    llm_max_retries: int = 3
+    llm_retry_delay: float = 2.0
 
 
 async def agent_loop(
@@ -155,6 +157,8 @@ async def agent_loop(
     metrics: AgentMetrics | None = None,
     metrics_sink: MetricsSink | None = None,
     competition_mode: bool = False,
+    llm_max_retries: int = 3,
+    llm_retry_delay: float = 2.0,
 ) -> str:
     """Run the agent loop until the model stops calling tools.
 
@@ -226,6 +230,8 @@ async def agent_loop(
             else MAX_SPECULATIVE_CACHE_SIZE
         ),
         competition_mode=competition_mode,
+        llm_max_retries=llm_max_retries,
+        llm_retry_delay=llm_retry_delay,
     )
 
     loop_metrics = metrics.loop if metrics is not None else LoopMetrics()
@@ -264,56 +270,77 @@ async def agent_loop(
         # via settings.routing (or the cheap_model/strong_model shortcuts).
         task_type = classify_task_type(conversation.messages)
 
-        # Call LLM (streaming or batch)
+        # Call LLM (streaming or batch) with retry for transient errors
         llm_t0 = time.monotonic()
-        try:
-            if on_assistant_chunk is not None:
-                response = await _streaming_call(
-                    llm_client,
-                    conversation.messages,
-                    tool_schemas if tool_schemas else None,
-                    on_assistant_chunk,
-                    tool_registry=tool_registry,
-                    tool_context=tool_context,
-                    speculative_cache=state.speculative_cache,
-                    cancel_event=cancel_event,
-                    task_type=task_type,
-                    max_speculative_cache_size=state.max_speculative_cache_size,
-                )
-            else:
-                response = await llm_client.chat(
-                    messages=conversation.messages,
-                    tools=tool_schemas if tool_schemas else None,
-                    task_type=task_type,
-                )
-            loop_metrics.record_llm_call(time.monotonic() - llm_t0)
-            loop_metrics.record_token_count(conversation.token_count)
-        except AgentCancelledError:
-            # Finalize with INTERRUPTED and unwind — don't wrap in LLM_ERROR.
-            logger.info("Agent loop cancelled mid-turn at iteration=%d", iteration)
-            if metrics is not None:
-                metrics.iterations_used = iteration
-                metrics.finalize(ExitReason.INTERRUPTED)
-            raise
-        except Exception as exc:
-            # Import here to avoid circular import at module level
-            from godspeed.llm.client import BudgetExceededError
-
-            if isinstance(exc, BudgetExceededError):
-                msg = (
-                    f"Budget exceeded (${exc.spent:.4f} / ${exc.limit:.2f} limit). "
-                    "Use /budget to increase the limit."
-                )
-                logger.warning("Budget exceeded spent=%.4f limit=%.2f", exc.spent, exc.limit)
+        response: ChatResponse | None = None
+        last_exc: Exception | None = None
+        for llm_attempt in range(state.llm_max_retries + 1):
+            try:
+                if on_assistant_chunk is not None:
+                    response = await _streaming_call(
+                        llm_client,
+                        conversation.messages,
+                        tool_schemas if tool_schemas else None,
+                        on_assistant_chunk,
+                        tool_registry=tool_registry,
+                        tool_context=tool_context,
+                        speculative_cache=state.speculative_cache,
+                        cancel_event=cancel_event,
+                        task_type=task_type,
+                        max_speculative_cache_size=state.max_speculative_cache_size,
+                    )
+                else:
+                    response = await llm_client.chat(
+                        messages=conversation.messages,
+                        tools=tool_schemas if tool_schemas else None,
+                        task_type=task_type,
+                    )
+                break
+            except AgentCancelledError:
+                # Finalize with INTERRUPTED and unwind — don't wrap in LLM_ERROR.
+                logger.info("Agent loop cancelled mid-turn at iteration=%d", iteration)
                 if metrics is not None:
                     metrics.iterations_used = iteration
-                    metrics.finalize(ExitReason.BUDGET_EXCEEDED)
-                return msg
-            logger.error("LLM call failed error=%s", exc, exc_info=True)
-            if metrics is not None:
-                metrics.iterations_used = iteration
-                metrics.finalize(ExitReason.LLM_ERROR)
-            return f"Error: LLM call failed — {exc}"
+                    metrics.finalize(ExitReason.INTERRUPTED)
+                raise
+            except Exception as exc:
+                # Import here to avoid circular import at module level
+                from godspeed.llm.client import BudgetExceededError
+
+                if isinstance(exc, BudgetExceededError):
+                    msg = (
+                        f"Budget exceeded (${exc.spent:.4f} / ${exc.limit:.2f} limit). "
+                        "Use /budget to increase the limit."
+                    )
+                    logger.warning(
+                        "Budget exceeded spent=%.4f limit=%.2f", exc.spent, exc.limit
+                    )
+                    if metrics is not None:
+                        metrics.iterations_used = iteration
+                        metrics.finalize(ExitReason.BUDGET_EXCEEDED)
+                    return msg
+                last_exc = exc
+                if llm_attempt < state.llm_max_retries:
+                    delay = state.llm_retry_delay * (2**llm_attempt)
+                    logger.warning(
+                        "LLM call failed attempt=%d/%d delay=%.1fs error=%s",
+                        llm_attempt + 1,
+                        state.llm_max_retries + 1,
+                        delay,
+                        exc,
+                    )
+                    await asyncio.sleep(delay)
+                else:
+                    logger.error("LLM call failed error=%s", exc, exc_info=True)
+                    if metrics is not None:
+                        metrics.iterations_used = iteration
+                        metrics.finalize(ExitReason.LLM_ERROR)
+                    return f"Error: LLM call failed — {exc}"
+        if response is None:
+            # Defensive — should not happen because we return early on final failure
+            return f"Error: LLM call failed — {last_exc}"
+        loop_metrics.record_llm_call(time.monotonic() - llm_t0)
+        loop_metrics.record_token_count(conversation.token_count)
 
         # Display thinking blocks (extended thinking for Anthropic models)
         if response.thinking and on_thinking:

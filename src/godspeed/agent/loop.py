@@ -121,6 +121,7 @@ class _LoopState:
     stash_threshold: int = 3
     must_fix_cap: int = 3
     max_speculative_cache_size: int = 10
+    competition_mode: bool = False
 
 
 async def agent_loop(
@@ -153,6 +154,7 @@ async def agent_loop(
     on_thinking: OnThinking | None = None,
     metrics: AgentMetrics | None = None,
     metrics_sink: MetricsSink | None = None,
+    competition_mode: bool = False,
 ) -> str:
     """Run the agent loop until the model stops calling tools.
 
@@ -205,7 +207,7 @@ async def agent_loop(
     final_text = ""
     state = _LoopState(
         auto_fix_retries=auto_fix_retries,
-        auto_commit=auto_commit,
+        auto_commit=auto_commit and not competition_mode,
         auto_commit_threshold=auto_commit_threshold,
         stuck_threshold=(
             stuck_loop_threshold if stuck_loop_threshold is not None else STUCK_LOOP_THRESHOLD
@@ -213,12 +215,17 @@ async def agent_loop(
         stash_threshold=(
             auto_stash_threshold if auto_stash_threshold is not None else AUTO_STASH_THRESHOLD
         ),
-        must_fix_cap=must_fix_cap if must_fix_cap is not None else MUST_FIX_CAP,
+        must_fix_cap=(
+            0
+            if competition_mode
+            else (must_fix_cap if must_fix_cap is not None else MUST_FIX_CAP)
+        ),
         max_speculative_cache_size=(
             max_speculative_cache_size
             if max_speculative_cache_size is not None
             else MAX_SPECULATIVE_CACHE_SIZE
         ),
+        competition_mode=competition_mode,
     )
 
     loop_metrics = metrics.loop if metrics is not None else LoopMetrics()
@@ -247,7 +254,7 @@ async def agent_loop(
         logger.debug("Agent loop iteration=%d tokens=%d", iteration, conversation.token_count)
 
         # Check if we need to compact
-        if conversation.is_near_limit:
+        if conversation.is_near_limit and not state.competition_mode:
             await _compact_conversation(conversation, llm_client)
             loop_metrics.record_compaction()
 

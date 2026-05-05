@@ -121,6 +121,9 @@ class _LoopState:
     stash_threshold: int = 3
     must_fix_cap: int = 3
     max_speculative_cache_size: int = 10
+    competition_mode: bool = False
+    llm_max_retries: int = 3
+    llm_retry_delay: float = 2.0
 
 
 async def agent_loop(
@@ -153,6 +156,9 @@ async def agent_loop(
     on_thinking: OnThinking | None = None,
     metrics: AgentMetrics | None = None,
     metrics_sink: MetricsSink | None = None,
+    competition_mode: bool = False,
+    llm_max_retries: int = 3,
+    llm_retry_delay: float = 2.0,
 ) -> str:
     """Run the agent loop until the model stops calling tools.
 
@@ -205,7 +211,7 @@ async def agent_loop(
     final_text = ""
     state = _LoopState(
         auto_fix_retries=auto_fix_retries,
-        auto_commit=auto_commit,
+        auto_commit=auto_commit and not competition_mode,
         auto_commit_threshold=auto_commit_threshold,
         stuck_threshold=(
             stuck_loop_threshold if stuck_loop_threshold is not None else STUCK_LOOP_THRESHOLD
@@ -213,12 +219,17 @@ async def agent_loop(
         stash_threshold=(
             auto_stash_threshold if auto_stash_threshold is not None else AUTO_STASH_THRESHOLD
         ),
-        must_fix_cap=must_fix_cap if must_fix_cap is not None else MUST_FIX_CAP,
+        must_fix_cap=(
+            0 if competition_mode else (must_fix_cap if must_fix_cap is not None else MUST_FIX_CAP)
+        ),
         max_speculative_cache_size=(
             max_speculative_cache_size
             if max_speculative_cache_size is not None
             else MAX_SPECULATIVE_CACHE_SIZE
         ),
+        competition_mode=competition_mode,
+        llm_max_retries=llm_max_retries,
+        llm_retry_delay=llm_retry_delay,
     )
 
     loop_metrics = metrics.loop if metrics is not None else LoopMetrics()
@@ -247,7 +258,7 @@ async def agent_loop(
         logger.debug("Agent loop iteration=%d tokens=%d", iteration, conversation.token_count)
 
         # Check if we need to compact
-        if conversation.is_near_limit:
+        if conversation.is_near_limit and not state.competition_mode:
             await _compact_conversation(conversation, llm_client)
             loop_metrics.record_compaction()
 
@@ -257,56 +268,75 @@ async def agent_loop(
         # via settings.routing (or the cheap_model/strong_model shortcuts).
         task_type = classify_task_type(conversation.messages)
 
-        # Call LLM (streaming or batch)
+        # Call LLM (streaming or batch) with retry for transient errors
         llm_t0 = time.monotonic()
-        try:
-            if on_assistant_chunk is not None:
-                response = await _streaming_call(
-                    llm_client,
-                    conversation.messages,
-                    tool_schemas if tool_schemas else None,
-                    on_assistant_chunk,
-                    tool_registry=tool_registry,
-                    tool_context=tool_context,
-                    speculative_cache=state.speculative_cache,
-                    cancel_event=cancel_event,
-                    task_type=task_type,
-                    max_speculative_cache_size=state.max_speculative_cache_size,
-                )
-            else:
-                response = await llm_client.chat(
-                    messages=conversation.messages,
-                    tools=tool_schemas if tool_schemas else None,
-                    task_type=task_type,
-                )
-            loop_metrics.record_llm_call(time.monotonic() - llm_t0)
-            loop_metrics.record_token_count(conversation.token_count)
-        except AgentCancelledError:
-            # Finalize with INTERRUPTED and unwind — don't wrap in LLM_ERROR.
-            logger.info("Agent loop cancelled mid-turn at iteration=%d", iteration)
-            if metrics is not None:
-                metrics.iterations_used = iteration
-                metrics.finalize(ExitReason.INTERRUPTED)
-            raise
-        except Exception as exc:
-            # Import here to avoid circular import at module level
-            from godspeed.llm.client import BudgetExceededError
-
-            if isinstance(exc, BudgetExceededError):
-                msg = (
-                    f"Budget exceeded (${exc.spent:.4f} / ${exc.limit:.2f} limit). "
-                    "Use /budget to increase the limit."
-                )
-                logger.warning("Budget exceeded spent=%.4f limit=%.2f", exc.spent, exc.limit)
+        response: ChatResponse | None = None
+        last_exc: Exception | None = None
+        for llm_attempt in range(state.llm_max_retries + 1):
+            try:
+                if on_assistant_chunk is not None:
+                    response = await _streaming_call(
+                        llm_client,
+                        conversation.messages,
+                        tool_schemas if tool_schemas else None,
+                        on_assistant_chunk,
+                        tool_registry=tool_registry,
+                        tool_context=tool_context,
+                        speculative_cache=state.speculative_cache,
+                        cancel_event=cancel_event,
+                        task_type=task_type,
+                        max_speculative_cache_size=state.max_speculative_cache_size,
+                    )
+                else:
+                    response = await llm_client.chat(
+                        messages=conversation.messages,
+                        tools=tool_schemas if tool_schemas else None,
+                        task_type=task_type,
+                    )
+                break
+            except AgentCancelledError:
+                # Finalize with INTERRUPTED and unwind — don't wrap in LLM_ERROR.
+                logger.info("Agent loop cancelled mid-turn at iteration=%d", iteration)
                 if metrics is not None:
                     metrics.iterations_used = iteration
-                    metrics.finalize(ExitReason.BUDGET_EXCEEDED)
-                return msg
-            logger.error("LLM call failed error=%s", exc, exc_info=True)
-            if metrics is not None:
-                metrics.iterations_used = iteration
-                metrics.finalize(ExitReason.LLM_ERROR)
-            return f"Error: LLM call failed — {exc}"
+                    metrics.finalize(ExitReason.INTERRUPTED)
+                raise
+            except Exception as exc:
+                # Import here to avoid circular import at module level
+                from godspeed.llm.client import BudgetExceededError
+
+                if isinstance(exc, BudgetExceededError):
+                    msg = (
+                        f"Budget exceeded (${exc.spent:.4f} / ${exc.limit:.2f} limit). "
+                        "Use /budget to increase the limit."
+                    )
+                    logger.warning("Budget exceeded spent=%.4f limit=%.2f", exc.spent, exc.limit)
+                    if metrics is not None:
+                        metrics.iterations_used = iteration
+                        metrics.finalize(ExitReason.BUDGET_EXCEEDED)
+                    return msg
+                last_exc = exc
+                if llm_attempt < state.llm_max_retries:
+                    delay = state.llm_retry_delay * (2**llm_attempt)
+                    logger.warning(
+                        "LLM call failed attempt=%d/%d delay=%.1fs error=%s",
+                        llm_attempt + 1,
+                        state.llm_max_retries + 1,
+                        delay,
+                        exc,
+                    )
+                    await asyncio.sleep(delay)
+                else:
+                    logger.error("LLM call failed error=%s", exc, exc_info=True)
+                    if metrics is not None:
+                        metrics.iterations_used = iteration
+                        metrics.finalize(ExitReason.LLM_ERROR)
+                    return f"Error: LLM call failed — {exc}"
+        if response is None:
+            # Defensive — should not happen because we return early on final failure
+            return f"Error: LLM call failed — {last_exc}"
+        loop_metrics.record_llm_call(time.monotonic() - llm_t0)
+        loop_metrics.record_token_count(conversation.token_count)
 
         # Display thinking blocks (extended thinking for Anthropic models)
         if response.thinking and on_thinking:
@@ -316,7 +346,11 @@ async def agent_loop(
         if not response.has_tool_calls:
             final_text = _strip_meta_commentary(response.content)
             if final_text:
-                conversation.add_assistant_message(content=final_text)
+                # NEW: Pass reasoning_content for DeepSeek V4 multi-turn
+                conversation.add_assistant_message(
+                    content=final_text,
+                    reasoning_content=response.thinking,  # Store thinking/reasoning
+                )
                 # Skip Markdown re-render if we already streamed the text
                 if on_assistant_text and on_assistant_chunk is None:
                     on_assistant_text(final_text)
@@ -326,9 +360,12 @@ async def agent_loop(
             return final_text
 
         # Handle tool calls
+        # Always use standard message handling to maintain proper API compatibility
+        # DeepSeek V4: reasoning_content stripped before API calls in _call_deepseek_direct
         conversation.add_assistant_message(
             content=response.content,
             tool_calls=response.tool_calls,
+            reasoning_content=response.thinking,
         )
 
         if response.content and on_assistant_text:
@@ -692,7 +729,7 @@ async def _post_process_results(
                     file_path, tc.call_id, tool_registry, tool_context, state.auto_fix_retries
                 )
                 conversation.add_tool_result(
-                    tool_call_id=f"{tc.call_id}_verify",
+                    tool_call_id=tc.call_id,
                     content=verify_result.output or "",
                 )
                 verify_text = verify_result.error or verify_result.output or ""
@@ -737,7 +774,7 @@ async def _post_process_results(
         stash_call = ToolCall(
             tool_name="git",
             arguments={"action": "stash"},
-            call_id=f"{tool_calls[-1].call_id}_autostash",
+            call_id=tool_calls[-1].call_id,
         )
         stash_result = await tool_registry.dispatch(stash_call, tool_context)
         if (
@@ -798,7 +835,7 @@ async def _post_process_single_result(
                 file_path, tool_call.call_id, tool_registry, tool_context, state.auto_fix_retries
             )
             conversation.add_tool_result(
-                tool_call_id=f"{tool_call.call_id}_verify",
+                tool_call_id=tool_call.call_id,
                 content=verify_result.output or "",
             )
             verify_text = verify_result.error or verify_result.output or ""
@@ -821,7 +858,7 @@ async def _post_process_single_result(
             stash_call = ToolCall(
                 tool_name="git",
                 arguments={"action": "stash"},
-                call_id=f"{tool_call.call_id}_autostash",
+                call_id=tool_call.call_id,
             )
             stash_result = await tool_registry.dispatch(stash_call, tool_context)
             if (
@@ -913,7 +950,7 @@ async def _auto_verify_file(
     verify_call = ToolCall(
         tool_name="verify",
         arguments={"file_path": file_path},
-        call_id=f"{parent_call_id}_verify",
+        call_id=parent_call_id,
     )
     return await tool_registry.dispatch(verify_call, tool_context)
 

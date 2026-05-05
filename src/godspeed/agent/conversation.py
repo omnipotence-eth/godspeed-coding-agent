@@ -79,6 +79,7 @@ class Conversation:
         self,
         content: str = "",
         tool_calls: list[dict[str, Any]] | None = None,
+        reasoning_content: str = "",  # NEW: For DeepSeek V4 multi-turn
     ) -> None:
         """Add an assistant message, optionally with tool calls."""
         msg: dict[str, Any] = {"role": "assistant"}
@@ -91,6 +92,9 @@ class Conversation:
                 entry.setdefault("type", "function")
                 normalized.append(entry)
             msg["tool_calls"] = normalized
+        # NEW: Preserve reasoning_content for DeepSeek V4 multi-turn
+        if reasoning_content:
+            msg["reasoning_content"] = reasoning_content
         self._messages.append(msg)
         self._invalidate_caches()
         if self._logger is not None:

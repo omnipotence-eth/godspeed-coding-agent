@@ -127,7 +127,7 @@ class TestAutoVerifyInLoop:
         # Check that a verify result was injected into conversation
         messages = conversation.messages
         verify_found = any(
-            msg.get("role") == "tool" and "call_001_verify" in msg.get("tool_call_id", "")
+            msg.get("role") == "tool" and msg.get("tool_call_id", "") == "call_001"
             for msg in messages
         )
         assert verify_found, "Auto-verify result should be in conversation"

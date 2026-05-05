@@ -843,6 +843,14 @@ def init() -> None:
     default=None,
     help="Read the task from a file instead of the positional argument.",
 )
+@click.option(
+    "--competition-mode",
+    is_flag=True,
+    help=(
+        "Strip non-essential features for benchmark runs "
+        "(no compaction, auto-stash, auto-commit, must-fix)."
+    ),
+)
 def headless_run(
     task: str,
     model: str,
@@ -853,6 +861,7 @@ def headless_run(
     timeout: int,
     json_output: bool,
     prompt_file: Path | None,
+    competition_mode: bool,
 ) -> None:
     """Run a task non-interactively (headless/CI mode).
 
@@ -902,11 +911,30 @@ def headless_run(
                 max_iterations,
                 timeout,
                 json_output,
+                competition_mode,
             )
         )
         sys.exit(int(exit_code))
     except KeyboardInterrupt:
         sys.exit(ExitCode.INTERRUPTED)
+
+
+@main.command("serve")
+@click.option(
+    "--config",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    default=None,
+    help="Alternate settings.yaml path.",
+)
+def serve(config: Path | None) -> None:
+    """Run Godspeed as an MCP stdio server."""
+    from godspeed.mcp_server.server import run_server
+
+    try:
+        exit_code = run_server(config_path=config)
+    except KeyboardInterrupt:
+        exit_code = 0
+    sys.exit(exit_code)
 
 
 def _resolve_task_input(task_arg: str, prompt_file: Path | None) -> str:
@@ -934,6 +962,7 @@ async def _headless_run(
     max_iterations: int,
     timeout: int,
     json_output: bool,
+    competition_mode: bool = False,
 ) -> int:
     """Execute the headless agent loop.
 
@@ -1051,7 +1080,7 @@ async def _headless_run(
 
     # Conversation logger (training data collection)
     conversation_logger = None
-    if settings.log_conversations:
+    if settings.log_conversations and not competition_mode:
         from godspeed.training.conversation_logger import ConversationLogger
 
         training_dir = settings.global_dir / "training"
@@ -1094,6 +1123,7 @@ async def _headless_run(
         on_tool_result=on_tool_result,
         max_iterations=max_iterations,
         metrics=metrics,
+        competition_mode=competition_mode,
     )
     try:
         if timeout > 0:

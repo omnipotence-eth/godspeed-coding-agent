@@ -220,9 +220,7 @@ async def agent_loop(
             auto_stash_threshold if auto_stash_threshold is not None else AUTO_STASH_THRESHOLD
         ),
         must_fix_cap=(
-            0
-            if competition_mode
-            else (must_fix_cap if must_fix_cap is not None else MUST_FIX_CAP)
+            0 if competition_mode else (must_fix_cap if must_fix_cap is not None else MUST_FIX_CAP)
         ),
         max_speculative_cache_size=(
             max_speculative_cache_size
@@ -312,9 +310,7 @@ async def agent_loop(
                         f"Budget exceeded (${exc.spent:.4f} / ${exc.limit:.2f} limit). "
                         "Use /budget to increase the limit."
                     )
-                    logger.warning(
-                        "Budget exceeded spent=%.4f limit=%.2f", exc.spent, exc.limit
-                    )
+                    logger.warning("Budget exceeded spent=%.4f limit=%.2f", exc.spent, exc.limit)
                     if metrics is not None:
                         metrics.iterations_used = iteration
                         metrics.finalize(ExitReason.BUDGET_EXCEEDED)
@@ -353,7 +349,7 @@ async def agent_loop(
                 # NEW: Pass reasoning_content for DeepSeek V4 multi-turn
                 conversation.add_assistant_message(
                     content=final_text,
-                    reasoning_content=response.thinking  # Store thinking/reasoning
+                    reasoning_content=response.thinking,  # Store thinking/reasoning
                 )
                 # Skip Markdown re-render if we already streamed the text
                 if on_assistant_text and on_assistant_chunk is None:

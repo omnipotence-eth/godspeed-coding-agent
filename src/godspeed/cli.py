@@ -909,6 +909,24 @@ def headless_run(
         sys.exit(ExitCode.INTERRUPTED)
 
 
+@main.command("serve")
+@click.option(
+    "--config",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    default=None,
+    help="Alternate settings.yaml path.",
+)
+def serve(config: Path | None) -> None:
+    """Run Godspeed as an MCP stdio server."""
+    from godspeed.mcp_server.server import run_server
+
+    try:
+        exit_code = run_server(config_path=config)
+    except KeyboardInterrupt:
+        exit_code = 0
+    sys.exit(exit_code)
+
+
 def _resolve_task_input(task_arg: str, prompt_file: Path | None) -> str:
     """Resolve the task text from the available sources (in precedence order).
 

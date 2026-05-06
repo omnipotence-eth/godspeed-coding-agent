@@ -25,6 +25,7 @@ class TestFindServerBinary:
     @patch.object(Path, "exists", return_value=True)
     def test_default_path_found(self, mock_exists: MagicMock) -> None:
         from godspeed.tools.llamacpp_manager import _find_server_binary
+
         result = _find_server_binary()
         assert result is not None
 
@@ -32,6 +33,7 @@ class TestFindServerBinary:
     @patch("shutil.which", return_value="/usr/bin/llama-server")
     def test_path_found(self, mock_which: MagicMock, mock_exists: MagicMock) -> None:
         from godspeed.tools.llamacpp_manager import _find_server_binary
+
         result = _find_server_binary()
         assert result == Path("/usr/bin/llama-server")
 
@@ -39,6 +41,7 @@ class TestFindServerBinary:
     @patch("shutil.which", return_value=None)
     def test_not_found(self, mock_which: MagicMock, mock_exists: MagicMock) -> None:
         from godspeed.tools.llamacpp_manager import _find_server_binary
+
         result = _find_server_binary()
         assert result is None
 
@@ -49,6 +52,7 @@ class TestFindModel:
     @patch.object(Path, "exists", return_value=True)
     def test_default_model_found(self, mock_exists: MagicMock) -> None:
         from godspeed.tools.llamacpp_manager import _find_model
+
         result = _find_model()
         assert result is not None
 
@@ -56,6 +60,7 @@ class TestFindModel:
     @patch("pathlib.Path.glob", return_value=[Path("/models/other.gguf")])
     def test_any_gguf_found(self, mock_glob: MagicMock, mock_exists: MagicMock) -> None:
         from godspeed.tools.llamacpp_manager import _find_model
+
         result = _find_model()
         assert result == Path("/models/other.gguf")
 
@@ -63,6 +68,7 @@ class TestFindModel:
     @patch("pathlib.Path.glob", return_value=[])
     def test_no_model_found(self, mock_glob: MagicMock, mock_exists: MagicMock) -> None:
         from godspeed.tools.llamacpp_manager import _find_model
+
         result = _find_model()
         assert result is None
 
@@ -98,7 +104,10 @@ class TestStartServer:
 
     def test_model_not_found(self) -> None:
         with patch("godspeed.tools.llamacpp_manager.is_server_running", return_value=False):
-            with patch("godspeed.tools.llamacpp_manager._find_server_binary", return_value=Path("/fake/llama-server")):  # noqa: E501
+            with patch(
+                "godspeed.tools.llamacpp_manager._find_server_binary",
+                return_value=Path("/fake/llama-server"),
+            ):
                 with patch("godspeed.tools.llamacpp_manager._find_model", return_value=None):
                     result = start_server()
         assert result is None
@@ -107,16 +116,28 @@ class TestStartServer:
         mock_proc = MagicMock()
         mock_proc.poll.return_value = None
         with patch("godspeed.tools.llamacpp_manager.is_server_running", side_effect=[False, True]):
-            with patch("godspeed.tools.llamacpp_manager._find_server_binary", return_value=Path("/fake/llama-server")):  # noqa: E501
-                with patch("godspeed.tools.llamacpp_manager._find_model", return_value=Path("/fake/model.gguf")):  # noqa: E501
+            with patch(
+                "godspeed.tools.llamacpp_manager._find_server_binary",
+                return_value=Path("/fake/llama-server"),
+            ):
+                with patch(
+                    "godspeed.tools.llamacpp_manager._find_model",
+                    return_value=Path("/fake/model.gguf"),
+                ):
                     with patch("subprocess.Popen", return_value=mock_proc):
                         result = start_server(timeout=1)
         assert result is mock_proc
 
     def test_start_os_error(self) -> None:
         with patch("godspeed.tools.llamacpp_manager.is_server_running", return_value=False):
-            with patch("godspeed.tools.llamacpp_manager._find_server_binary", return_value=Path("/fake/llama-server")):  # noqa: E501
-                with patch("godspeed.tools.llamacpp_manager._find_model", return_value=Path("/fake/model.gguf")):  # noqa: E501
+            with patch(
+                "godspeed.tools.llamacpp_manager._find_server_binary",
+                return_value=Path("/fake/llama-server"),
+            ):
+                with patch(
+                    "godspeed.tools.llamacpp_manager._find_model",
+                    return_value=Path("/fake/model.gguf"),
+                ):
                     with patch("subprocess.Popen", side_effect=OSError("Permission denied")):
                         result = start_server()
         assert result is None
@@ -126,8 +147,14 @@ class TestStartServer:
         mock_proc.poll.return_value = 1
         mock_proc.communicate.return_value = ("stdout", "stderr")
         with patch("godspeed.tools.llamacpp_manager.is_server_running", return_value=False):
-            with patch("godspeed.tools.llamacpp_manager._find_server_binary", return_value=Path("/fake/llama-server")):  # noqa: E501
-                with patch("godspeed.tools.llamacpp_manager._find_model", return_value=Path("/fake/model.gguf")):  # noqa: E501
+            with patch(
+                "godspeed.tools.llamacpp_manager._find_server_binary",
+                return_value=Path("/fake/llama-server"),
+            ):
+                with patch(
+                    "godspeed.tools.llamacpp_manager._find_model",
+                    return_value=Path("/fake/model.gguf"),
+                ):
                     with patch("subprocess.Popen", return_value=mock_proc):
                         result = start_server(timeout=1)
         assert result is None
@@ -204,6 +231,7 @@ class TestConfigureLitellmEnv:
     def test_sets_defaults(self) -> None:
         configure_litellm_env()
         import os
+
         assert os.environ.get("LLAMACPP_API_BASE") == "http://127.0.0.1:8080/v1"
         assert os.environ.get("OPENAI_API_BASE") == "http://127.0.0.1:8080/v1"
         assert os.environ.get("OPENAI_API_KEY") == "none"
@@ -212,6 +240,7 @@ class TestConfigureLitellmEnv:
     def test_preserves_existing(self) -> None:
         configure_litellm_env()
         import os
+
         assert os.environ.get("LLAMACPP_API_BASE") == "existing"
 
 
@@ -228,12 +257,15 @@ class TestLlamaCppTool:
     @pytest.mark.asyncio
     async def test_status_running(self, tool_context: Any) -> None:
         tool = LlamaCppTool()
-        with patch("godspeed.tools.llamacpp_manager.get_server_status", return_value={
-            "running": True,
-            "url": "http://127.0.0.1:8080",
-            "model": "test-model",
-            "version": "1.0",
-        }):
+        with patch(
+            "godspeed.tools.llamacpp_manager.get_server_status",
+            return_value={
+                "running": True,
+                "url": "http://127.0.0.1:8080",
+                "model": "test-model",
+                "version": "1.0",
+            },
+        ):
             result = await tool.execute({"action": "status"}, tool_context)
             assert "RUNNING" in result.output
             assert "test-model" in result.output
@@ -288,4 +320,5 @@ class TestLlamaCppTool:
     def test_risk_level(self) -> None:
         tool = LlamaCppTool()
         from godspeed.tools.base import RiskLevel
+
         assert tool.risk_level == RiskLevel.LOW

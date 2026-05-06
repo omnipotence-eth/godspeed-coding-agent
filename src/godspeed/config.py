@@ -72,6 +72,10 @@ MODEL_CONTEXT_WINDOWS: dict[str, int] = {
     "ollama/deepseek": 32_768,
     "ollama/gemma": 8_192,
     "ollama/phi": 16_384,
+    # Local llama.cpp models
+    "openai/qwen3.6": 32_768,
+    "llamacpp/qwen3.6": 32_768,
+    "qwen3.6": 32_768,
 }
 
 
@@ -179,6 +183,7 @@ class GodspeedSettings(BaseSettings):
         "fast": "ollama/rnj-1:8b",
         "balanced": "ollama/qwen2.5-coder:14b",
         "quality": "ollama/devstral-small-2:24b",
+        "local": "openai/qwen3.6-27b",
         "cloud": "nvidia_nim/qwen/qwen3.5-397b-a17b",
         "frontier": "claude-sonnet-4-20250514",
     }

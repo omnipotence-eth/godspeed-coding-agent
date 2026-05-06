@@ -1,0 +1,1 @@
+"""Godspeed MCP server package."""

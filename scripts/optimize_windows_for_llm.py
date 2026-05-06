@@ -363,9 +363,7 @@ def main() -> int:
         logger.info("This was a dry run. Remove --dry-run to apply changes.")
         return 0
 
-    reboot_needed = any(
-        name in ("Pagefile", "Long paths") and ok for name, ok in results
-    )
+    reboot_needed = any(name in ("Pagefile", "Long paths") and ok for name, ok in results)
     if reboot_needed:
         logger.info("")
         logger.info("REBOOT REQUIRED for some changes to take effect.")

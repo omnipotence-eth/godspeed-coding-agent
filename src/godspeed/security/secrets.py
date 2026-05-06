@@ -17,7 +17,12 @@ from dataclasses import dataclass
 SECRET_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     # API keys with known prefixes (more specific patterns first)
     (re.compile(r"sk-ant-[a-zA-Z0-9\-]{20,}"), "anthropic_api_key"),
+    (
+        re.compile(r"sk\s*-\s*ant\s*-\s*[a-zA-Z0-9\-\s]{20,}", re.IGNORECASE),
+        "anthropic_api_key_obfuscated",
+    ),
     (re.compile(r"sk-[a-zA-Z0-9\-]{20,}"), "openai_api_key"),
+    (re.compile(r"sk\s*-\s*[a-zA-Z0-9\-\s]{20,}", re.IGNORECASE), "openai_api_key_obfuscated"),
     (re.compile(r"AKIA[0-9A-Z]{16}"), "aws_access_key"),
     (re.compile(r"ghp_[a-zA-Z0-9]{36}"), "github_pat"),
     (re.compile(r"gho_[a-zA-Z0-9]{36}"), "github_oauth"),
@@ -60,6 +65,13 @@ SECRET_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (
         re.compile(r"""(?:api_key|apikey|api-key)\s*[:=]\s*['"][^'"]{10,}['"]""", re.IGNORECASE),
         "api_key_assignment",
+    ),
+    (
+        re.compile(
+            r"""(?:api_key|apikey|api-key|anthropic_key|openai_api_key)\s*[:=]\s*\S{10,}""",
+            re.IGNORECASE,
+        ),
+        "api_key_assignment_unquoted",
     ),
     (
         re.compile(r"""(?:secret|token)\s*[:=]\s*['"][^'"]{10,}['"]""", re.IGNORECASE),

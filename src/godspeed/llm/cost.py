@@ -36,6 +36,8 @@ _MODEL_PRICING: dict[str, tuple[float, float]] = {
     # DeepSeek
     "deepseek-chat": (0.27, 1.10),
     "deepseek-reasoner": (0.55, 2.19),
+    "deepseek-v4-pro": (1.74, 3.48),
+    "deepseek-v4-flash": (0.14, 0.28),
     # Mistral
     "mistral-large": (2.0, 6.0),
     "mistral-small": (0.10, 0.30),

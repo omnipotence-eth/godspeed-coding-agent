@@ -122,11 +122,16 @@ def start_server(
 
     cmd = [
         str(server_bin),
-        "-m", str(model_path),
-        "-c", str(context),
-        "--n-gpu-layers", str(gpu_layers),
-        "--host", host,
-        "--port", str(port),
+        "-m",
+        str(model_path),
+        "-c",
+        str(context),
+        "--n-gpu-layers",
+        str(gpu_layers),
+        "--host",
+        host,
+        "--port",
+        str(port),
     ]
 
     logger.info("Starting llama.cpp server: %s", " ".join(cmd))

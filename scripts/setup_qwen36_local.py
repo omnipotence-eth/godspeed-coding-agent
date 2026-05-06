@@ -176,7 +176,9 @@ def download_model(models_dir: Path, *, dry_run: bool = False) -> Path | None:
                 check=False,
             )
         else:
-            logger.error("No download tool found. Install huggingface_hub: pip install huggingface_hub")
+            logger.error(
+                "No download tool found. Install huggingface_hub: pip install huggingface_hub"
+            )
             return None
 
         if target.exists() and target.stat().st_size > 1024**3:
@@ -275,11 +277,16 @@ def launch_server(
     """Launch llama-server. Returns the process handle."""
     cmd = [
         str(server_bin),
-        "-m", str(model_path),
-        "-c", str(context),
-        "--n-gpu-layers", str(GPU_LAYERS),
-        "--host", HOST,
-        "--port", str(port),
+        "-m",
+        str(model_path),
+        "-c",
+        str(context),
+        "--n-gpu-layers",
+        str(GPU_LAYERS),
+        "--host",
+        HOST,
+        "--port",
+        str(port),
     ]
 
     logger.info("Launching llama-server:")
@@ -363,7 +370,9 @@ def main() -> int:
     if cuda_ver:
         logger.info("CUDA: %s", cuda_ver)
         if "13.2" in cuda_ver:
-            logger.error("CUDA 13.2 detected — outputs will be gibberish. Downgrade to 12.x or 13.1.")
+            logger.error(
+                "CUDA 13.2 detected — outputs will be gibberish. Downgrade to 12.x or 13.1."
+            )
             return 1
     else:
         logger.warning("Could not detect CUDA version")

@@ -76,6 +76,8 @@ def _wsl_run(bash_cmd: str, timeout: int = 900) -> subprocess.CompletedProcess[s
         text=True,
         timeout=timeout,
         check=False,
+        encoding="utf-8",
+        errors="replace",
     )
 
 
@@ -99,23 +101,44 @@ def _windows_to_wsl(p: Path) -> str:
     return "/mnt/" + drive + "/" + "/".join(parts[1:]).replace("\\", "/")
 
 
-def _harness_cmd(workdir_str: str, preds_str: str, instance_id: str, run_id: str) -> str:
+def _harness_cmd(workdir_str: str, preds_str: str, instance_id: str, run_id: str, dataset_path: str | None = None) -> str:
     """Compose the bash command to run the swebench harness.
 
     ``workdir_str`` and ``preds_str`` are already in the format the shell
     will consume (POSIX for WSL/native, Windows-translated for WSL).
+
+    If ``dataset_path`` is provided (local .jsonl file), use that instead
+    of a HuggingFace dataset name — avoids split/ID mismatch issues.
     """
-    return (
-        f"cd '{workdir_str}' && "
-        f"python3 -m swebench.harness.run_evaluation "
-        f"--predictions_path '{preds_str}' "
-        f"--dataset_name princeton-nlp/SWE-bench_Lite "
-        f"--split dev "
-        f"--instance_ids {instance_id} "
-        f"--max_workers 1 "
-        f"--run_id {run_id} "
-        f"--cache_level instance"
-    )
+    # Use the venv Python where swebench is installed in WSL.
+    # The venv was created at /home/swebench_venv/bin/python3.
+    python_path = "/home/swebench_venv/bin/python3"
+
+    if dataset_path:
+        # Use local dataset file - no split needed, instance_ids filters it
+        return (
+            f"cd '{workdir_str}' && "
+            f"{python_path} -m swebench.harness.run_evaluation "
+            f"--predictions_path '{preds_str}' "
+            f"--dataset_name '{dataset_path}' "
+            f"--instance_ids {instance_id} "
+            f"--max_workers 1 "
+            f"--run_id {run_id} "
+            f"--cache_level instance"
+        )
+    else:
+        # Fallback to HuggingFace dataset (original behavior)
+        return (
+            f"cd '{workdir_str}' && "
+            f"{python_path} -m swebench.harness.run_evaluation "
+            f"--predictions_path '{preds_str}' "
+            f"--dataset_name princeton-nlp/SWE-bench_Lite "
+            f"--split dev "
+            f"--instance_ids {instance_id} "
+            f"--max_workers 1 "
+            f"--run_id {run_id} "
+            f"--cache_level instance"
+        )
 
 
 def verify_patch(
@@ -159,14 +182,41 @@ def verify_patch(
         encoding="utf-8",
     )
 
+    # Use local dataset file to avoid split/ID mismatch.
+    # The file must contain the target instance, so we build a minimal
+    # one-row dataset from the official SWE-Bench Lite JSONL.
+    dataset_path = workdir / f".dataset_{digest}.jsonl"
+    if not dataset_path.exists():
+        # The benchmarks/ dir is at the project root (two levels up from workdir)
+        project_root = workdir.parent.parent
+        swebench_lite = project_root / "benchmarks" / "swebench_lite_test.jsonl"
+        if swebench_lite.is_file():
+            rows = [
+                json.loads(line)
+                for line in swebench_lite.read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            ]
+            found = [r for r in rows if r.get("instance_id") == instance_id]
+            if found:
+                dataset_path.write_text(
+                    json.dumps(found[0]) + "\n", encoding="utf-8"
+                )
+            else:
+                # Instance not in dataset - write empty (harness will fail gracefully)
+                dataset_path.write_text("", encoding="utf-8")
+        else:
+            # No local dataset - write empty file
+            dataset_path.write_text("", encoding="utf-8")
+
     if _use_wsl():
         workdir_str = _windows_to_wsl(workdir)
         preds_str = _windows_to_wsl(preds_path)
-        bash_cmd = _harness_cmd(workdir_str, preds_str, instance_id, run_id)
+        dataset_str = _windows_to_wsl(dataset_path)
+        bash_cmd = _harness_cmd(workdir_str, preds_str, instance_id, run_id, dataset_str)
         logger.info("verify harness (wsl): %s (timeout %ds)", instance_id, timeout_s)
         result = _wsl_run(bash_cmd, timeout=timeout_s)
     else:
-        bash_cmd = _harness_cmd(str(workdir), str(preds_path), instance_id, run_id)
+        bash_cmd = _harness_cmd(str(workdir), str(preds_path), instance_id, run_id, str(dataset_path))
         logger.info("verify harness (native): %s (timeout %ds)", instance_id, timeout_s)
         result = _native_run(bash_cmd, timeout=timeout_s)
 

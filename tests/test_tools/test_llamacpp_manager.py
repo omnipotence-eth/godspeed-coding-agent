@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -84,57 +85,51 @@ class TestIsServerRunning:
 class TestStartServer:
     """Test server startup logic."""
 
-    @patch("godspeed.tools.llamacpp_manager.is_server_running", return_value=True)
-    def test_already_running(self, mock_is_running: MagicMock) -> None:
-        result = start_server()
+    def test_already_running(self) -> None:
+        with patch("godspeed.tools.llamacpp_manager.is_server_running", return_value=True):
+            result = start_server()
         assert result is None
 
-    @patch("godspeed.tools.llamacpp_manager.is_server_running", return_value=False)
-    @patch("godspeed.tools.llamacpp_manager._find_server_binary", return_value=None)
-    def test_binary_not_found(self, mock_find_bin: MagicMock, mock_is_running: MagicMock) -> None:
-        result = start_server()
+    def test_binary_not_found(self) -> None:
+        with patch("godspeed.tools.llamacpp_manager.is_server_running", return_value=False):
+            with patch("godspeed.tools.llamacpp_manager._find_server_binary", return_value=None):
+                result = start_server()
         assert result is None
 
-    @patch("godspeed.tools.llamacpp_manager.is_server_running", return_value=False)
-    @patch("godspeed.tools.llamacpp_manager._find_server_binary", return_value=Path("/fake/llama-server"))
-    @patch("godspeed.tools.llamacpp_manager._find_model", return_value=None)
-    def test_model_not_found(self, mock_find_model: MagicMock, mock_find_bin: MagicMock, mock_is_running: MagicMock) -> None:
-        result = start_server()
+    def test_model_not_found(self) -> None:
+        with patch("godspeed.tools.llamacpp_manager.is_server_running", return_value=False):
+            with patch("godspeed.tools.llamacpp_manager._find_server_binary", return_value=Path("/fake/llama-server")):  # noqa: E501
+                with patch("godspeed.tools.llamacpp_manager._find_model", return_value=None):
+                    result = start_server()
         assert result is None
 
-    @patch("godspeed.tools.llamacpp_manager.is_server_running", return_value=False)
-    @patch("godspeed.tools.llamacpp_manager._find_server_binary", return_value=Path("/fake/llama-server"))
-    @patch("godspeed.tools.llamacpp_manager._find_model", return_value=Path("/fake/model.gguf"))
-    @patch("subprocess.Popen")
-    def test_start_success(self, mock_popen: MagicMock, mock_find_model: MagicMock, mock_find_bin: MagicMock, mock_is_running: MagicMock) -> None:
+    def test_start_success(self) -> None:
         mock_proc = MagicMock()
         mock_proc.poll.return_value = None
-        mock_popen.return_value = mock_proc
-        
-        # First call in start_server returns False, second in polling returns True
         with patch("godspeed.tools.llamacpp_manager.is_server_running", side_effect=[False, True]):
-            result = start_server(timeout=1)
-            assert result is mock_proc
+            with patch("godspeed.tools.llamacpp_manager._find_server_binary", return_value=Path("/fake/llama-server")):  # noqa: E501
+                with patch("godspeed.tools.llamacpp_manager._find_model", return_value=Path("/fake/model.gguf")):  # noqa: E501
+                    with patch("subprocess.Popen", return_value=mock_proc):
+                        result = start_server(timeout=1)
+        assert result is mock_proc
 
-    @patch("godspeed.tools.llamacpp_manager.is_server_running", return_value=False)
-    @patch("godspeed.tools.llamacpp_manager._find_server_binary", return_value=Path("/fake/llama-server"))
-    @patch("godspeed.tools.llamacpp_manager._find_model", return_value=Path("/fake/model.gguf"))
-    @patch("subprocess.Popen", side_effect=OSError("Permission denied"))
-    def test_start_os_error(self, mock_popen: MagicMock, mock_find_model: MagicMock, mock_find_bin: MagicMock, mock_is_running: MagicMock) -> None:
-        result = start_server()
+    def test_start_os_error(self) -> None:
+        with patch("godspeed.tools.llamacpp_manager.is_server_running", return_value=False):
+            with patch("godspeed.tools.llamacpp_manager._find_server_binary", return_value=Path("/fake/llama-server")):  # noqa: E501
+                with patch("godspeed.tools.llamacpp_manager._find_model", return_value=Path("/fake/model.gguf")):  # noqa: E501
+                    with patch("subprocess.Popen", side_effect=OSError("Permission denied")):
+                        result = start_server()
         assert result is None
 
-    @patch("godspeed.tools.llamacpp_manager.is_server_running", return_value=False)
-    @patch("godspeed.tools.llamacpp_manager._find_server_binary", return_value=Path("/fake/llama-server"))
-    @patch("godspeed.tools.llamacpp_manager._find_model", return_value=Path("/fake/model.gguf"))
-    @patch("subprocess.Popen")
-    def test_server_exits_early(self, mock_popen: MagicMock, mock_find_model: MagicMock, mock_find_bin: MagicMock, mock_is_running: MagicMock) -> None:
+    def test_server_exits_early(self) -> None:
         mock_proc = MagicMock()
         mock_proc.poll.return_value = 1
         mock_proc.communicate.return_value = ("stdout", "stderr")
-        mock_popen.return_value = mock_proc
-        
-        result = start_server(timeout=1)
+        with patch("godspeed.tools.llamacpp_manager.is_server_running", return_value=False):
+            with patch("godspeed.tools.llamacpp_manager._find_server_binary", return_value=Path("/fake/llama-server")):  # noqa: E501
+                with patch("godspeed.tools.llamacpp_manager._find_model", return_value=Path("/fake/model.gguf")):  # noqa: E501
+                    with patch("subprocess.Popen", return_value=mock_proc):
+                        result = start_server(timeout=1)
         assert result is None
 
 
@@ -181,11 +176,11 @@ class TestGetServerStatus:
     @patch("godspeed.tools.llamacpp_manager.is_server_running", return_value=True)
     @patch("urllib.request.urlopen")
     @patch("urllib.request.Request")
-    def test_running_with_model(self, mock_request: MagicMock, mock_urlopen: MagicMock, mock_is_running: MagicMock) -> None:
+    def test_running_with_model(self, mock_request, mock_urlopen, mock_is_running) -> None:
         mock_resp = MagicMock()
         mock_resp.read.return_value = b'{"data": [{"id": "test-model"}]}'
         mock_urlopen.return_value.__enter__.return_value = mock_resp
-        
+
         status = get_server_status()
         assert status["running"] is True
         assert status["model"] == "test-model"
@@ -193,11 +188,11 @@ class TestGetServerStatus:
     @patch("godspeed.tools.llamacpp_manager.is_server_running", return_value=True)
     @patch("urllib.request.urlopen")
     @patch("urllib.request.Request")
-    def test_running_list_format(self, mock_request: MagicMock, mock_urlopen: MagicMock, mock_is_running: MagicMock) -> None:
+    def test_running_list_format(self, mock_request, mock_urlopen, mock_is_running) -> None:
         mock_resp = MagicMock()
         mock_resp.read.return_value = b'[{"id": "list-model"}]'
         mock_urlopen.return_value.__enter__.return_value = mock_resp
-        
+
         status = get_server_status()
         assert status["model"] == "list-model"
 

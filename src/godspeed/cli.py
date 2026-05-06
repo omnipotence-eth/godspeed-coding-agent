@@ -272,6 +272,43 @@ def _ensure_ollama(console: Any | None = None) -> bool:
     return False
 
 
+LLAMACPP_STARTUP_TIMEOUT = 60  # seconds to wait for llama.cpp server
+
+
+def _ensure_llamacpp(console: Any | None = None) -> bool:
+    """Start llama.cpp server if it's not running. Returns True if available.
+
+    Args:
+        console: Optional Rich Console for status output.
+    """
+    from godspeed.tools.llamacpp_manager import is_server_running, start_server
+
+    if is_server_running():
+        return True
+
+    if console is not None:
+        from godspeed.tui.theme import DIM
+
+        console.print(f"[{DIM}]  Starting llama.cpp server...[/{DIM}]", end="")
+
+    proc = start_server(timeout=LLAMACPP_STARTUP_TIMEOUT)
+    if proc is not None or is_server_running():
+        if console is not None:
+            from godspeed.tui.theme import SUCCESS
+
+            console.print(f" [{SUCCESS}]ready[/{SUCCESS}]")
+        return True
+
+    if console is not None:
+        from godspeed.tui.theme import WARNING
+
+        console.print(
+            f" [{WARNING}]timed out. Build with: "
+            f"python scripts/setup_qwen36_local.py --build-only[/{WARNING}]"
+        )
+    return False
+
+
 def _build_tool_registry(tool_set: str = "full") -> tuple:
     """Create all tool instances and register them.
 
@@ -386,6 +423,13 @@ def _build_tool_registry(tool_set: str = "full") -> tuple:
         tools.append(OllamaTool())
     except ImportError:
         logger.debug("ollama_manager not available")
+
+    try:
+        from godspeed.tools.llamacpp_manager import LlamaCppTool
+
+        tools.append(LlamaCppTool())
+    except ImportError:
+        logger.debug("llamacpp_manager not available")
 
     for tool in tools:
         if allowed is not None and tool.name not in allowed:
@@ -514,11 +558,15 @@ async def _run_app(
         memory_hints=memory_hints or None,
     )
 
-    # Auto-start Ollama if the model needs it
+    # Auto-start local inference servers if needed
     if effective_model.lower().startswith("ollama"):
         from godspeed.tui.output import console as rich_console
 
         _ensure_ollama(console=rich_console)
+    elif effective_model.lower().startswith(("llamacpp/", "openai/")):
+        from godspeed.tui.output import console as rich_console
+
+        _ensure_llamacpp(console=rich_console)
 
     # LLM client with model routing
     from godspeed.llm.client import ModelRouter
@@ -1011,9 +1059,11 @@ async def _headless_run(
                 return PermissionDecision(ALLOW, "headless: auto-approved (reads+low)")
             return decision
 
-    # Auto-start Ollama if needed
+    # Auto-start local inference servers if needed
     if effective_model.lower().startswith("ollama"):
         _ensure_ollama()
+    elif effective_model.lower().startswith(("llamacpp/", "openai/")):
+        _ensure_llamacpp()
 
     project_instructions = load_project_instructions(
         effective_project_dir,

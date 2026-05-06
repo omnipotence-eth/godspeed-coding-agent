@@ -367,6 +367,13 @@ class LLMClient:
                     "  2. Use a cloud model:  godspeed -m claude-sonnet-4-20250514\n"
                     "  3. Set a fallback in ~/.godspeed/settings.yaml"
                 )
+            if self._model_lower.startswith(("llamacpp/", "openai/")):
+                return RuntimeError(
+                    "Local llama.cpp server is not running. Fix with one of:\n"
+                    "  1. Start server:  python scripts/setup_qwen36_local.py\n"
+                    "  2. Use a cloud model:  godspeed -m nvidia_nim/qwen/qwen3.5-397b-a17b\n"
+                    "  3. Set a fallback in ~/.godspeed/settings.yaml"
+                )
             return RuntimeError(
                 f"Cannot connect to LLM provider for model '{self.model}'. "
                 "Check that the server is running and the model name is correct."
@@ -428,10 +435,18 @@ class LLMClient:
     # Anthropic model prefixes for fast matching
     _ANTHROPIC_PREFIXES: frozenset[str] = frozenset({"claude", "anthropic"})
 
+    # Models that support Qwen-style thinking via extra_body
+    _THINKING_CAPABLE_PREFIXES: frozenset[str] = frozenset({"qwen3.6", "qwen3-"})
+
     def _is_anthropic_model(self, model: str | None = None) -> bool:
         """Check if the model is an Anthropic/Claude model."""
         name = (model or self._model_lower).lower() if model else self._model_lower
         return any(prefix in name for prefix in self._ANTHROPIC_PREFIXES)
+
+    def _supports_thinking(self, model: str | None = None) -> bool:
+        """Check if the model supports extended thinking mode."""
+        name = (model or self._model_lower).lower() if model else self._model_lower
+        return any(prefix in name for prefix in self._THINKING_CAPABLE_PREFIXES)
 
     def _check_budget(self) -> None:
         """Raise BudgetExceededError if session cost exceeds the limit."""
@@ -465,9 +480,16 @@ class LLMClient:
                     model,
                 )
 
-        # Extended thinking for Anthropic models
-        if self.thinking_budget > 0 and self._is_anthropic_model(model):
-            kwargs["thinking"] = {"type": "enabled", "budget_tokens": self.thinking_budget}
+        # Extended thinking for Anthropic models and Qwen thinking mode
+        if self.thinking_budget > 0:
+            if self._is_anthropic_model(model):
+                kwargs["thinking"] = {"type": "enabled", "budget_tokens": self.thinking_budget}
+            elif self._supports_thinking(model):
+                # Qwen3.6 via llama.cpp OpenAI-compatible server uses extra_body
+                kwargs["extra_body"] = {
+                    "thinking": True,
+                    "thinking_budget": self.thinking_budget,
+                }
 
         response = await _get_litellm().acompletion(**kwargs)
 
@@ -640,9 +662,15 @@ class LLMClient:
                     effective,
                 )
 
-        # Extended thinking for Anthropic models
-        if self.thinking_budget > 0 and self._is_anthropic_model(effective):
-            kwargs["thinking"] = {"type": "enabled", "budget_tokens": self.thinking_budget}
+        # Extended thinking for Anthropic models and Qwen thinking mode
+        if self.thinking_budget > 0:
+            if self._is_anthropic_model(effective):
+                kwargs["thinking"] = {"type": "enabled", "budget_tokens": self.thinking_budget}
+            elif self._supports_thinking(effective):
+                kwargs["extra_body"] = {
+                    "thinking": True,
+                    "thinking_budget": self.thinking_budget,
+                }
 
         try:
             response = await _get_litellm().acompletion(**kwargs)

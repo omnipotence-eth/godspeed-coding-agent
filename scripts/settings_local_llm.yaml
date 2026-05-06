@@ -1,0 +1,50 @@
+# Godspeed settings for local Qwen3.6-27B inference via llama.cpp
+#
+# Copy this file to ~/.godspeed/settings.yaml (or ./.godspeed/settings.yaml
+# for project-scoped config) to use your local model as the primary driver.
+#
+# Prerequisites:
+#   1. Run: python scripts/setup_qwen36_local.py
+#   2. Ensure llama.cpp server is running at http://127.0.0.1:8080
+#
+# The server auto-starts when you run Godspeed if it's not already running.
+
+model: openai/qwen3.6-27b
+
+# Fallback chain: if local server fails, fall back to cloud
+fallback_models:
+  - nvidia_nim/qwen/qwen3.5-397b-a17b
+
+# Model routing: use thinking mode for hard reasoning tasks
+routing:
+  plan: openai/qwen3.6-27b
+  edit: openai/qwen3.6-27b
+  read: openai/qwen3.6-27b
+  shell: openai/qwen3.6-27b
+
+# Task-aware shortcuts
+strong_model: openai/qwen3.6-27b
+cheap_model: openai/qwen3.6-27b
+
+# Qwen3.6 thinking mode: enable for extended chain-of-thought reasoning.
+# The llama.cpp server passes this through extra_body to the model.
+#   0 = disabled (fast, for simple edits and scaffolding)
+#   8192 = enabled (hard tasks: patch gen, root cause analysis, planning)
+thinking_budget: 8192
+
+# Context management: 32K context window, compact at 80%
+max_context_tokens: 32768
+compaction_threshold: 0.8
+
+# Cost: local inference is free
+max_cost_usd: 0.0
+
+# Agent behavior
+parallel_tool_calls: true
+auto_fix_retries: 3
+
+# Sandbox
+sandbox: none
+
+# Logging
+log_conversations: true

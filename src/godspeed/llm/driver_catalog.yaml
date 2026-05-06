@@ -151,3 +151,22 @@ drivers:
     cost_per_mtok_in: 0.0
     cost_per_mtok_out: 0.0
     notes: "MoE 30B-A3B; 18 GB disk, ~15 GB VRAM. Uses Qwen3-Coder tool-call parser shim."
+
+  # ─── Local — llama.cpp (OpenAI-compatible server) ───────────────────
+  openai/qwen3.6-27b:
+    provider: openai
+    context_window: 32768
+    prompt_profile: default
+    tool_call_format: openai
+    cost_per_mtok_in: 0.0
+    cost_per_mtok_out: 0.0
+    notes: "Qwen3.6-27B UD-Q4_K_XL via llama.cpp. RTX 5070 Ti ~40-55 tok/s. Thinking mode supported via extra_body."
+
+  llamacpp/qwen3.6-27b:
+    provider: llamacpp
+    context_window: 32768
+    prompt_profile: default
+    tool_call_format: openai
+    cost_per_mtok_in: 0.0
+    cost_per_mtok_out: 0.0
+    notes: "Qwen3.6-27B UD-Q4_K_XL via llama.cpp native LiteLLM provider. Set LLAMACPP_API_BASE env var."

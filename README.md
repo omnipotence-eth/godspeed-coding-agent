@@ -162,6 +162,23 @@ Real numbers from the 20-task suite in `benchmarks/tasks.jsonl`, run against det
 Full run outputs in `experiments/bench_*/` and the aggregated table in `experiments/benchmark_shootout_2026_04.md`. Reproduce with `scripts/run_benchmark.py --model <id>`.
 
 
+| Feature | Godspeed | Claude Code | Aider | Cursor Agent |
+|---|---|---|---|---|---|
+| **Tool-call validation** | JSON Schema validation before every execution | Implicit (model-dependent) | Implicit (model-dependent) | Implicit (model-dependent) |
+| **Automatic retry** | Transient failures retried with exponential backoff | No | No | No |
+| **Permission modes** | `strict` / `normal` / `yolo` via CLI flag | Always asks | `--yes` flag | Always asks |
+| **Audit trail** | Hash-chained SHA-256 JSONL, cryptographically verifiable | No | No | No |
+| **Parallel tool execution** | READ_ONLY tools run concurrently via `asyncio.gather()` | Yes | Sequential | Yes |
+| **MCP client** | Built-in (stdio + SSE) | Built-in | No | Built-in |
+| **MCP server mode** | Yes | No | No | No |
+| **Post-edit syntax gate** | Auto-rejects broken `.py`/`.json` edits, retries lint fixes | No | No | No |
+| **Diff approve-before-write** | Two-axis consent: permission + diff review | No | No | No |
+| **Secret protection** | 4-layer: file deny-list, context cleaning, output filtering, audit redaction | Basic | No | Basic |
+| **Conversation compaction** | Model-aware summarization (aggressive for small models, detailed for frontier) | Yes | No | Yes |
+| **Open-source** | MIT | Proprietary | Apache 2.0 | Proprietary |
+| **Self-hosted** | Full local mode with Ollama, $0 API cost | No | Yes (with local models) | No |
+
+Godspeed's differentiator: **trust through verification**. Every tool call is validated, every failure is retried, every action is auditable. You don't have to trust the model — you can verify what it did.
 
 ## Architecture
 

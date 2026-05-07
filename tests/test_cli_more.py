@@ -1,4 +1,5 @@
 """Additional CLI tests covering remaining untested paths in cli.py."""
+
 from __future__ import annotations
 
 import logging
@@ -152,7 +153,6 @@ class TestCLICommands:
             result = runner.invoke(main, ["run", "test task"])
             assert result.exit_code == 0
 
-
     def test_verify_audit_no_dir(self) -> None:
         from click.testing import CliRunner
 
@@ -170,9 +170,7 @@ class TestCLICommands:
         audit_dir = tmp_path / "audit"
         audit_dir.mkdir()
         log_file = audit_dir / "test-session.audit.jsonl"
-        log_file.write_text(
-            '{"event_type":"session_start","session_id":"test-session"}\n'
-        )
+        log_file.write_text('{"event_type":"session_start","session_id":"test-session"}\n')
         with patch("godspeed.audit.trail.AuditTrail") as mock_trail_cls:
             mock_instance = MagicMock()
             mock_instance.verify_chain.return_value = (True, "valid chain")
@@ -190,9 +188,7 @@ class TestCLICommands:
         audit_dir = tmp_path / "audit"
         audit_dir.mkdir()
         log_file = audit_dir / "test-session.audit.jsonl"
-        log_file.write_text(
-            '{"event_type":"session_start","session_id":"test-session"}\n'
-        )
+        log_file.write_text('{"event_type":"session_start","session_id":"test-session"}\n')
         with patch("godspeed.audit.trail.AuditTrail") as mock_trail_cls:
             mock_instance = MagicMock()
             mock_instance.verify_chain.return_value = (False, "hash mismatch")
@@ -245,8 +241,6 @@ class TestCLICommands:
         result = runner.invoke(main, ["serve", "--help"])
         assert result.exit_code == 0
         assert "MCP" in result.output
-
-
 
     def test_headless_run_keyboard_interrupt(self) -> None:
         from click.testing import CliRunner
@@ -442,8 +436,10 @@ class TestRunApp:
         project_dir = tmp_path / "project"
         project_dir.mkdir()
 
-        with patch("godspeed.config.GodspeedSettings") as mock_settings_cls, \
-             patch("godspeed.cli._build_tool_registry") as mock_registry:
+        with (
+            patch("godspeed.config.GodspeedSettings") as mock_settings_cls,
+            patch("godspeed.cli._build_tool_registry") as mock_registry,
+        ):
             mock_registry.return_value = (MagicMock(), {"shell": "high"})
             s = MagicMock()
             s.model = "test-model"

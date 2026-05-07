@@ -1,4 +1,5 @@
 """Tests for src/godspeed/tui/app.py — TUI application and interactive components."""
+
 from __future__ import annotations
 
 import asyncio

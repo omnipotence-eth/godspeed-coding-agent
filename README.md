@@ -9,14 +9,20 @@
 [![LiteLLM](https://img.shields.io/badge/LLM-LiteLLM-orange?style=flat-square)](https://github.com/BerriAI/litellm)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json&style=flat-square)](https://github.com/astral-sh/ruff)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
+[![Discussions](https://img.shields.io/badge/chat-Discussions-2f80ed?style=flat-square)](https://github.com/t-timms/godspeed-coding-agent/discussions)
 
 > **Project Status: Alpha — Seeking Testers**
 > 
 > Godspeed is under active development by a solo maintainer. Breaking changes may occur between releases. We are looking for early adopters to test real-world workflows and report rough edges. See [ROADMAP.md](ROADMAP.md) for the path to v1.0 stable.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/tui-welcome.svg">
+  <img alt="Godspeed TUI welcome screen" src="docs/screenshots/tui-welcome.svg" width="640">
+</picture>
+
 A coding agent you can point at a production codebase and trust. Built-in permissions, audit trails, schema-validated tool calls, and automatic retries.
 
-[Getting Started](#getting-started) | [Features](#features) | [Architecture](#architecture) | [Configuration](#configuration) | [Contributing](CONTRIBUTING.md)
+[Getting Started](#getting-started) | [Features](#features) | [Architecture](#architecture) | [Configuration](#configuration) | [Contributing](CONTRIBUTING.md) | [Discussions](https://github.com/t-timms/godspeed-coding-agent/discussions)
 
 </div>
 

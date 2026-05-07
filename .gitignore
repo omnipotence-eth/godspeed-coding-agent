@@ -52,6 +52,9 @@ coverage.xml
 *.tar.gz
 *.whl
 
+# Cache
+.mypy_cache/
+
 # Logs
 *.log
 

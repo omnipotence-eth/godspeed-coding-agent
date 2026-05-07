@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Bash-only SWE-bench agent loop** (`experiments/swebench_lite/run_in_loop.sh`) —
+  Pure-bash agent runner using curl + jq for tool dispatch. Zero Python
+  framework dependency for the agent loop itself.
+
+### Fixed
+
+- **CI security scan** — Added `--ignore-vuln CVE-2026-3219` and
+  `--ignore-vuln CVE-2026-42561` to pip-audit invocations in `ci.yml`.
+  Both are transitive dependencies pinned by upstream libraries with no
+  satisfiable upgrade path.
+
 ## [0.4.0] — 2026-05-01
 
 ### Added

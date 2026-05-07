@@ -8,7 +8,7 @@ get started.
 1. **Fork and clone** the repository:
 
    ```bash
-   gh repo fork omnipotence-eth/godspeed-coding-agent --clone
+   gh repo fork t-timms/godspeed-coding-agent --clone
    cd godspeed
    ```
 
@@ -45,7 +45,7 @@ get started.
    ```bash
    uv run ruff check . --fix && uv run ruff format .   # lint + format
    uv run ty check src/                                 # type check
-   uv run pip-audit --ignore-vuln CVE-2026-28684        # security scan
+   uv run pip-audit --ignore-vuln CVE-2026-28684 --ignore-vuln CVE-2026-3219 --ignore-vuln CVE-2026-42561  # security scan
    uv run bandit -r src/ -ll                            # static analysis
    uv run pytest --cov                                  # tests + coverage
    ```

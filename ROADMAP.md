@@ -15,7 +15,7 @@ This roadmap describes the path from the current Alpha to a stable v1.0 release.
 - [x] Prompt evaluation harness for tool-call accuracy
 - [x] Active metrics thresholds and alerting
 - [x] Cross-platform CI (Ubuntu + Windows)
-- [ ] **Docker / devcontainer quickstart** — containerized environment for sandboxed testing
+- [x] **Docker / devcontainer quickstart** — containerized environment for sandboxed testing
 - [ ] **TUI screenshot / GIF in README** — visual proof of the interface
 - [ ] **Coverage for user-facing code** — bring `cli.py` and `tui/*` into the coverage gate
 - [ ] **Merge pending dependency updates** — keep Dependabot PRs current

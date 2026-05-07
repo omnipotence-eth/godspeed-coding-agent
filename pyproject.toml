@@ -90,11 +90,11 @@ index = [
 godspeed = "godspeed.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/omnipotence-eth/godspeed-coding-agent"
-Repository = "https://github.com/omnipotence-eth/godspeed-coding-agent"
-Issues = "https://github.com/omnipotence-eth/godspeed-coding-agent/issues"
-Documentation = "https://github.com/omnipotence-eth/godspeed-coding-agent#readme"
-Changelog = "https://github.com/omnipotence-eth/godspeed-coding-agent/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/t-timms/godspeed-coding-agent"
+Repository = "https://github.com/t-timms/godspeed-coding-agent"
+Issues = "https://github.com/t-timms/godspeed-coding-agent/issues"
+Documentation = "https://github.com/t-timms/godspeed-coding-agent#readme"
+Changelog = "https://github.com/t-timms/godspeed-coding-agent/blob/main/CHANGELOG.md"
 
 [build-system]
 requires = ["hatchling>=1.26.0"]

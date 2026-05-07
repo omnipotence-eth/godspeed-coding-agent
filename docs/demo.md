@@ -23,7 +23,7 @@ brew install --HEAD asciinema-agg                       # or cargo install --git
 cd ~/Documents/Project\ Portfolio/godspeed
 
 asciinema rec docs/demo.cast \
-    --title "Godspeed v3.3 — 60-second demo" \
+    --title "Godspeed v0.4.0 — 60-second demo" \
     --idle-time-limit 2 \
     --command "bash -c 'cd /tmp && mkdir -p godspeed_demo && cd godspeed_demo && godspeed'"
 ```
@@ -57,7 +57,7 @@ larger, trim:
 
 ```markdown
 <p align="center">
-  <img src="docs/demo.gif" alt="Godspeed v3.3 demo — add a function, add tests, ~50 seconds." width="780" />
+  <img src="docs/demo.gif" alt="Godspeed v0.4.0 demo — add a function, add tests, ~50 seconds." width="780" />
 </p>
 ```
 
@@ -67,7 +67,7 @@ If the GIF gets too large, embed the interactive player instead:
 
 ```markdown
 <a href="https://asciinema.org/a/<ID>" target="_blank">
-  <img src="https://asciinema.org/a/<ID>.svg" alt="Godspeed v3.3 demo" />
+  <img src="https://asciinema.org/a/<ID>.svg" alt="Godspeed v0.4.0 demo" />
 </a>
 ```
 

@@ -19,7 +19,6 @@ from mcp.server.models import InitializationOptions
 from mcp.server.stdio import stdio_server
 
 from godspeed.audit.trail import AuditTrail
-from godspeed.cli import _build_tool_registry, _load_env_files
 from godspeed.config import GodspeedSettings
 from godspeed.mcp_server.schemas import build_mcp_tools
 from godspeed.security.permissions import ALLOW, PermissionEngine
@@ -32,6 +31,8 @@ logger = logging.getLogger(__name__)
 
 def _load_settings_with_optional_config(config_path: Path | None) -> GodspeedSettings:
     """Load settings using standard CLI behavior, with optional file override."""
+    from godspeed.cli import _load_env_files
+
     _load_env_files(project_dir=Path("."))
     if config_path is None:
         return GodspeedSettings()
@@ -85,6 +86,8 @@ class GodspeedMCPServer:
         self.settings = _load_settings_with_optional_config(config_path)
         self.project_dir = Path(self.settings.project_dir).resolve()
         self.session_id = str(uuid4())
+
+        from godspeed.cli import _build_tool_registry
 
         registry, risk_levels = _build_tool_registry()
         task_store = TaskStore()
@@ -242,7 +245,7 @@ def run_server(config_path: Path | None = None) -> int:
     try:
         anyio.run(server.run_stdio)
     except KeyboardInterrupt:
-        pass
+        logger.info("MCP server interrupted, shutting down")
     finally:
         anyio.run(server.shutdown)
         sys.stderr.write("Godspeed MCP server shutdown\n")

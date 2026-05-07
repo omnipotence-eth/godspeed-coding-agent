@@ -604,8 +604,6 @@ class LLMClient:
                 kwargs["tool_choice"] = "auto"
 
             # Make API call using OpenAI library (handles formatting automatically)
-            import asyncio
-
             loop = asyncio.get_event_loop()
             response = await loop.run_in_executor(
                 None,
@@ -682,8 +680,6 @@ class LLMClient:
         clean_model = model.replace("deepseek/", "").strip()
         if clean_model in _DEEPSEEK_MODELS or model.lower().startswith("deepseek/"):
             return await self._call_deepseek_direct(model, messages, tools)
-
-        from godspeed.llm.cost import estimate_cost
 
         # Apply prompt caching for supported providers
         cached_messages = self._apply_prompt_caching(model, messages)

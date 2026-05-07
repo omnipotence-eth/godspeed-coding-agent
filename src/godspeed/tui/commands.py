@@ -829,7 +829,7 @@ class Commands:
                         format_warning(f"  error: {err}")
 
             # Schedule in background so TUI stays responsive
-            _evo_task = asyncio.create_task(_run())  # noqa: RUF006
+            asyncio.create_task(_run())  # noqa: RUF006
             return CommandResult(handled=True)
 
         format_error(

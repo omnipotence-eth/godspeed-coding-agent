@@ -53,11 +53,34 @@ _EXPLICIT_LOCAL_TOOL_NAMES: frozenset[str] = frozenset(
     }
 )
 
+# SWE-Bench tool set: only tools actually useful for bug fixing in
+# isolated temp repos. Drops 10 analysis/docs tools whose schemas
+# bloat every API call without ever being selected by the agent.
+_EXPLICIT_SWEBENCH_TOOL_NAMES: frozenset[str] = frozenset(
+    {
+        "file_read",
+        "file_write",
+        "file_edit",
+        "grep_search",
+        "glob_search",
+        "shell",
+        "git",
+        "verify",
+        "test_runner",
+        "diff_apply",
+        "file_move",
+        "repo_map",
+    }
+)
+
 TOOL_SET_LOCAL = "local"
 TOOL_SET_WEB = "web"
 TOOL_SET_FULL = "full"
+TOOL_SET_SWEBENCH = "swebench"
 
-VALID_TOOL_SETS: frozenset[str] = frozenset({TOOL_SET_LOCAL, TOOL_SET_WEB, TOOL_SET_FULL})
+VALID_TOOL_SETS: frozenset[str] = frozenset(
+    {TOOL_SET_LOCAL, TOOL_SET_WEB, TOOL_SET_FULL, TOOL_SET_SWEBENCH}
+)
 
 # Public mapping: tool-set name → the frozenset of names allowed in that set.
 # For ``full``, we return None below so callers can short-circuit registry
@@ -66,6 +89,7 @@ _SET_DEFINITIONS: MappingProxyType[str, frozenset[str]] = MappingProxyType(
     {
         TOOL_SET_LOCAL: _EXPLICIT_LOCAL_TOOL_NAMES,
         TOOL_SET_WEB: _EXPLICIT_LOCAL_TOOL_NAMES | _WEB_TOOL_NAMES,
+        TOOL_SET_SWEBENCH: _EXPLICIT_SWEBENCH_TOOL_NAMES,
     }
 )
 

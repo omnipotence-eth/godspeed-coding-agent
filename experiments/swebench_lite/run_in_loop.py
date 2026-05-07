@@ -37,9 +37,6 @@ if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
 from docker_test_tool import SWEBenchVerifyTool
-from deep_analysis_tool import DeepAnalysisTool  # NEW
-from file_viewer_tool import FileViewerTool  # NEW
-from lint_tool import LintTool  # NEW  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -54,26 +51,21 @@ async def _run_one_async(
     timeout_s: int,
     verify_workdir: Path,
     max_iterations: int,
-    tool_set: str = "local",
+    tool_set: str = "swebench",
 ) -> dict:
     """Run one agent-in-loop session; return metrics payload.
 
     Mirrors the setup in ``godspeed.cli._headless_run`` but scoped to
     a single SWE-Bench instance with the oracle tool registered.
 
-    ``tool_set`` defaults to ``"local"`` so SWE-Bench benchmark runs do
-    not have access to ``web_search`` / ``web_fetch`` — the agent could
-    otherwise leak the ground-truth fix by searching GitHub for the
-    instance id. Override to ``"full"`` for real-world (non-benchmark)
-    sessions that need live library docs.
+    ``tool_set`` defaults to ``"swebench"`` — minimal tools for speed.
     """
     # Imports kept local so this module stays cheap to import from run.py
     from godspeed.agent.conversation import Conversation
     from godspeed.agent.loop import agent_loop
     from godspeed.agent.result import AgentMetrics, ExitReason
-    from godspeed.agent.system_prompt import build_system_prompt
     from godspeed.audit.trail import AuditTrail
-    from godspeed.cli import _build_tool_registry, _ensure_ollama
+    from godspeed.cli import _ensure_ollama
     from godspeed.config import GodspeedSettings
     from godspeed.llm.client import LLMClient, ModelRouter
     from godspeed.security.permissions import (
@@ -82,6 +74,9 @@ async def _run_one_async(
         PermissionEngine,
     )
     from godspeed.tools.base import ToolContext
+    from godspeed.tools.base import RiskLevel
+    from godspeed.tools.registry import ToolRegistry
+    from godspeed.tools.shell import ShellTool
 
     overrides: dict = {}
     if model:
@@ -108,9 +103,17 @@ async def _run_one_async(
         },
     )
 
-    registry, risk_levels = _build_tool_registry(tool_set=tool_set)
+    # Bash-only tool set (mini-swe-agent style). Kimi scores 65.8% with just
+    # bash + editor — the model already knows grep, find, sed, cat, git, pytest.
+    # Zero custom tool schemas means the prompt shrinks to ~200 tokens and every
+    # API call is faster. The model operates in its most natural mode.
+    registry = ToolRegistry()
+    risk_levels: dict[str, RiskLevel] = {}
+    shell = ShellTool()
+    registry.register(shell)
+    risk_levels[shell.name] = shell.risk_level
 
-    # Register the per-instance oracle tool AFTER the default registry.
+    # Register the oracle verification tool.
     verify_tool = SWEBenchVerifyTool(
         instance_id=instance_id,
         model_name=effective_model,
@@ -120,22 +123,6 @@ async def _run_one_async(
     )
     registry.register(verify_tool)
     risk_levels[verify_tool.name] = verify_tool.risk_level
-
-    # NEW: Register deep_analysis tool (Refact.ai-inspired 3-step reasoning)
-    # Use clean model name (direct DeepSeek API, not LiteLLM provider prefix)
-    deep_analysis = DeepAnalysisTool(reasoning_model="deepseek-v4-pro")
-    registry.register(deep_analysis)
-    risk_levels[deep_analysis.name] = deep_analysis.risk_level
-
-    # NEW: Register bounded file viewer (SWE-agent ACI-inspired)
-    file_viewer = FileViewerTool()
-    registry.register(file_viewer)
-    risk_levels[file_viewer.name] = file_viewer.risk_level
-
-    # NEW: Register linter guardrail (prevents cascading errors)
-    lint_tool = LintTool()
-    registry.register(lint_tool)
-    risk_levels[lint_tool.name] = lint_tool.risk_level
 
     permission_engine = PermissionEngine(
         deny_patterns=settings.permissions.deny,
@@ -157,23 +144,17 @@ async def _run_one_async(
     if effective_model.lower().startswith("ollama"):
         _ensure_ollama()
 
-    # Build budget/step-tracking prompt (Refact.ai-inspired)
-    max_steps = max_iterations  # typically 40 or 60
-    budget_prompt = f"""
-You are a software engineering agent solving a SWE-Bench issue.
+    # Kimi K2 recommended system prompt: one sentence. The model knows how to
+    # code — we just tell it the task and the verification flow.
+    system_prompt = f"""You are Kimi, an AI assistant created by Moonshot AI.
 
-STEP BUDGET: You have {max_steps} total steps. Use them wisely.
-- If you have a working fix, SUBMIT via swebench_verify_patch NOW.
-- If stuck after 3 verify calls, submit your best effort.
-- Do NOT explore unrelated files or rewrite working code.
-- Focus on minimal, targeted fixes to the reported bug.
-"""
+You are in a git repository at {project_dir}. Fix the bug described below.
 
-    system_prompt = build_system_prompt(
-        tools=registry.list_tools(),
-        project_instructions=budget_prompt,  # NEW: Inject budget prompt
-        cwd=project_dir,
-    )
+Use the shell tool to run commands: grep to search, cat to read files, sed or python to edit, git diff to see changes, pytest to test.
+
+After making changes, call swebench_verify_patch to validate your fix. If resolved=True, stop. If resolved=False, read the test output and fix the issue. Max 3 verify calls. If stuck, submit your best effort.
+
+Do NOT modify test files. Keep edits minimal."""
 
     router = ModelRouter(routing=settings.routing) if settings.routing else None
     llm_client = LLMClient(
@@ -293,8 +274,8 @@ def run_one(
     split: str,
     timeout_s: int,
     verify_workdir: Path,
-    max_iterations: int = 40,
-    tool_set: str = "local",
+    max_iterations: int = 60,
+    tool_set: str = "swebench",
 ) -> dict:
     """Synchronous entry point for ``run.py``'s main loop.
 

@@ -6,12 +6,11 @@ import logging
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from godspeed._bootstrap import _build_tool_registry, _parse_env_file
 from godspeed.cli import (
-    _build_tool_registry,
     _ensure_llamacpp,
     _ensure_ollama,
     _is_ollama_running,
-    _parse_env_file,
     _setup_logging,
 )
 

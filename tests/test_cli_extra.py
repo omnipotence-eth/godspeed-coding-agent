@@ -8,7 +8,8 @@ from unittest.mock import patch
 
 import pytest
 
-from godspeed.cli import _load_env_files, main
+from godspeed._bootstrap import _load_env_files
+from godspeed.cli import main
 
 
 class TestLoadEnvFiles:

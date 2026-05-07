@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 import pytest
 
-from godspeed.cli import _load_env_files, _parse_env_file
+from godspeed._bootstrap import _load_env_files, _parse_env_file
 
 
 class TestParseEnvFile:
@@ -81,7 +81,7 @@ class TestLoadEnvFiles:
 
         self._clean_env(["NVIDIA_NIM_API_KEY"])
         try:
-            with patch("godspeed.cli.DEFAULT_GLOBAL_DIR", global_dir):
+            with patch("godspeed._bootstrap.DEFAULT_GLOBAL_DIR", global_dir):
                 loaded = _load_env_files(project_dir=None)
             assert os.environ["NVIDIA_NIM_API_KEY"] == "nvapi-from-global"
             # One file loaded, one key injected.
@@ -98,7 +98,7 @@ class TestLoadEnvFiles:
         self._clean_env(["NVIDIA_NIM_API_KEY"])
         os.environ["NVIDIA_NIM_API_KEY"] = "from-shell"
         try:
-            with patch("godspeed.cli.DEFAULT_GLOBAL_DIR", global_dir):
+            with patch("godspeed._bootstrap.DEFAULT_GLOBAL_DIR", global_dir):
                 _load_env_files(project_dir=None)
             # Shell value must still be present — file never overwrites it.
             assert os.environ["NVIDIA_NIM_API_KEY"] == "from-shell"
@@ -120,7 +120,7 @@ class TestLoadEnvFiles:
 
         self._clean_env(["SHARED_KEY", "PROJECT_ONLY"])
         try:
-            with patch("godspeed.cli.DEFAULT_GLOBAL_DIR", global_dir):
+            with patch("godspeed._bootstrap.DEFAULT_GLOBAL_DIR", global_dir):
                 _load_env_files(project_dir=project_dir)
             # Project's value wins over global's for the same key.
             assert os.environ["SHARED_KEY"] == "project-value"
@@ -139,7 +139,7 @@ class TestLoadEnvFiles:
 
         self._clean_env(["KEY_ONLY_IN_ENV", "KEY_ONLY_IN_LOCAL", "SHARED"])
         try:
-            with patch("godspeed.cli.DEFAULT_GLOBAL_DIR", global_dir):
+            with patch("godspeed._bootstrap.DEFAULT_GLOBAL_DIR", global_dir):
                 _load_env_files(project_dir=None)
             assert os.environ["KEY_ONLY_IN_ENV"] == "env-value"
             assert os.environ["KEY_ONLY_IN_LOCAL"] == "local-value"
@@ -152,7 +152,7 @@ class TestLoadEnvFiles:
         # Fresh install with no ~/.godspeed yet — must not crash.
         global_dir = tmp_path / "does_not_exist"
         loaded = None
-        with patch("godspeed.cli.DEFAULT_GLOBAL_DIR", global_dir):
+        with patch("godspeed._bootstrap.DEFAULT_GLOBAL_DIR", global_dir):
             loaded = _load_env_files(project_dir=None)
         assert loaded == []
 
@@ -161,7 +161,7 @@ class TestLoadEnvFiles:
         global_dir = tmp_path / "home_godspeed"
         global_dir.mkdir()
         (global_dir / ".env.local").write_bytes(b"\x00\x01\x02\xff\xfe")
-        with patch("godspeed.cli.DEFAULT_GLOBAL_DIR", global_dir):
+        with patch("godspeed._bootstrap.DEFAULT_GLOBAL_DIR", global_dir):
             # Must not raise; caller gets either empty or whatever the
             # parser salvaged.
             _load_env_files(project_dir=None)
@@ -183,8 +183,8 @@ class TestLoadEnvFilesNoValueLeakInLogs:
             import logging as _logging
 
             with (
-                caplog.at_level(_logging.INFO, logger="godspeed.cli"),
-                patch("godspeed.cli.DEFAULT_GLOBAL_DIR", global_dir),
+                caplog.at_level(_logging.INFO, logger="godspeed._bootstrap"),
+                patch("godspeed._bootstrap.DEFAULT_GLOBAL_DIR", global_dir),
             ):
                 _load_env_files(project_dir=None)
 

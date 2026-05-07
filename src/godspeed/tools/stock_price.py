@@ -13,9 +13,6 @@ from godspeed.tools.base import RiskLevel, Tool, ToolContext, ToolResult
 
 logger = logging.getLogger(__name__)
 
-_HISTORICAL_DAYS_DEFAULT = 5
-_MAX_HISTORICAL_DAYS = 90
-
 
 class StockPriceTool(Tool):
     """Get real-time stock price data and company information.

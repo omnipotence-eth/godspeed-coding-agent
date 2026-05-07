@@ -34,7 +34,6 @@ MAX_RETRIES = 3
 STUCK_LOOP_THRESHOLD = 3
 AUTO_STASH_THRESHOLD = 3
 MUST_FIX_CAP = 3
-MAX_TOOL_OUTPUT_CHARS = 50000  # Prevent single tool call from blowing context window
 MAX_SPECULATIVE_CACHE_SIZE = 10  # Max concurrent speculative tasks per iteration
 # Tools that are idempotent and safe to dispatch speculatively even if their
 # formal risk level is LOW (e.g. web_fetch hits external servers but is

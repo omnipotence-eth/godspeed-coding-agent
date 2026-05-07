@@ -89,7 +89,7 @@ class PermissionEvaluator(Protocol):
 
     def evaluate(self, tool_call: ToolCall) -> Any:
         """Evaluate a tool call and return a permission decision."""
-        ...
+        pass
 
 
 @runtime_checkable
@@ -103,7 +103,6 @@ class AuditRecorder(Protocol):
         outcome: str = "success",
     ) -> Any:
         """Record an audit event. Returns the persisted record."""
-        ...
 
     async def arecord(
         self,
@@ -112,7 +111,7 @@ class AuditRecorder(Protocol):
         outcome: str = "success",
     ) -> Any:
         """Async variant of record."""
-        ...
+        pass
 
 
 @runtime_checkable
@@ -126,7 +125,7 @@ class LLMInvoker(Protocol):
 
     async def chat(self, messages: list[dict[str, Any]], **kwargs: Any) -> Any:  # pragma: no cover
         """Send messages; return an object with a ``.content`` string attribute."""
-        ...
+        pass
 
 
 @runtime_checkable
@@ -160,7 +159,7 @@ class DiffReviewer(Protocol):
         should treat anything other than ``"accept"`` as a reject for forward
         compatibility.
         """
-        ...
+        pass
 
 
 class ToolContext(BaseModel):
@@ -194,19 +193,19 @@ class Tool(abc.ABC):
     @abc.abstractmethod
     def name(self) -> str:
         """Unique tool identifier."""
-        ...
+        pass
 
     @property
     @abc.abstractmethod
     def description(self) -> str:
         """Human-readable description for the LLM system prompt."""
-        ...
+        pass
 
     @property
     @abc.abstractmethod
     def risk_level(self) -> RiskLevel:
         """Risk classification determining default permission behavior."""
-        ...
+        pass
 
     @abc.abstractmethod
     def get_schema(self) -> dict[str, Any]:
@@ -215,7 +214,7 @@ class Tool(abc.ABC):
         This schema is sent to the LLM as part of the tool definition.
         Must follow the JSON Schema spec used by LLM tool-calling APIs.
         """
-        ...
+        pass
 
     @abc.abstractmethod
     async def execute(self, arguments: dict[str, Any], context: ToolContext) -> ToolResult:
@@ -228,7 +227,7 @@ class Tool(abc.ABC):
         Returns:
             ToolResult with output or error.
         """
-        ...
+        pass
 
 
 def run_external_tool(

@@ -4,7 +4,7 @@
 
 **Trusted open-source coding agent for production code.**
 
-[![CI](https://github.com/omnipotence-eth/godspeed-coding-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/omnipotence-eth/godspeed-coding-agent/actions/workflows/ci.yml)
+[![CI](https://github.com/t-timms/godspeed-coding-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/t-timms/godspeed-coding-agent/actions/workflows/ci.yml)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue?style=flat-square)](https://www.python.org/downloads/)
 [![LiteLLM](https://img.shields.io/badge/LLM-LiteLLM-orange?style=flat-square)](https://github.com/BerriAI/litellm)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json&style=flat-square)](https://github.com/astral-sh/ruff)
@@ -373,7 +373,7 @@ Security-first design, speculative tool dispatch, self-evolution, and multi-lang
 
 ```bash
 # Clone and install
-git clone https://github.com/omnipotence-eth/godspeed-coding-agent.git
+git clone https://github.com/t-timms/godspeed-coding-agent.git
 cd godspeed
 uv sync --all-extras
 
@@ -395,6 +395,6 @@ godspeed audit verify
 
 <div align="center">
 
-Built by [Tremayne Timms](https://github.com/omnipotence-eth)
+Built by [Tremayne Timms](https://github.com/t-timms)
 
 </div>

@@ -287,6 +287,6 @@ a timeout fires — a long-running subprocess may orphan.
 
 ## Getting help / reporting a bug
 
-- Issues: https://github.com/omnipotence-eth/godspeed-coding-agent/issues
+- Issues: https://github.com/t-timms/godspeed-coding-agent/issues
 - Architecture reference: `GODSPEED_ARCHITECTURE.md`
 - Full-flow walkthrough: `README.md` → Getting Started

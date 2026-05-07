@@ -1,7 +1,7 @@
 # Godspeed Architecture
 
 > Security-first coding agent. Hand-rolled ReAct loop. No framework overhead.
-> 2,000+ tests passing
+> 1,900+ tests passing
 
 ---
 
@@ -170,7 +170,7 @@ class PermissionEngine:
 
 ### Dangerous Command Detection
 
-50+ compiled regex patterns in `dangerous.py`. Categories:
+100+ compiled regex patterns in `dangerous.py`. Categories:
 
 | Category | Examples |
 |----------|----------|
@@ -282,7 +282,7 @@ class ToolRegistry:
     async dispatch(tool_call, context) -> ToolResult
 ```
 
-### Built-In Tools (18+)
+### Built-In Tools (30+)
 
 **Core Tools (always registered):**
 

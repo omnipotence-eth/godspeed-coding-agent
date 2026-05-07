@@ -13,9 +13,9 @@ Both CLI and MCP modes use the same rules and audit model; MCP adds caller attri
 ## 3) Installation
 
 ```bash
-pip install godspeed
+pip install godspeed-coding-agent
 # or
-uv tool install godspeed
+uv tool install godspeed-coding-agent
 ```
 
 Then initialize defaults:

@@ -166,7 +166,7 @@ omit = [
     "src/godspeed/llm/client.py",
     "src/godspeed/context/compaction.py",
     "src/godspeed/agent/system_prompt.py",
-    "src/godspeed/tui/app.py",
+    # "src/godspeed/tui/app.py",  # removed — tests added in test_tui_app.py
     "src/godspeed/context/codebase_index.py",
     "src/godspeed/tools/db_query.py",
     "src/godspeed/tools/github.py",

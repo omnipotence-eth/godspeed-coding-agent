@@ -31,7 +31,7 @@ ruff check . --fix && ruff format .
 uv run ty check src/
 
 # Security scan
-uv run pip-audit --ignore-vuln CVE-2026-28684 --ignore-vuln CVE-2026-3219 --ignore-vuln CVE-2026-42561
+uv run pip-audit --ignore-vuln CVE-2026-28684 --ignore-vuln CVE-2026-3219
 uv run bandit -r src/ -ll
 
 # Run tests

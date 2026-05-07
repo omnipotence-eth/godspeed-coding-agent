@@ -17,7 +17,7 @@ type-check:
 	ty check src/ || mypy src/ --ignore-missing-imports
 
 security:
-	pip-audit --ignore-vuln CVE-2026-28684 --ignore-vuln CVE-2026-3219 --ignore-vuln CVE-2026-42561
+	pip-audit --ignore-vuln CVE-2026-28684 --ignore-vuln CVE-2026-3219
 	bandit -r src/ -c pyproject.toml -ll || bandit -r src/ -ll
 
 test:

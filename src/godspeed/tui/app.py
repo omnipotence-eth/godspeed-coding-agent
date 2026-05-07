@@ -229,11 +229,21 @@ class TUIApp:
         tool_errors = 0
         tool_denied = 0
 
-        # Display welcome without tools/deny-rules clutter
+        # Display welcome with config summary
+        tool_names = (
+            [t.name for t in self._tool_registry.list_tools()] if self._tool_registry else None
+        )
+        deny_patterns = (
+            [r.pattern for r in self._permission_engine.deny_rules]
+            if self._permission_engine
+            else None
+        )
         format_welcome(
             model=self._llm_client.model,
             project_dir=str(self._tool_context.cwd),
             permission_mode=self._get_permission_mode(),
+            tools=tool_names,
+            deny_rules=deny_patterns,
         )
 
         try:

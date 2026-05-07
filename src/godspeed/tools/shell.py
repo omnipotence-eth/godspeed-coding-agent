@@ -154,12 +154,6 @@ class ShellTool(Tool):
                 f"Command exceeds maximum length of {MAX_COMMAND_LENGTH} characters"
             )
 
-        # Check command length limit
-        if len(command) > MAX_COMMAND_LENGTH:
-            return ToolResult.failure(
-                f"Command exceeds maximum length of {MAX_COMMAND_LENGTH} characters"
-            )
-
         # Background execution
         if arguments.get("background", False):
             return await self._execute_background(command, context)
@@ -254,7 +248,6 @@ class ShellTool(Tool):
 
     async def _execute_background(self, command: str, context: ToolContext) -> ToolResult:
         """Spawn a command in the background and return its process ID."""
-        import asyncio
         import time
 
         from godspeed.tools.background import (

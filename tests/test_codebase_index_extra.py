@@ -27,20 +27,12 @@ class TestConstants:
 
 
 class TestIsChromadbAvailable:
-    def test_cached_result(self):
+    def test_cached_result(self, monkeypatch):
         """Test that the result is cached after first call."""
-        import godspeed.context.codebase_index as _module
-
-        original = _module._chromadb_available
-        try:
-            _module._chromadb_available = None
-            with patch("builtins.__import__", side_effect=ImportError("no chromadb")):
-                result = _is_chromadb_available()
-                assert result is False
-        finally:
-            _module._chromadb_available = original
-            # Reset to None so other tests can set it
-            _module._chromadb_available = None
+        monkeypatch.setattr("godspeed.context.codebase_index._chromadb_available", None)
+        with patch("builtins.__import__", side_effect=ImportError("no chromadb")):
+            result = _is_chromadb_available()
+            assert result is False
 
     def test_chromadb_installed(self):
         """Test when chromadb is installed - skip if not installed."""

@@ -187,7 +187,7 @@ class AuditTrail:
                 self._file.flush()
                 os.fsync(self._file.fileno())
             except OSError:
-                pass
+                logger.warning("Failed to fsync audit log during close")
             self._file.close()
             self._file = None
 
@@ -198,7 +198,7 @@ class AuditTrail:
                 await asyncio.to_thread(self._file.flush)
                 await asyncio.to_thread(os.fsync, self._file.fileno())
             except OSError:
-                pass
+                logger.warning("Failed to fsync audit log during aclose")
             await asyncio.to_thread(self._file.close)
             self._file = None
 

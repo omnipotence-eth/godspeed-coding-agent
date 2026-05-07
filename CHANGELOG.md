@@ -12,6 +12,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Bash-only SWE-bench agent loop** (`experiments/swebench_lite/run_in_loop.sh`) —
   Pure-bash agent runner using curl + jq for tool dispatch. Zero Python
   framework dependency for the agent loop itself.
+- **Enhanced TUI welcome banner** — Session start now displays project
+  directory, registered tool count, and deny rule count alongside the
+  existing version, model, and permission mode. The banner gives users
+  immediate visibility into the session configuration without needing
+  to run `/tools` or `/permissions`.
 
 ### Fixed
 

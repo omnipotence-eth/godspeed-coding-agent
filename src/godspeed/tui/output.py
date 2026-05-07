@@ -744,6 +744,20 @@ def format_welcome(
         line += f"  {styled(f'[{mode_str}]', DIM)}"
     console.print(line)
 
+    # Project directory
+    console.print(f"  dir: {styled(project_dir, DIM)}")
+
+    # Tools and rules summary
+    config_parts: list[str] = []
+    if tools is not None:
+        config_parts.append(f"{len(tools)} tools")
+    if deny_rules is not None:
+        config_parts.append(
+            f"{len(deny_rules)} deny rules" if len(deny_rules) > 0 else "no deny rules"
+        )
+    if config_parts:
+        console.print(f"  config: {styled(' | '.join(config_parts), DIM)}")
+
     # Top commands hint
     console.print(f"  {styled('/help /clear /quit', DIM)}")
 

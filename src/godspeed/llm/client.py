@@ -963,7 +963,6 @@ class LLMClient:
                         if parsed:
                             final_tool_calls = parsed
                             collected_content = ""
-
                     yield ChatResponse(
                         content=collected_content,
                         tool_calls=final_tool_calls,

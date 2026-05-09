@@ -158,8 +158,7 @@ code. Follow these rules:
 """
 
 
-_tool_descriptions_cache: str | None = None
-_tool_hash_cache: int = 0
+_tool_descriptions_cache: tuple[int, str] | None = None
 
 
 def build_system_prompt(
@@ -198,15 +197,14 @@ def build_system_prompt(
         parts.append(f"\n## Memory\n{memory_hints}\n")
 
     if tools:
-        global _tool_descriptions_cache, _tool_hash_cache
+        global _tool_descriptions_cache
         tool_hash = hash(tuple(id(t) for t in tools))
-        if tool_hash != _tool_hash_cache or _tool_descriptions_cache is None:
+        if _tool_descriptions_cache is None or _tool_descriptions_cache[0] != tool_hash:
             desc = "\n## Available Tools\n"
             for tool in tools:
                 desc += f"\n### {tool.name}\n{tool.description}\nRisk level: {tool.risk_level}\n"
-            _tool_descriptions_cache = desc
-            _tool_hash_cache = tool_hash
-        parts.append(_tool_descriptions_cache)
+            _tool_descriptions_cache = (tool_hash, desc)
+        parts.append(_tool_descriptions_cache[1])
 
     return "\n".join(parts)
 

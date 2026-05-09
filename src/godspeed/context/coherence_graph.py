@@ -13,7 +13,6 @@ context window.
 from __future__ import annotations
 
 import ast
-import contextlib
 import hashlib
 import logging
 import sqlite3
@@ -262,9 +261,10 @@ class CoherenceGraph:
     def _parse_python_file(
         self, file_path: Path, content: str, modified_by: str = "initial_scan"
     ) -> list[Symbol]:
-        mtime = datetime.now(UTC)
-        with contextlib.suppress(OSError):
+        try:
             mtime = datetime.fromtimestamp(file_path.stat().st_mtime, UTC)
+        except OSError:
+            mtime = datetime.now(UTC)
 
         try:
             tree = ast.parse(content)
@@ -414,7 +414,6 @@ class CoherenceGraph:
 
         if isinstance(node, ast.Import):
             for alias in node.names:
-                target = alias.asname or alias.name
                 dep = Dependency(
                     id=str(uuid.uuid4()),
                     from_symbol_id=f"{module_name}._import",
@@ -743,7 +742,6 @@ class CoherenceGraph:
             line = line.strip()
             if not line.startswith("GCG:"):
                 continue
-            rest = line[4:]
             try:
                 # Format: GCG:sym_id@file|start-end|checksum
                 rest = line[4:]

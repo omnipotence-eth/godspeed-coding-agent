@@ -215,7 +215,7 @@ class TestUpdateFile:
         other.write_text("def foo() -> None:\n    return 42\n")
 
         # Build incremental (reparses the whole repo but adds to existing GCG)
-        _result = gcg.build_from_repo(tmp_path, incremental=True)
+        gcg.build_from_repo(tmp_path, incremental=True)
 
         # Update only sample.py
         src_file = src_dir / "sample.py"

@@ -141,7 +141,7 @@ class TestCache:
 
     async def test_cache_hit(self, tmp_path: Path) -> None:
         sub = await _build_retrieval(tmp_path)
-        _result1 = await sub.retrieve("Processor")
+        await sub.retrieve("Processor")
         result2 = await sub.retrieve("Processor")
         assert result2.cache_hit is True
 

@@ -163,7 +163,6 @@ class TestSkillSubCommands:
         )
         for call in commands.register.call_args_list:
             if call[0][0] == "/skill":
-                call[0][1]
                 break
         else:
             msg = "/skill handler not registered"

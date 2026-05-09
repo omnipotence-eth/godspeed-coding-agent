@@ -567,10 +567,12 @@ class TestLLMClientCall:
     async def test_call_basic(self) -> None:
         client = LLMClient(model="ollama/qwen3:4b")
         mock_resp = SimpleNamespace(
-            choices=[SimpleNamespace(
-                message=SimpleNamespace(content="hello", tool_calls=[], thinking=None),
-                finish_reason="stop",
-            )],
+            choices=[
+                SimpleNamespace(
+                    message=SimpleNamespace(content="hello", tool_calls=[], thinking=None),
+                    finish_reason="stop",
+                )
+            ],
             usage=SimpleNamespace(prompt_tokens=5, completion_tokens=10),
         )
 
@@ -609,10 +611,12 @@ class TestLLMClientCall:
             function=SimpleNamespace(name="file_read", arguments='{"path": "x"}'),
         )
         mock_resp = SimpleNamespace(
-            choices=[SimpleNamespace(
-                message=SimpleNamespace(content="", tool_calls=[tc], thinking=None),
-                finish_reason="tool_calls",
-            )],
+            choices=[
+                SimpleNamespace(
+                    message=SimpleNamespace(content="", tool_calls=[tc], thinking=None),
+                    finish_reason="tool_calls",
+                )
+            ],
             usage=SimpleNamespace(prompt_tokens=5, completion_tokens=10),
         )
 

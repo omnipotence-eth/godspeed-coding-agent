@@ -42,21 +42,25 @@ def register_skill_commands(
 
     # ── Per-skill activation commands ────────────────────────────────
     for skill in skills:
+
         def _make_activate(s: Skill, evo_: SkillEvolution) -> Any:
             def _handler(_args: str = "") -> CommandResult:
                 content = f"[Skill: {s.name}]\n{s.content}"
                 conversation.add_user_message(content)
-                evo_.record_lesson(Lesson(
-                    skill_name=s.name,
-                    text=f"Skill {s.name} was activated",
-                    confidence=0.2,
-                    source="activation",
-                ))
+                evo_.record_lesson(
+                    Lesson(
+                        skill_name=s.name,
+                        text=f"Skill {s.name} was activated",
+                        confidence=0.2,
+                        source="activation",
+                    )
+                )
                 logger.info("Skill activated name=%s trigger=%s", s.name, s.trigger)
                 _output.console.print(
                     f"  [{DIM}]Activated skill:[/{DIM}] [{BOLD_PRIMARY}]{s.name}[/{BOLD_PRIMARY}]"
                 )
                 return CommandResult(handled=False)
+
             return _handler
 
         commands.register(f"/{skill.trigger}", _make_activate(skill, evo))
@@ -66,8 +70,7 @@ def register_skill_commands(
         if not skills:
             _output.console.print(f"  [{NEUTRAL}]No skills installed.[/{NEUTRAL}]")
             _output.console.print(
-                f"  [{DIM}]Install: /skill install <path>  |  "
-                f"Browse: /skill list[/{DIM}]"
+                f"  [{DIM}]Install: /skill install <path>  |  Browse: /skill list[/{DIM}]"
             )
             return CommandResult()
 
@@ -109,9 +112,7 @@ def register_skill_commands(
             try:
                 name = source.name
                 skill_hub.install(name, source)
-                _output.console.print(
-                    f"  [{SUCCESS}]Installed skill: {name}[/{SUCCESS}]"
-                )
+                _output.console.print(f"  [{SUCCESS}]Installed skill: {name}[/{SUCCESS}]")
             except SkillSecurityError as e:
                 _output.console.print(f"  [{ERROR}]Security: {e}[/{ERROR}]")
             except SkillError as e:
@@ -159,6 +160,7 @@ def register_skill_commands(
                 _output.console.print(f"  [{NEUTRAL}]No skills in hub.[/{NEUTRAL}]")
                 return CommandResult()
             from rich.table import Table
+
             table = Table(title="Skill Hub", border_style=TABLE_BORDER)
             table.add_column("Name", style=BOLD_PRIMARY)
             table.add_column("Version")
@@ -186,9 +188,7 @@ def register_skill_commands(
                     f"  [{SUCCESS}]Generated skill from '{topic}' at: {result}[/{SUCCESS}]"
                 )
             else:
-                _output.console.print(
-                    f"  [{ERROR}]No wiki page found for topic: {topic}[/{ERROR}]"
-                )
+                _output.console.print(f"  [{ERROR}]No wiki page found for topic: {topic}[/{ERROR}]")
             return CommandResult()
 
         else:
@@ -228,9 +228,7 @@ def register_skill_commands(
     # ── /skill-dream — manual consolidation trigger ──────────────────
     def _cmd_skill_dream(_args: str = "") -> CommandResult:
         stats = skill_dream.run(sdir)
-        _output.console.print(
-            f"  [{SUCCESS}]Dream consolidation:[/{SUCCESS}]"
-        )
+        _output.console.print(f"  [{SUCCESS}]Dream consolidation:[/{SUCCESS}]")
         _output.console.print(f"    [{DIM}]Dates normalized: {stats['dates_normalized']}[/{DIM}]")
         _output.console.print(f"    [{DIM}]Errors: {stats['errors']}[/{DIM}]")
         return CommandResult()

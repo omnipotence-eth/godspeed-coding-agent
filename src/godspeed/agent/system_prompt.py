@@ -203,9 +203,7 @@ def build_system_prompt(
         if tool_hash != _tool_hash_cache or _tool_descriptions_cache is None:
             desc = "\n## Available Tools\n"
             for tool in tools:
-                desc += (
-                    f"\n### {tool.name}\n{tool.description}\nRisk level: {tool.risk_level}\n"
-                )
+                desc += f"\n### {tool.name}\n{tool.description}\nRisk level: {tool.risk_level}\n"
             _tool_descriptions_cache = desc
             _tool_hash_cache = tool_hash
         parts.append(_tool_descriptions_cache)

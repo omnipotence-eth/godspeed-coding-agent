@@ -1,4 +1,5 @@
 """Benchmark llama.cpp speculative decoding with 1.5B draft model."""
+
 from __future__ import annotations
 
 import json
@@ -87,12 +88,12 @@ if __name__ == "__main__":
             r = benchmark()
             results.append(r)
             print(
-                f"Run {i+1}: {r['tok_s']:.1f} tok/s"
+                f"Run {i + 1}: {r['tok_s']:.1f} tok/s"
                 f" | {r['completion_tokens']} tokens"
                 f" | {r['predicted_ms']:.0f} ms"
             )
         except Exception as exc:
-            print(f"Run {i+1} failed:", exc)
+            print(f"Run {i + 1} failed:", exc)
 
     if results:
         avg_tok_s = sum(r["tok_s"] for r in results) / len(results)

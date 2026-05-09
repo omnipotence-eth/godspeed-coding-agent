@@ -40,12 +40,14 @@ class SkillEvolution:
 
     def record_lesson(self, lesson: Lesson) -> None:
         lessons = self._load_lessons(lesson.skill_name)
-        lessons.append({
-            "text": lesson.text,
-            "confidence": lesson.confidence,
-            "created_at": lesson.created_at or datetime.now(tz=UTC).isoformat(),
-            "source": lesson.source,
-        })
+        lessons.append(
+            {
+                "text": lesson.text,
+                "confidence": lesson.confidence,
+                "created_at": lesson.created_at or datetime.now(tz=UTC).isoformat(),
+                "source": lesson.source,
+            }
+        )
         self._save_lessons(lesson.skill_name, lessons)
         logger.info(
             "Recorded lesson for skill=%s confidence=%.1f",
@@ -112,12 +114,14 @@ class SkillEvolution:
 
         result = []
         for _text, group in by_text.items():
-            result.append({
-                "text": group[0]["text"],
-                "confidence": sum(g.get("confidence", 1.0) for g in group),
-                "created_at": group[-1]["created_at"],
-                "source": group[-1].get("source", ""),
-            })
+            result.append(
+                {
+                    "text": group[0]["text"],
+                    "confidence": sum(g.get("confidence", 1.0) for g in group),
+                    "created_at": group[-1]["created_at"],
+                    "source": group[-1].get("source", ""),
+                }
+            )
         return result
 
     def _apply_lessons(self, original: str, lessons: list[dict]) -> str:

@@ -1,4 +1,5 @@
 """Tests for WikiBridge — wiki page to SKILL.md generation."""
+
 from __future__ import annotations
 
 import tempfile
@@ -26,7 +27,8 @@ def wiki_dir() -> Path:
     Filenames are carefully chosen so that slugified topics match them.
     """
     d = Path(tempfile.mkdtemp())
-    (d / "nvfp4-benchmarks.md").write_text(_strip("""
+    (d / "nvfp4-benchmarks.md").write_text(
+        _strip("""
         ---
         title: NVFP4 Benchmarks
         short: NVFP4 performance results
@@ -39,8 +41,10 @@ def wiki_dir() -> Path:
         ## Results
         - PP: 993 tok/s at 50 GPU layers
         - TG: 1.06 tok/s at 50 GPU layers
-    """))
-    (d / "qwen3-architecture.md").write_text(_strip("""
+    """)
+    )
+    (d / "qwen3-architecture.md").write_text(
+        _strip("""
         ---
         title: Qwen3 Architecture
         short: Architecture overview of Qwen3
@@ -50,8 +54,10 @@ def wiki_dir() -> Path:
         # Qwen3 Architecture
 
         Qwen3 uses a standard transformer decoder architecture.
-    """))
-    (d / "untagged-page.md").write_text(_strip("""
+    """)
+    )
+    (d / "untagged-page.md").write_text(
+        _strip("""
         ---
         title: Untagged
         short: No tags here
@@ -59,10 +65,13 @@ def wiki_dir() -> Path:
         ---
 
         Just some content.
-    """))
-    (d / "no-frontmatter.md").write_text(_strip("""
+    """)
+    )
+    (d / "no-frontmatter.md").write_text(
+        _strip("""
         Just a plain page with no frontmatter.
-    """))
+    """)
+    )
     return d
 
 

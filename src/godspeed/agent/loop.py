@@ -404,6 +404,7 @@ async def agent_loop(
             valid_calls.append(tool_call)
 
         if valid_calls:
+
             async def _eval_one(tc: ToolCall) -> ToolCall | None:
                 if tool_context.permissions is not None:
                     if inspect.iscoroutinefunction(tool_context.permissions.evaluate):
@@ -739,7 +740,10 @@ async def _post_process_results(
             if file_path and file_path.endswith(VERIFIABLE_EXTENSIONS):
                 task = asyncio.create_task(
                     _auto_verify_background(
-                        file_path, tc.call_id, tool_registry, tool_context,
+                        file_path,
+                        tc.call_id,
+                        tool_registry,
+                        tool_context,
                         state.auto_fix_retries,
                     )
                 )
@@ -836,7 +840,10 @@ async def _post_process_single_result(
         if file_path and file_path.endswith(VERIFIABLE_EXTENSIONS):
             task = asyncio.create_task(
                 _auto_verify_background(
-                    file_path, tool_call.call_id, tool_registry, tool_context,
+                    file_path,
+                    tool_call.call_id,
+                    tool_registry,
+                    tool_context,
                     state.auto_fix_retries,
                 )
             )
@@ -975,6 +982,7 @@ async def _auto_verify_background(
     )
     verify_text = verify_result.error or verify_result.output or ""
     from godspeed.tools.verify import REMAINING_ERRORS_FINGERPRINT
+
     return _VerifyResult(
         call_id=call_id,
         output=verify_result.output or "",

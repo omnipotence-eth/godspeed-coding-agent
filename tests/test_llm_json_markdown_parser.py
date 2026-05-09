@@ -124,8 +124,7 @@ Some explanation...
 
     def test_bare_json_tool_call(self):
         content = (
-            '{"name": "file_write", "arguments":'
-            ' {"file_path": "test.txt", "content": "hello"}}'
+            '{"name": "file_write", "arguments": {"file_path": "test.txt", "content": "hello"}}'
         )
         result = extract_json_markdown_tool_calls(content)
         assert len(result) == 1

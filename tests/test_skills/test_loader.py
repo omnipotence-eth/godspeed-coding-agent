@@ -40,8 +40,11 @@ class TestSkillValidation:
 
     def test_valid_name(self) -> None:
         s = Skill(
-            name="my-skill", description="Test", trigger="my-skill",
-            content="Body", path=Path("/x"),
+            name="my-skill",
+            description="Test",
+            trigger="my-skill",
+            content="Body",
+            path=Path("/x"),
         )
         assert s.name == "my-skill"
 
@@ -113,7 +116,8 @@ class TestLoadSkillDirectory:
 
     def test_loads_valid_skill(self, tmp_path: Path) -> None:
         d = _make_skill_dir(
-            tmp_path, "my-skill",
+            tmp_path,
+            "my-skill",
             "name: my-skill\ndescription: A skill\ntrigger: ms",
             "Do the thing.",
         )
@@ -144,7 +148,8 @@ class TestLoadSkillDirectory:
 
     def test_reads_references_subdir(self, tmp_path: Path) -> None:
         d = _make_skill_dir(
-            tmp_path, "with-refs",
+            tmp_path,
+            "with-refs",
             "name: with-refs\ndescription: Has refs\ntrigger: wr",
             "Body",
         )
@@ -157,7 +162,8 @@ class TestLoadSkillDirectory:
 
     def test_reads_scripts_and_assets(self, tmp_path: Path) -> None:
         d = _make_skill_dir(
-            tmp_path, "full-skill",
+            tmp_path,
+            "full-skill",
             "name: full-skill\ndescription: Full\ntrigger: fs",
             "Body",
         )
@@ -172,7 +178,8 @@ class TestLoadSkillDirectory:
 
     def test_invalid_skill_name(self, tmp_path: Path) -> None:
         d = _make_skill_dir(
-            tmp_path, "Bad-Name",
+            tmp_path,
+            "Bad-Name",
             "name: Bad-Name\ndescription: Bad\ntrigger: bn",
             "Body",
         )
@@ -200,12 +207,14 @@ class TestDiscoverSkills:
 
     def test_discovers_valid_skills(self, tmp_path: Path) -> None:
         _make_skill_dir(
-            tmp_path, "review",
+            tmp_path,
+            "review",
             "name: review\ndescription: Review code\ntrigger: review",
             "Review.",
         )
         _make_skill_dir(
-            tmp_path, "test",
+            tmp_path,
+            "test",
             "name: test\ndescription: Run tests\ntrigger: test",
             "Test.",
         )
@@ -229,12 +238,14 @@ class TestDiscoverSkills:
         base.mkdir()
         override.mkdir()
         _make_skill_dir(
-            base, "skill-a",
+            base,
+            "skill-a",
             "name: skill-a\ndescription: Base\ntrigger: a",
             "Base version.",
         )
         _make_skill_dir(
-            override, "skill-a",
+            override,
+            "skill-a",
             "name: skill-a-override\ndescription: Override\ntrigger: a",
             "Override version.",
         )
@@ -276,6 +287,7 @@ class TestSkillHub:
         _make_skill_dir(src, "dup", "name: dup\ndescription: D\ntrigger: d", "Body.")
         hub.install("dup", src / "dup")
         from godspeed.skills.loader import SkillError
+
         with pytest.raises(SkillError, match="already installed"):
             hub.install("dup", src / "dup")
 
@@ -305,5 +317,6 @@ class TestSkillHub:
     def test_remove_nonexistent_raises(self, tmp_path: Path) -> None:
         hub = SkillHub(base_dir=tmp_path / "hub")
         from godspeed.skills.loader import SkillError
+
         with pytest.raises(SkillError):
             hub.remove("does-not-exist")

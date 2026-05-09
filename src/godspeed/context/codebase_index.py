@@ -223,9 +223,7 @@ class CodebaseIndex:
                 return 0
 
             self._index_time = time.time()
-            self._save_mtimes(
-                {str(p): p.stat().st_mtime for p in self._iter_files(excludes)}
-            )
+            self._save_mtimes({str(p): p.stat().st_mtime for p in self._iter_files(excludes)})
             logger.info(
                 "Indexed %d chunks from %s",
                 total,

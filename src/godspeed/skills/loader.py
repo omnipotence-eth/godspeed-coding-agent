@@ -82,6 +82,7 @@ class Skill:
 
 def _compute_hash(text: str) -> str:
     import hashlib
+
     return hashlib.sha256(text.encode()).hexdigest()[:16]
 
 
@@ -128,7 +129,7 @@ def _parse_frontmatter(text: str) -> tuple[dict[str, Any], str] | None:
         return None
 
     fm_str = stripped[3:end].strip()
-    body = stripped[end + 3:].strip()
+    body = stripped[end + 3 :].strip()
 
     try:
         fm = yaml.safe_load(fm_str)
@@ -300,6 +301,7 @@ class SkillHub:
             raise SkillError(msg)
 
         from godspeed.skills.security import scan_skill
+
         issues = scan_skill(source_path)
         if issues:
             details = "; ".join(issues[:5])
@@ -333,10 +335,7 @@ class SkillHub:
         logger.info("Removed skill name=%s", name)
 
     def list_installed(self) -> list[dict[str, Any]]:
-        return [
-            {"name": k, **v}
-            for k, v in self._lock.get("skills", {}).items()
-        ]
+        return [{"name": k, **v} for k, v in self._lock.get("skills", {}).items()]
 
     def verify_integrity(self, name: str) -> bool:
         """Check that installed skill's content hash matches the lock file."""

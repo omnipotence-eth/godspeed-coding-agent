@@ -132,6 +132,7 @@ metadata:
         if end == -1:
             return {}
         import yaml
+
         try:
             fm = yaml.safe_load(stripped[3:end].strip())
             return fm if isinstance(fm, dict) else {}
@@ -146,7 +147,7 @@ metadata:
         end = stripped.find("---", 3)
         if end == -1:
             return text
-        return stripped[end + 3:].strip()
+        return stripped[end + 3 :].strip()
 
     @staticmethod
     def _clean_body(body: str) -> str:

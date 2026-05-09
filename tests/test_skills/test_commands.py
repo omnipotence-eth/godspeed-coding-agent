@@ -1,4 +1,5 @@
 """Tests for skill command registration and dispatch."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -155,7 +156,9 @@ class TestSkillSubCommands:
         mock_hub = MagicMock()
         mock_hub.install.return_value = _make_skill()
         register_skill_commands(
-            commands, conversation, [_make_skill()],
+            commands,
+            conversation,
+            [_make_skill()],
             hub=mock_hub,
         )
         for call in commands.register.call_args_list:
@@ -170,16 +173,16 @@ class TestSkillSubCommands:
         result = handler(f"install {skill_dir}")
         assert result is not None
 
-    def test_skill_install_security_fail(
-        self, handler: callable, tmp_path: Path
-    ) -> None:
+    def test_skill_install_security_fail(self, handler: callable, tmp_path: Path) -> None:
         # Re-register with a mock hub that raises SkillSecurityError
         commands = MagicMock()
         conversation = MagicMock()
         mock_hub = MagicMock()
         mock_hub.install.side_effect = SkillSecurityError("security fail")
         register_skill_commands(
-            commands, conversation, [_make_skill()],
+            commands,
+            conversation,
+            [_make_skill()],
             hub=mock_hub,
         )
         for call in commands.register.call_args_list:
@@ -300,7 +303,9 @@ class TestSkillEvolve:
     def handler(self, commands: MagicMock, conversation: MagicMock, tmp_path: Path) -> callable:
         """Return /skill-evolve handler with a temp skills dir."""
         register_skill_commands(
-            commands, conversation, [],
+            commands,
+            conversation,
+            [],
             skills_dir=tmp_path / ".godspeed" / "skills",
         )
         for call in commands.register.call_args_list:
@@ -354,7 +359,9 @@ class TestSkillDream:
     def handler(self, commands: MagicMock, conversation: MagicMock, tmp_path: Path) -> callable:
         """Return /skill-dream handler."""
         register_skill_commands(
-            commands, conversation, [],
+            commands,
+            conversation,
+            [],
             skills_dir=tmp_path / ".godspeed" / "skills",
         )
         for call in commands.register.call_args_list:

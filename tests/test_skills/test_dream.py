@@ -145,6 +145,7 @@ class TestShouldRun:
     def test_should_not_run_recently(self, tmp_path: Path) -> None:
         dream = SkillDream(base_dir=tmp_path)
         from datetime import UTC, datetime
+
         lock = tmp_path / ".dream" / "last_run.txt"
         # Directory already created by SkillDream.__init__
         lock.write_text(datetime.now(tz=UTC).isoformat())
@@ -153,6 +154,7 @@ class TestShouldRun:
     def test_should_run_after_interval(self, tmp_path: Path) -> None:
         dream = SkillDream(base_dir=tmp_path)
         from datetime import UTC, datetime, timedelta
+
         lock = tmp_path / ".dream" / "last_run.txt"
         past = (datetime.now(tz=UTC) - timedelta(hours=48)).isoformat()
         lock.write_text(past)

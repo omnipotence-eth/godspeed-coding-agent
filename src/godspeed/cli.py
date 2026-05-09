@@ -1076,12 +1076,8 @@ def models() -> None:
     preset_table.add_column("Model", style=NEUTRAL)
     preset_table.add_column("Description")
     preset_descriptions = {
-        "fast": "Local, low VRAM, fast responses (5.1GB)",
-        "balanced": "Local, medium VRAM, strong all-around (9GB)",
-        "quality": "Local, high VRAM, best local coding (15GB)",
-        "local": "Local, llama.cpp + GPU spec dec, ~750 tok/s (9GB)",
-        "cloud": "NVIDIA NIM free tier, no local GPU needed",
-        "frontier": "Claude — best quality, paid API",
+        "local": "Qwen2.5-Coder 14B + GPU spec dec, ~750 tok/s (default)",
+        "zaya": "ZAYA1-8B NF4 (thinking), 0.7B active/8B total, 7.2GB VRAM",
     }
     for name, model in presets.items():
         desc = preset_descriptions.get(name, "")

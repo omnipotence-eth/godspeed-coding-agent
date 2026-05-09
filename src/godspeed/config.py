@@ -91,6 +91,8 @@ MODEL_CONTEXT_WINDOWS: dict[str, int] = {
     "llamacpp/qwen3.6": 32_768,
     "qwen3.6": 32_768,
     "openai/qwen2.5-coder": 32_768,
+    "openai/zaya1": 131_072,
+    "zaya1": 131_072,
 }
 
 
@@ -196,16 +198,13 @@ class GodspeedSettings(BaseSettings):
     # "fast", "balanced", "quality" are local Ollama models.
     # "local" is llama.cpp-based with speculative decoding (~750 tok/s).
     MODEL_PRESETS: ClassVar[dict[str, str]] = {
-        "fast": "ollama/rnj-1:8b",
-        "balanced": "ollama/qwen2.5-coder:14b",
-        "quality": "ollama/devstral-small-2:24b",
         "local": "openai/qwen2.5-coder-14b",
-        "cloud": "nvidia_nim/qwen/qwen3.5-397b-a17b",
-        "frontier": "claude-sonnet-4-20250514",
+        "zaya": "openai/zaya1-8b",
     }
 
     # LLM — default to local Qwen2.5-Coder 14B via llama.cpp (GPU spec
     # decoding with 1.5B draft, ~750 tok/s on RTX 5070 Ti).
+    # Experimental: ZAYA1-8B NF4 via transformers (~7.2GB VRAM, thinking profile).
     # Override via settings.yaml, GODSPEED_MODEL env var, or -m flag.
     model: str = "openai/qwen2.5-coder-14b"
     fallback_models: list[str] = Field(default_factory=list)

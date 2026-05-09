@@ -24,15 +24,15 @@ class TestHookDefinition:
 
     def test_valid_post_session(self) -> None:
         hook = HookDefinition(
-            event="post_session",
+            event="session_end",
             command="./scripts/cleanup.sh",
         )
-        assert hook.event == "post_session"
+        assert hook.event == "session_end"
         assert hook.tools is None
         assert hook.timeout == 30
 
     def test_all_event_types(self) -> None:
-        for event in ["pre_tool_call", "post_tool_call", "pre_session", "post_session"]:
+        for event in ["pre_tool_call", "post_tool_call", "session_start", "session_end"]:
             hook = HookDefinition(event=event, command="echo test")
             assert hook.event == event
 
@@ -41,7 +41,7 @@ class TestHookDefinition:
             HookDefinition(event="invalid_event", command="echo test")
 
     def test_default_timeout(self) -> None:
-        hook = HookDefinition(event="pre_session", command="echo test")
+        hook = HookDefinition(event="pre_tool_call", command="echo test")
         assert hook.timeout == 30
 
     def test_default_tools_is_none(self) -> None:
@@ -50,9 +50,9 @@ class TestHookDefinition:
 
     def test_timeout_bounds(self) -> None:
         with pytest.raises(ValidationError):
-            HookDefinition(event="pre_session", command="echo", timeout=0)
+            HookDefinition(event="pre_tool_call", command="echo", timeout=0)
         with pytest.raises(ValidationError):
-            HookDefinition(event="pre_session", command="echo", timeout=301)
+            HookDefinition(event="pre_tool_call", command="echo", timeout=301)
 
     def test_template_variables_in_command(self) -> None:
         hook = HookDefinition(

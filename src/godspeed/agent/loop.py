@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import functools
 import hashlib
 import inspect
 import json
@@ -19,6 +20,7 @@ from typing import Any
 
 from godspeed.agent.conversation import Conversation
 from godspeed.agent.result import AgentCancelledError, AgentMetrics, ExitReason
+from godspeed.hooks import HookEvent
 from godspeed.llm.client import ChatResponse, LLMClient
 from godspeed.llm.router import classify_task_type
 from godspeed.observability.metrics import LoopMetrics, MetricsSink
@@ -141,6 +143,8 @@ async def agent_loop(
     pause_event: asyncio.Event | None = None,
     cancel_event: asyncio.Event | None = None,
     hook_executor: Any | None = None,
+    retrieval_subagent: Any | None = None,
+    graduated_compactor: Any | None = None,
     parallel_tool_calls: bool = True,
     skip_user_message: bool = False,
     auto_fix_retries: int = 3,
@@ -257,10 +261,15 @@ async def agent_loop(
 
         logger.debug("Agent loop iteration=%d tokens=%d", iteration, conversation.token_count)
 
-        # Check if we need to compact
-        if conversation.is_near_limit and not state.competition_mode:
-            await _compact_conversation(conversation, llm_client)
-            loop_metrics.record_compaction()
+        # Check context thresholds and apply graduated compaction
+        if not state.competition_mode:
+            await _check_context_and_compact(
+                conversation,
+                llm_client,
+                hook_executor,
+                graduated_compactor,
+                loop_metrics,
+            )
 
         await _drain_background_tasks(state, conversation, metrics)
 
@@ -313,6 +322,15 @@ async def agent_loop(
                         "Use /budget to increase the limit."
                     )
                     logger.warning("Budget exceeded spent=%.4f limit=%.2f", exc.spent, exc.limit)
+                    if hook_executor is not None:
+                        await asyncio.get_running_loop().run_in_executor(
+                            None,
+                            functools.partial(
+                                hook_executor.fire,
+                                HookEvent.BUDGET_EXCEEDED,
+                                cost_usd=exc.spent,
+                            ),
+                        )
                     if metrics is not None:
                         metrics.iterations_used = iteration
                         metrics.finalize(ExitReason.BUDGET_EXCEEDED)
@@ -407,6 +425,16 @@ async def agent_loop(
 
             async def _eval_one(tc: ToolCall) -> ToolCall | None:
                 if tool_context.permissions is not None:
+                    if hook_executor is not None:
+                        await asyncio.get_running_loop().run_in_executor(
+                            None,
+                            functools.partial(
+                                hook_executor.fire,
+                                HookEvent.PRE_PERMISSION_CHECK,
+                                tool_name=tc.tool_name,
+                                args=tc.arguments,
+                            ),
+                        )
                     if inspect.iscoroutinefunction(tool_context.permissions.evaluate):
                         decision = await tool_context.permissions.evaluate(tc)
                     else:
@@ -417,6 +445,16 @@ async def agent_loop(
                         loop_metrics.record_tool_denial()
                         if on_permission_denied:
                             on_permission_denied(tc.tool_name, reason)
+                        if hook_executor is not None:
+                            await asyncio.get_running_loop().run_in_executor(
+                                None,
+                                functools.partial(
+                                    hook_executor.fire,
+                                    HookEvent.PERMISSION_DENIED,
+                                    tool=tc.tool_name,
+                                    pattern=reason,
+                                ),
+                            )
                         conversation.add_tool_result(
                             tool_call_id=tc.call_id,
                             content=(
@@ -425,6 +463,16 @@ async def agent_loop(
                             ),
                         )
                         return None
+                    if hook_executor is not None:
+                        await asyncio.get_running_loop().run_in_executor(
+                            None,
+                            functools.partial(
+                                hook_executor.fire,
+                                HookEvent.POST_PERMISSION_CHECK,
+                                tool=tc.tool_name,
+                                decision="granted",
+                            ),
+                        )
 
                 if on_tool_call:
                     on_tool_call(tc.tool_name, tc.arguments)
@@ -453,7 +501,45 @@ async def agent_loop(
                 metrics_sink.emit("loop_iteration", loop_metrics.to_dict())
             continue
 
-        # --- Phase 3: Execute tools (parallel or sequential) ---
+        # Intercept navigation tools through retrieval subagent (Phase 3)
+        navigation_tools = {"code_search", "grep", "glob", "repo_map"}
+        if retrieval_subagent is not None:
+            nav_calls = [tc for tc in permitted if tc.tool_name in navigation_tools]
+            non_nav_calls = [tc for tc in permitted if tc.tool_name not in navigation_tools]
+
+            for tc in nav_calls:
+                query = tc.arguments.get("pattern") or tc.arguments.get("query", "")
+                if query:
+                    r = await retrieval_subagent.retrieve(query=query)
+                    fmt = retrieval_subagent.format_spans_for_agent(r.spans)
+                    conversation.add_tool_result(
+                        tool_call_id=tc.call_id,
+                        content=fmt,
+                    )
+                    if on_tool_result:
+                        on_tool_result(
+                            tc.tool_name,
+                            ToolResult(
+                                output=fmt,
+                                is_error=not r.spans,
+                            ),
+                        )
+                else:
+                    conversation.add_tool_result(
+                        tool_call_id=tc.call_id,
+                        content="Retrieval requires a pattern or query argument.",
+                    )
+
+            permitted = non_nav_calls
+
+        if not permitted:
+            await _drain_background_tasks(state, conversation, metrics)
+            loop_metrics.record_iteration(time.monotonic() - iter_t0)
+            if metrics_sink is not None:
+                metrics_sink.emit("loop_iteration", loop_metrics.to_dict())
+            continue
+
+        # --- Phase 4: Execute tools (parallel or sequential) ---
         if parallel_tool_calls and len(permitted) > 1:
             await _dispatch_parallel(
                 permitted,
@@ -607,6 +693,7 @@ async def _dispatch_parallel(
         tool_context,
         llm_client,
         metrics,
+        hook_executor,
     )
 
     if on_parallel_complete:
@@ -689,6 +776,7 @@ async def _dispatch_sequential(
             tool_context,
             llm_client,
             metrics,
+            hook_executor,
         )
 
 
@@ -701,6 +789,7 @@ async def _post_process_results(
     tool_context: ToolContext,
     llm_client: LLMClient,
     metrics: AgentMetrics | None,
+    hook_executor: Any | None = None,
 ) -> None:
     """Post-process a batch of tool results (auto-verify, auto-stash, etc.).
 
@@ -766,6 +855,17 @@ async def _post_process_results(
         and len(set(state.recent_error_hashes)) == 1
     ):
         logger.warning("Stuck loop detected: %d identical errors", state.stuck_threshold)
+        last_error = state.recent_error_hashes[0] if state.recent_error_hashes else ""
+        if hook_executor is not None:
+            await asyncio.get_running_loop().run_in_executor(
+                None,
+                functools.partial(
+                    hook_executor.fire,
+                    HookEvent.STUCK_LOOP_DETECTED,
+                    iterations=state.stuck_threshold,
+                    last_error=last_error,
+                ),
+            )
         conversation.add_user_message(
             f"You have failed {state.stuck_threshold} times with the same error. "
             "Stop, explain what is wrong, and try a completely different approach."
@@ -829,6 +929,7 @@ async def _post_process_single_result(
     tool_context: ToolContext,
     llm_client: LLMClient,
     metrics: AgentMetrics | None,
+    hook_executor: Any | None = None,
 ) -> None:
     """Post-process a single tool result."""
     if (
@@ -908,6 +1009,17 @@ async def _post_process_single_result(
             and len(set(state.recent_error_hashes)) == 1
         ):
             logger.warning("Stuck loop detected: %d identical errors", state.stuck_threshold)
+            last_error = state.recent_error_hashes[0] if state.recent_error_hashes else ""
+            if hook_executor is not None:
+                await asyncio.get_running_loop().run_in_executor(
+                    None,
+                    functools.partial(
+                        hook_executor.fire,
+                        HookEvent.STUCK_LOOP_DETECTED,
+                        iterations=state.stuck_threshold,
+                        last_error=last_error,
+                    ),
+                )
             conversation.add_user_message(
                 f"You have failed {state.stuck_threshold} times with the same error. "
                 "Stop, explain what is wrong, and try a completely different approach."
@@ -1140,6 +1252,81 @@ def _parse_tool_call(raw: dict[str, Any]) -> ToolCall | None:
     except (json.JSONDecodeError, TypeError, KeyError):
         logger.warning("Malformed tool call: %s", raw)
         return None
+
+
+async def _check_context_and_compact(
+    conversation: Conversation,
+    llm_client: LLMClient,
+    hook_executor: Any | None,
+    graduated_compactor: Any | None,
+    loop_metrics: LoopMetrics,
+) -> None:
+    """Check context thresholds and apply graduated compaction if needed.
+
+    Fires context threshold hooks and uses the GraduatedCompactor when
+    available. Falls back to simple LLM compaction otherwise.
+    """
+    max_toks = conversation.max_tokens
+    toks = conversation.token_count
+    pct = toks / max_toks if max_toks > 0 else 0.0
+
+    if hook_executor is not None:
+        if pct >= 0.75:
+            await asyncio.get_running_loop().run_in_executor(
+                None,
+                functools.partial(
+                    hook_executor.fire,
+                    HookEvent.CONTEXT_THRESHOLD_75,
+                    token_count=toks,
+                ),
+            )
+        elif pct >= 0.50:
+            await asyncio.get_running_loop().run_in_executor(
+                None,
+                functools.partial(
+                    hook_executor.fire,
+                    HookEvent.CONTEXT_THRESHOLD_50,
+                    token_count=toks,
+                ),
+            )
+        elif pct >= 0.25:
+            await asyncio.get_running_loop().run_in_executor(
+                None,
+                functools.partial(
+                    hook_executor.fire,
+                    HookEvent.CONTEXT_THRESHOLD_25,
+                    token_count=toks,
+                ),
+            )
+
+    if graduated_compactor is not None:
+        results = graduated_compactor.apply_stages(conversation, toks, max_toks)
+        for r in results:
+            if r.applied:
+                loop_metrics.record_compaction()
+                if hook_executor is not None:
+                    await asyncio.get_running_loop().run_in_executor(
+                        None,
+                        functools.partial(
+                            hook_executor.fire,
+                            HookEvent.POST_COMPACTION,
+                            stage=r.stage_name,
+                            tokens_before=r.tokens_before,
+                            tokens_after=r.tokens_after,
+                        ),
+                    )
+
+        # Emergency compaction (stage 5)
+        if graduated_compactor.get_stage_for_context(toks, max_toks) >= 4:
+            model = getattr(llm_client, "model", "")
+            await graduated_compactor.emergency_compact(conversation, llm_client, model)
+            loop_metrics.record_compaction()
+        return
+
+    # Fallback: simple LLM compaction
+    if conversation.is_near_limit:
+        await _compact_conversation(conversation, llm_client)
+        loop_metrics.record_compaction()
 
 
 async def _compact_conversation(conversation: Conversation, llm_client: LLMClient) -> None:

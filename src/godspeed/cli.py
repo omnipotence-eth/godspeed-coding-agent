@@ -162,10 +162,21 @@ LLAMACPP_STARTUP_TIMEOUT = 60  # seconds to wait for llama.cpp server
 def _ensure_llamacpp(console: Any | None = None) -> bool:
     """Start llama.cpp server if it's not running. Returns True if available.
 
+    Configures LiteLLM env vars to route openai/ models to the local server.
+    This MUST be called before LiteLLM is imported to prevent data leaks.
+
     Args:
         console: Optional Rich Console for status output.
     """
-    from godspeed.tools.llamacpp_manager import is_server_running, start_server
+    from godspeed.tools.llamacpp_manager import (
+        configure_litellm_env,
+        is_server_running,
+        start_server,
+    )
+
+    # Always configure LiteLLM env before ANY import — critical for security.
+    # Without this, openai/ models would route to the real OpenAI API.
+    configure_litellm_env()
 
     if is_server_running():
         return True
@@ -199,6 +210,7 @@ async def _run_app(
     verbose: bool,
     audit_dir: Path | None,
     permission_mode: str | None = None,
+    execution_mode: str = "tool",
 ) -> None:
     """Wire up all components and launch the Textual TUI."""
     from godspeed.agent.conversation import Conversation
@@ -216,6 +228,8 @@ async def _run_app(
         overrides["model"] = model
     if permission_mode:
         overrides["permission_mode"] = permission_mode
+    if execution_mode:
+        overrides["execution_mode"] = execution_mode
     settings = GodspeedSettings(**overrides)
 
     effective_model = model or settings.model
@@ -308,6 +322,7 @@ async def _run_app(
         tools=registry.list_tools(),
         project_instructions=project_instructions,
         cwd=effective_project_dir,
+        execution_mode=settings.execution_mode,
         memory_hints=memory_hints or None,
     )
 
@@ -385,6 +400,7 @@ async def _run_app(
 
     # Sub-agent coordinator
     from godspeed.agent.coordinator import AgentCoordinator, SpawnAgentTool
+    from godspeed.agent.retrieval_agent import RetrievalSubAgentTool
 
     coordinator = AgentCoordinator(
         llm_client=llm_client,
@@ -394,6 +410,10 @@ async def _run_app(
     spawn_tool = SpawnAgentTool(coordinator)
     registry.register(spawn_tool)
     risk_levels[spawn_tool.name] = spawn_tool.risk_level
+
+    retrieval_tool = RetrievalSubAgentTool(coordinator)
+    registry.register(retrieval_tool)
+    risk_levels[retrieval_tool.name] = retrieval_tool.risk_level
 
     # Codebase index (optional — requires chromadb)
     codebase_index = None
@@ -412,7 +432,7 @@ async def _run_app(
             logger.info("Codebase index is stale, rebuilding in background")
             asyncio.get_event_loop().create_task(codebase_index.build_index_async())
 
-    # Discover skills
+    # Discover skills with full skill system (evolution, hub, dream)
     from godspeed.skills.loader import discover_skills
 
     skill_dirs = [
@@ -421,6 +441,15 @@ async def _run_app(
     ]
     skills = discover_skills(skill_dirs)
     skill_completions = [(f"/{s.trigger}", s.description) for s in skills]
+
+    from godspeed.skills.dream import SkillDream
+    from godspeed.skills.evolution import SkillEvolution
+    from godspeed.skills.loader import SkillHub
+
+    skill_evolution = SkillEvolution()
+    skill_hub = SkillHub()
+    skill_dream = SkillDream()
+    skills_dir = Path.home() / ".godspeed" / "skills"
 
     # Hook executor
     hook_executor = None
@@ -454,6 +483,10 @@ async def _run_app(
         codebase_index=codebase_index,
         correction_tracker=correction_tracker,
         session_memory=session_memory,
+        skill_evolution=skill_evolution,
+        skill_hub=skill_hub,
+        skill_dream=skill_dream,
+        skills_dir=skills_dir,
     )
     await app.run()
 
@@ -492,6 +525,12 @@ async def _run_app(
         "'yolo' (no permission checks, maximum speed)."
     ),
 )
+@click.option(
+    "--execution-mode",
+    type=click.Choice(["tool", "codeact"]),
+    default=None,
+    help="Execution mode: 'tool' (default, use tool calls), 'codeact' (write code blocks).",
+)
 @click.pass_context
 def main(
     ctx: click.Context,
@@ -500,6 +539,7 @@ def main(
     verbose: bool,
     audit_dir: Path | None,
     permission_mode: str | None,
+    execution_mode: str | None,
 ) -> None:
     """Godspeed -- Trusted production coding agent."""
     _setup_logging(verbose)
@@ -521,7 +561,16 @@ def main(
     # If no subcommand, launch the TUI
     if ctx.invoked_subcommand is None:
         with contextlib.suppress(KeyboardInterrupt):
-            asyncio.run(_run_app(model, project_dir, verbose, audit_dir, permission_mode))
+            asyncio.run(
+                _run_app(
+                    model,
+                    project_dir,
+                    verbose,
+                    audit_dir,
+                    permission_mode,
+                    execution_mode or "tool",
+                )
+            )
 
 
 @main.command()
@@ -1030,6 +1079,7 @@ def models() -> None:
         "fast": "Local, low VRAM, fast responses (5.1GB)",
         "balanced": "Local, medium VRAM, strong all-around (9GB)",
         "quality": "Local, high VRAM, best local coding (15GB)",
+        "local": "Local, llama.cpp + GPU spec dec, ~750 tok/s (9GB)",
         "cloud": "NVIDIA NIM free tier, no local GPU needed",
         "frontier": "Claude — best quality, paid API",
     }

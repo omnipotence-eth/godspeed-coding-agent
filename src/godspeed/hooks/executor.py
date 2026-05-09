@@ -12,6 +12,14 @@ from godspeed.hooks.config import HookDefinition
 
 logger = logging.getLogger(__name__)
 
+_SHELL_META = set("|<>;&")
+"""Characters that require shell=True on any platform."""
+
+
+def _needs_shell(command: str) -> bool:
+    """Check if a command contains shell metacharacters that require shell=True."""
+    return any(ch in command for ch in _SHELL_META)
+
 
 class HookExecutor:
     """Execute hooks at agent lifecycle events.
@@ -110,16 +118,27 @@ class HookExecutor:
         )
 
         try:
-            use_shell = sys.platform == "win32"
-            cmd_args = command if use_shell else shlex.split(command)
-            result = subprocess.run(
-                cmd_args,
-                shell=use_shell,  # nosec: shell=True only used on Windows where subprocess requires it
-                cwd=self._cwd,
-                timeout=hook.timeout,
-                capture_output=True,
-                text=True,
-            )
+            if sys.platform == "win32":
+                # On Windows, always use shell=True. cmd.exe handles
+                # path quoting better than CreateProcess for list-based args.
+                result = subprocess.run(  # noqa: S602
+                    command,
+                    shell=True,
+                    cwd=self._cwd,
+                    timeout=hook.timeout,
+                    capture_output=True,
+                    text=True,
+                )
+            else:
+                cmd_args = shlex.split(command)
+                result = subprocess.run(
+                    cmd_args,
+                    shell=False,
+                    cwd=self._cwd,
+                    timeout=hook.timeout,
+                    capture_output=True,
+                    text=True,
+                )
             if result.stdout:
                 logger.debug("Hook stdout: %s", result.stdout.strip())
             if result.stderr:

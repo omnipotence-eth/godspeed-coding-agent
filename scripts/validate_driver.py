@@ -53,6 +53,15 @@ if str(_REPO_ROOT / "src") not in sys.path:
 if str(_EXPERIMENTS) not in sys.path:
     sys.path.insert(0, str(_EXPERIMENTS))
 
+# Configure LiteLLM env for local llama.cpp server BEFORE any other
+# godspeed import — LiteLLM caches env vars at import time. Without
+# this, openai/ models route to the real OpenAI API instead of local.
+from godspeed.tools.llamacpp_manager import (  # noqa: E402
+    configure_litellm_env,  # type: ignore[import-untyped]
+)
+
+configure_litellm_env()
+
 logger = logging.getLogger(__name__)
 
 # Default smoke set — 3 instances chosen for variety + historical
@@ -125,11 +134,12 @@ def validate(
     0 = pass, 1 = fail driver, 2 = setup error.
     """
     try:
-        from prompt_profiles import (  # type: ignore[import-not-found]
+        from run_in_loop import run_one  # type: ignore[import-not-found]
+
+        from godspeed.agent.prompt_profiles import (
             get_catalog_entry,
             resolve_profile,
         )
-        from run_in_loop import run_one  # type: ignore[import-not-found]
     except ImportError as exc:
         logger.error("import failed: %s", exc)
         return 2

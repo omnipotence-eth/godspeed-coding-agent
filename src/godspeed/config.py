@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections import OrderedDict
+from enum import StrEnum
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -48,6 +49,19 @@ def _load_yaml_cached(path: Path) -> dict[str, Any] | None:
 
 _PERMISSION_MODES = ("strict", "normal", "yolo")
 _SANDBOX_MODES = ("none", "docker")
+_EXECUTION_MODES = ("tool", "codeact")
+
+
+class ExecutionMode(StrEnum):
+    """Agent execution strategy.
+
+    ``tool`` (default):  Agent uses tool calls as its primary action mechanism.
+    ``codeact``:         Agent writes code blocks that are auto-executed.
+    """
+
+    TOOL = "tool"
+    CODEACT = "codeact"
+
 
 # Model context windows — used for model-aware compaction prompts.
 # Keys are prefixes matched against the model string.
@@ -76,6 +90,7 @@ MODEL_CONTEXT_WINDOWS: dict[str, int] = {
     "openai/qwen3.6": 32_768,
     "llamacpp/qwen3.6": 32_768,
     "qwen3.6": 32_768,
+    "openai/qwen2.5-coder": 32_768,
 }
 
 
@@ -179,18 +194,20 @@ class GodspeedSettings(BaseSettings):
     # Model presets for speed + quality balance.
     # "cloud" and "frontier" are API-based (no local VRAM needed).
     # "fast", "balanced", "quality" are local Ollama models.
+    # "local" is llama.cpp-based with speculative decoding (~750 tok/s).
     MODEL_PRESETS: ClassVar[dict[str, str]] = {
         "fast": "ollama/rnj-1:8b",
         "balanced": "ollama/qwen2.5-coder:14b",
         "quality": "ollama/devstral-small-2:24b",
-        "local": "openai/qwen3.6-27b",
+        "local": "openai/qwen2.5-coder-14b",
         "cloud": "nvidia_nim/qwen/qwen3.5-397b-a17b",
         "frontier": "claude-sonnet-4-20250514",
     }
 
-    # LLM — default to cloud Qwen 3.5 397B (NVIDIA NIM free tier).
+    # LLM — default to local Qwen2.5-Coder 14B via llama.cpp (GPU spec
+    # decoding with 1.5B draft, ~750 tok/s on RTX 5070 Ti).
     # Override via settings.yaml, GODSPEED_MODEL env var, or -m flag.
-    model: str = "nvidia_nim/qwen/qwen3.5-397b-a17b"
+    model: str = "openai/qwen2.5-coder-14b"
     fallback_models: list[str] = Field(default_factory=list)
 
     # Paths
@@ -235,6 +252,7 @@ class GodspeedSettings(BaseSettings):
     github_actions: dict[str, Any] = Field(default_factory=dict)
 
     # Agent behavior
+    execution_mode: str = "tool"  # "tool" | "codeact"
     parallel_tool_calls: bool = True
     auto_fix_retries: int = 3  # lint-fix retry rounds (0 = one-shot, no auto-fix)
     auto_commit: bool = False
@@ -315,6 +333,14 @@ class GodspeedSettings(BaseSettings):
     def validate_sandbox(cls, v: str) -> str:
         if v not in _SANDBOX_MODES:
             msg = f"sandbox must be one of {_SANDBOX_MODES}, got {v!r}"
+            raise ValueError(msg)
+        return v
+
+    @field_validator("execution_mode")
+    @classmethod
+    def validate_execution_mode(cls, v: str) -> str:
+        if v not in _EXECUTION_MODES:
+            msg = f"execution_mode must be one of {_EXECUTION_MODES}, got {v!r}"
             raise ValueError(msg)
         return v
 
@@ -509,7 +535,7 @@ def append_permission_rule(
     silently skipped (re-running the command is idempotent).
 
     Args:
-        pattern: Permission pattern to add (e.g. ``"Shell(git status)"``).
+        pattern: Permission pattern to add (e.g. ``"shell(git status)"``).
         action: One of ``"allow" | "deny" | "ask"``.
         project_dir: Project directory for ``.godspeed/settings.yaml``.
             Falls back to the global settings file when ``None``.

@@ -1,0 +1,19 @@
+FROM qwen3.6:27b
+
+# Optimized for RTX 5070 Ti (16GB VRAM) + agentic coding
+# Based on search: Q4_K_M = 16.8GB, need ~1-2GB headroom
+
+# Context window - 32K is sweet spot for 16GB VRAM
+PARAMETER num_ctx 32768
+
+# Agentic coding optimizations
+PARAMETER temperature 0.2
+PARAMETER top_p 0.9
+PARAMETER repeat_penalty 1.1
+
+# System prompt optimized for agentic coding
+SYSTEM """
+You are an expert coding agent. You write clean, efficient, and well-documented code.
+You follow instructions precisely and use tools available to you (read, write, edit, bash) to complete tasks.
+You think step-by-step and explain your reasoning before taking action.
+"""

@@ -1,0 +1,40 @@
+# Godspeed settings for DeepSWE-Preview (Qwen3-32B, IQ3_XS) via llama.cpp
+#
+# Hardware: RTX 5070 Ti (16 GB VRAM), 96 GB RAM
+# Model:    agentica-org_DeepSWE-Preview-IQ3_XS.gguf (~13.7 GB)
+# Context:  24576 with Q4 KV cache (~15.3 GB total)
+# Speed:    ~8-15 tok/s (no draft — Qwen3 arch unknown compat)
+#
+# SWE-Bench Verified: 59.0% (per agentica-org)
+# Requires: thinking profile + extended reasoning budget
+
+model: openai/deepswe-preview
+
+# Fallback chain: if local server fails, fall back to cloud
+fallback_models:
+  - nvidia_nim/moonshotai/kimi-k2.5
+  - nvidia_nim/qwen/qwen3.5-397b-a17b
+
+# Task-aware shortcuts
+strong_model: openai/deepswe-preview
+cheap_model: openai/deepswe-preview
+
+# Thinking mode — DeepSWE uses extended reasoning like Qwen3 thinking
+thinking_budget: 4096
+
+# Context management: 32K model cap, compact at 80%
+max_context_tokens: 32768
+compaction_threshold: 0.8
+
+# Cost: local inference is free
+max_cost_usd: 0.0
+
+# Agent behavior
+parallel_tool_calls: true
+auto_fix_retries: 3
+
+# Sandbox
+sandbox: none
+
+# Logging
+log_conversations: true

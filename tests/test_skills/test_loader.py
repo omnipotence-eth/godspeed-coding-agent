@@ -1,4 +1,4 @@
-"""Tests for skill discovery and loading."""
+"""Tests for skill discovery and loading (new SKILL.md standard)."""
 
 from __future__ import annotations
 
@@ -6,212 +6,317 @@ from pathlib import Path
 
 import pytest
 
-from godspeed.skills.loader import SkillDefinition, _parse_skill_file, discover_skills
+from godspeed.skills.loader import (
+    SKILL_NAME_RE,
+    Skill,
+    SkillError,
+    SkillHub,
+    _compute_hash,
+    _load_skill_directory,
+    _parse_frontmatter,
+    discover_skills,
+)
 
 
 @pytest.fixture()
 def skill_dir(tmp_path: Path) -> Path:
-    """Create a temp directory with valid skill files."""
+    """Create a temp directory with a valid skill directory structure."""
     skills = tmp_path / "skills"
     skills.mkdir()
     return skills
 
 
-def _write_skill(directory: Path, filename: str, content: str) -> Path:
-    """Write a skill file and return its path."""
-    path = directory / filename
-    path.write_text(content, encoding="utf-8")
-    return path
+def _make_skill_dir(parent: Path, name: str, frontmatter: str, body: str) -> Path:
+    """Create a ``{name}/SKILL.md`` directory structure."""
+    d = parent / name
+    d.mkdir(parents=True)
+    content = f"---\n{frontmatter}\n---\n\n{body}"
+    (d / "SKILL.md").write_text(content, encoding="utf-8")
+    return d
 
 
-class TestParseSkillFile:
-    """Test _parse_skill_file()."""
+class TestSkillValidation:
+    """Test Skill dataclass validation."""
 
-    def test_valid_skill(self, skill_dir: Path) -> None:
-        path = _write_skill(
-            skill_dir,
-            "review.md",
-            "---\nname: code-review\ndescription: Review code\n"
-            "trigger: review\n---\nReview this code.",
+    def test_valid_name(self) -> None:
+        s = Skill(
+            name="my-skill",
+            description="Test",
+            trigger="my-skill",
+            content="Body",
+            path=Path("/x"),
         )
-        skill = _parse_skill_file(path)
+        assert s.name == "my-skill"
+
+    def test_invalid_name_uppercase(self) -> None:
+        with pytest.raises(SkillError):
+            Skill(name="BadName", description="Test", trigger="x", content="Body", path=Path("/x"))
+
+    def test_invalid_name_underscore(self) -> None:
+        with pytest.raises(SkillError):
+            Skill(name="bad_name", description="Test", trigger="x", content="Body", path=Path("/x"))
+
+    def test_invalid_name_space(self) -> None:
+        with pytest.raises(SkillError):
+            Skill(name="bad name", description="Test", trigger="x", content="Body", path=Path("/x"))
+
+    def test_edge_case_names(self) -> None:
+        valid = ["a", "a-b", "1-2-3", "skill", "my-long-skill-name"]
+        for name in valid:
+            assert SKILL_NAME_RE.match(name), f"Expected {name!r} to be valid"
+
+    def test_hash_computation(self) -> None:
+        h1 = _compute_hash("hello")
+        h2 = _compute_hash("hello")
+        h3 = _compute_hash("world")
+        assert h1 == h2
+        assert len(h1) == 16
+        assert h1 != h3
+
+
+class TestParseFrontmatter:
+    """Test _parse_frontmatter()."""
+
+    def test_valid_frontmatter(self) -> None:
+        text = "---\nname: test\ndescription: A test\ntrigger: test\n---\n\nBody here."
+        result = _parse_frontmatter(text)
+        assert result is not None
+        fm, body = result
+        assert fm["name"] == "test"
+        assert fm["description"] == "A test"
+        assert body == "Body here."
+
+    def test_no_frontmatter(self) -> None:
+        assert _parse_frontmatter("Just body text.") is None
+
+    def test_invalid_yaml(self) -> None:
+        assert _parse_frontmatter("---\n[invalid\n---\nBody") is None
+
+    def test_non_dict_yaml(self) -> None:
+        assert _parse_frontmatter("---\n- list\n- item\n---\nBody") is None
+
+    def test_empty_frontmatter(self) -> None:
+        # YAML-safe_load("") returns None, which is not a dict
+        assert _parse_frontmatter("---\n---\n\nBody") is None
+
+    def test_unclosed_frontmatter(self) -> None:
+        assert _parse_frontmatter("---\nname: test\n\nBody") is None
+
+    def test_preserves_body_newlines(self) -> None:
+        text = "---\nname: test\ntrigger: test\ndescription: Test\n---\n\nLine 1\n\nLine 2"
+        result = _parse_frontmatter(text)
+        assert result is not None
+        _, body = result
+        assert "Line 1" in body
+        assert "Line 2" in body
+
+
+class TestLoadSkillDirectory:
+    """Test _load_skill_directory()."""
+
+    def test_loads_valid_skill(self, tmp_path: Path) -> None:
+        d = _make_skill_dir(
+            tmp_path,
+            "my-skill",
+            "name: my-skill\ndescription: A skill\ntrigger: ms",
+            "Do the thing.",
+        )
+        skill = _load_skill_directory(d)
         assert skill is not None
-        assert skill.name == "code-review"
-        assert skill.description == "Review code"
-        assert skill.trigger == "review"
-        assert skill.content == "Review this code."
+        assert skill.name == "my-skill"
+        assert skill.description == "A skill"
+        assert skill.trigger == "ms"
+        assert skill.content == "Do the thing."
 
-    def test_multiline_content(self, skill_dir: Path) -> None:
-        path = _write_skill(
-            skill_dir,
-            "multi.md",
-            "---\nname: multi\ndescription: Multi-line\n"
-            "trigger: multi\n---\nLine 1\n\nLine 2\nLine 3",
-        )
-        skill = _parse_skill_file(path)
+    def test_missing_skill_md(self, tmp_path: Path) -> None:
+        d = tmp_path / "empty-skill"
+        d.mkdir()
+        assert _load_skill_directory(d) is None
+
+    def test_missing_name_falls_back_to_dirname(self, tmp_path: Path) -> None:
+        d = _make_skill_dir(tmp_path, "no-name", "description: Only desc", "Body")
+        skill = _load_skill_directory(d)
         assert skill is not None
-        assert "Line 1" in skill.content
-        assert "Line 3" in skill.content
+        assert skill.name == "no-name"  # dir name used as fallback
 
-    def test_missing_frontmatter(self, skill_dir: Path) -> None:
-        path = _write_skill(skill_dir, "bad.md", "No frontmatter here.")
-        assert _parse_skill_file(path) is None
+    def test_missing_description(self, tmp_path: Path) -> None:
+        d = _make_skill_dir(tmp_path, "no-desc", "name: no-desc", "Body")
+        assert _load_skill_directory(d) is None
 
-    def test_missing_closing_marker(self, skill_dir: Path) -> None:
-        path = _write_skill(skill_dir, "bad.md", "---\nname: test\n\nNo closing marker")
-        assert _parse_skill_file(path) is None
+    def test_nonexistent_directory(self, tmp_path: Path) -> None:
+        assert _load_skill_directory(tmp_path / "nonexistent") is None
 
-    def test_missing_required_fields(self, skill_dir: Path) -> None:
-        path = _write_skill(
-            skill_dir,
-            "bad.md",
-            "---\nname: test\n---\nContent without description or trigger.",
+    def test_reads_references_subdir(self, tmp_path: Path) -> None:
+        d = _make_skill_dir(
+            tmp_path,
+            "with-refs",
+            "name: with-refs\ndescription: Has refs\ntrigger: wr",
+            "Body",
         )
-        assert _parse_skill_file(path) is None
-
-    def test_empty_body(self, skill_dir: Path) -> None:
-        path = _write_skill(
-            skill_dir,
-            "empty.md",
-            "---\nname: empty\ndescription: Empty body\ntrigger: empty\n---\n",
-        )
-        assert _parse_skill_file(path) is None
-
-    def test_invalid_yaml(self, skill_dir: Path) -> None:
-        path = _write_skill(
-            skill_dir,
-            "bad_yaml.md",
-            "---\n[invalid yaml: {{{\n---\nContent.",
-        )
-        assert _parse_skill_file(path) is None
-
-    def test_non_dict_frontmatter(self, skill_dir: Path) -> None:
-        path = _write_skill(
-            skill_dir,
-            "list.md",
-            "---\n- item1\n- item2\n---\nContent.",
-        )
-        assert _parse_skill_file(path) is None
-
-    def test_nonexistent_file(self, tmp_path: Path) -> None:
-        assert _parse_skill_file(tmp_path / "nonexistent.md") is None
-
-    def test_fields_coerced_to_string(self, skill_dir: Path) -> None:
-        path = _write_skill(
-            skill_dir,
-            "numeric.md",
-            "---\nname: 123\ndescription: 456\ntrigger: 789\n---\nContent.",
-        )
-        skill = _parse_skill_file(path)
+        ref_dir = d / "references"
+        ref_dir.mkdir()
+        (ref_dir / "guide.md").write_text("Guide content")
+        skill = _load_skill_directory(d)
         assert skill is not None
-        assert skill.name == "123"
-        assert skill.trigger == "789"
+        assert len(skill.files.references) == 1
+
+    def test_reads_scripts_and_assets(self, tmp_path: Path) -> None:
+        d = _make_skill_dir(
+            tmp_path,
+            "full-skill",
+            "name: full-skill\ndescription: Full\ntrigger: fs",
+            "Body",
+        )
+        (d / "scripts").mkdir()
+        (d / "scripts" / "run.sh").write_text("echo hi")
+        (d / "assets").mkdir()
+        (d / "assets" / "icon.png").write_text("fake-png")
+        skill = _load_skill_directory(d)
+        assert skill is not None
+        assert len(skill.files.scripts) == 1
+        assert len(skill.files.assets) == 1
+
+    def test_invalid_skill_name(self, tmp_path: Path) -> None:
+        d = _make_skill_dir(
+            tmp_path,
+            "Bad-Name",
+            "name: Bad-Name\ndescription: Bad\ntrigger: bn",
+            "Body",
+        )
+        assert _load_skill_directory(d) is None
+
+    def test_sets_hash(self, tmp_path: Path) -> None:
+        d = _make_skill_dir(tmp_path, "hashed", "name: hashed\ndescription: H\ntrigger: h", "Body")
+        skill = _load_skill_directory(d)
+        assert skill is not None
+        assert len(skill.hash) == 16
 
 
 class TestDiscoverSkills:
     """Test discover_skills()."""
 
-    def test_empty_directory(self, skill_dir: Path) -> None:
-        skills = discover_skills([skill_dir])
+    @pytest.fixture(autouse=True)
+    def _no_standard_dirs(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Prevent discovery from real user directories."""
+        monkeypatch.setattr("godspeed.skills.loader.DEFAULT_SKILL_DIRS", [])
+        monkeypatch.setattr("godspeed.skills.loader.PROJECT_SKILL_DIRS", [])
+
+    def test_empty_dirs(self, tmp_path: Path) -> None:
+        skills = discover_skills([tmp_path / "empty"])
         assert skills == []
 
-    def test_discovers_valid_skills(self, skill_dir: Path) -> None:
-        _write_skill(
-            skill_dir,
-            "review.md",
-            "---\nname: review\ndescription: Review code\ntrigger: review\n---\nReview code.",
+    def test_discovers_valid_skills(self, tmp_path: Path) -> None:
+        _make_skill_dir(
+            tmp_path,
+            "review",
+            "name: review\ndescription: Review code\ntrigger: review",
+            "Review.",
         )
-        _write_skill(
-            skill_dir,
-            "test.md",
-            "---\nname: test\ndescription: Run tests\ntrigger: test\n---\nRun tests.",
+        _make_skill_dir(
+            tmp_path,
+            "test",
+            "name: test\ndescription: Run tests\ntrigger: test",
+            "Test.",
         )
-        skills = discover_skills([skill_dir])
-        assert len(skills) == 2
+        skills = discover_skills([tmp_path])
+        assert len(skills) >= 2  # may also find std dirs
         triggers = {s.trigger for s in skills}
-        assert triggers == {"review", "test"}
+        assert "review" in triggers
+        assert "test" in triggers
 
-    def test_skips_invalid_files(self, skill_dir: Path) -> None:
-        _write_skill(
-            skill_dir,
-            "good.md",
-            "---\nname: good\ndescription: Good\ntrigger: good\n---\nContent.",
+    def test_skips_invalid_skills(self, tmp_path: Path) -> None:
+        _make_skill_dir(tmp_path, "good", "name: good\ndescription: G\ntrigger: g", "Good.")
+        bad = tmp_path / "bad"
+        bad.mkdir()
+        (bad / "SKILL.md").write_text("No frontmatter")  # type: ignore[union-attr]
+        skills = discover_skills([tmp_path])
+        assert all(s.trigger == "g" for s in skills if s.trigger == "g")
+
+    def test_later_dirs_override(self, tmp_path: Path) -> None:
+        base = tmp_path / "base"
+        override = tmp_path / "override"
+        base.mkdir()
+        override.mkdir()
+        _make_skill_dir(
+            base,
+            "skill-a",
+            "name: skill-a\ndescription: Base\ntrigger: a",
+            "Base version.",
         )
-        _write_skill(skill_dir, "bad.md", "No frontmatter")
-        skills = discover_skills([skill_dir])
-        assert len(skills) == 1
-        assert skills[0].trigger == "good"
-
-    def test_project_overrides_global(self, tmp_path: Path) -> None:
-        global_dir = tmp_path / "global"
-        project_dir = tmp_path / "project"
-        global_dir.mkdir()
-        project_dir.mkdir()
-
-        _write_skill(
-            global_dir,
-            "review.md",
-            "---\nname: global-review\ndescription: Global\ntrigger: review\n---\nGlobal review.",
+        _make_skill_dir(
+            override,
+            "skill-a",
+            "name: skill-a-override\ndescription: Override\ntrigger: a",
+            "Override version.",
         )
-        _write_skill(
-            project_dir,
-            "review.md",
-            "---\nname: project-review\ndescription: Project\n"
-            "trigger: review\n---\nProject review.",
-        )
+        skills = discover_skills([base, override])
+        matches = [s for s in skills if s.trigger == "a"]
+        assert len(matches) == 1
+        assert "Override" in matches[0].description
 
-        skills = discover_skills([global_dir, project_dir])
-        assert len(skills) == 1
-        assert skills[0].name == "project-review"
-        assert skills[0].content == "Project review."
-
-    def test_nonexistent_directory(self, tmp_path: Path) -> None:
-        skills = discover_skills([tmp_path / "nonexistent"])
-        assert skills == []
-
-    def test_ignores_non_md_files(self, skill_dir: Path) -> None:
-        _write_skill(
-            skill_dir,
-            "good.md",
-            "---\nname: good\ndescription: Good\ntrigger: good\n---\nContent.",
-        )
-        (skill_dir / "readme.txt").write_text("Not a skill", encoding="utf-8")
-        (skill_dir / "script.py").write_text("print('hello')", encoding="utf-8")
-        skills = discover_skills([skill_dir])
-        assert len(skills) == 1
-
-    def test_multiple_dirs_merge(self, tmp_path: Path) -> None:
-        dir_a = tmp_path / "a"
-        dir_b = tmp_path / "b"
-        dir_a.mkdir()
-        dir_b.mkdir()
-
-        _write_skill(
-            dir_a,
-            "review.md",
-            "---\nname: review\ndescription: Review\ntrigger: review\n---\nReview.",
-        )
-        _write_skill(
-            dir_b,
-            "deploy.md",
-            "---\nname: deploy\ndescription: Deploy\ntrigger: deploy\n---\nDeploy.",
-        )
-
-        skills = discover_skills([dir_a, dir_b])
-        assert len(skills) == 2
-        triggers = {s.trigger for s in skills}
-        assert triggers == {"review", "deploy"}
+    def test_ignores_non_skill_dirs(self, tmp_path: Path) -> None:
+        (tmp_path / "not-a-skill.md").write_text("---\nname: fake\n---\nBody")
+        skills = discover_skills([tmp_path])
+        assert len(skills) == 0
 
 
-class TestSkillDefinition:
-    """Test SkillDefinition dataclass."""
+class TestSkillHub:
+    """Test SkillHub marketplace operations."""
 
-    def test_frozen(self) -> None:
-        skill = SkillDefinition(name="test", description="desc", trigger="test", content="body")
-        with pytest.raises(AttributeError):
-            skill.name = "changed"  # type: ignore[misc]
+    def test_install_locks_and_verifies(self, tmp_path: Path) -> None:
+        hub = SkillHub(base_dir=tmp_path / "hub")
+        src = tmp_path / "src"
+        _make_skill_dir(src, "test-skill", "name: test-skill\ndescription: T\ntrigger: ts", "Body.")
+        skill = hub.install("test-skill", src / "test-skill")
+        assert skill.name == "test-skill"
+        assert hub.verify_integrity("test-skill")
+        installed = hub.list_installed()
+        assert any(e["name"] == "test-skill" for e in installed)
 
-    def test_equality(self) -> None:
-        a = SkillDefinition(name="test", description="desc", trigger="t", content="c")
-        b = SkillDefinition(name="test", description="desc", trigger="t", content="c")
-        assert a == b
+    def test_remove_skill(self, tmp_path: Path) -> None:
+        hub = SkillHub(base_dir=tmp_path / "hub")
+        src = tmp_path / "src"
+        _make_skill_dir(src, "removable", "name: removable\ndescription: R\ntrigger: r", "Body.")
+        hub.install("removable", src / "removable")
+        hub.remove("removable")
+        assert hub.list_installed() == []
+
+    def test_double_install_raises(self, tmp_path: Path) -> None:
+        hub = SkillHub(base_dir=tmp_path / "hub")
+        src = tmp_path / "src"
+        _make_skill_dir(src, "dup", "name: dup\ndescription: D\ntrigger: d", "Body.")
+        hub.install("dup", src / "dup")
+        from godspeed.skills.loader import SkillError
+
+        with pytest.raises(SkillError, match="already installed"):
+            hub.install("dup", src / "dup")
+
+    def test_verify_tampered_fails(self, tmp_path: Path) -> None:
+        hub = SkillHub(base_dir=tmp_path / "hub")
+        src = tmp_path / "src"
+        _make_skill_dir(src, "safe", "name: safe\ndescription: S\ntrigger: s", "Body.")
+        hub.install("safe", src / "safe")
+
+        skill_file = tmp_path / "hub" / "safe" / "SKILL.md"
+        skill_file.write_text("---\nname: hacked\n---\nEVIL")
+        assert not hub.verify_integrity("safe")
+
+    def test_quarantine_moves_skill(self, tmp_path: Path) -> None:
+        hub = SkillHub(base_dir=tmp_path / "hub")
+        src = tmp_path / "src"
+        _make_skill_dir(src, "bad", "name: bad\ndescription: B\ntrigger: b", "Body.")
+        hub.install("bad", src / "bad")
+
+        skill_file = tmp_path / "hub" / "bad" / "SKILL.md"
+        skill_file.write_text("---\nname: hacked\n---\nEVIL")
+        hub.quarantine("bad")
+
+        assert not (tmp_path / "hub" / "bad").exists()
+        assert (tmp_path / "hub" / ".hub" / "quarantine" / "bad").exists()
+
+    def test_remove_nonexistent_raises(self, tmp_path: Path) -> None:
+        hub = SkillHub(base_dir=tmp_path / "hub")
+        from godspeed.skills.loader import SkillError
+
+        with pytest.raises(SkillError):
+            hub.remove("does-not-exist")

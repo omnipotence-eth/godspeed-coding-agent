@@ -170,3 +170,34 @@ drivers:
     cost_per_mtok_in: 0.0
     cost_per_mtok_out: 0.0
     notes: "Qwen3.6-27B UD-Q4_K_XL via llama.cpp native LiteLLM provider. Set LLAMACPP_API_BASE env var."
+
+  # ─── Local — llama.cpp DeepSWE-Preview (Qwen3-32B, IQ3_XS) ──────────
+  openai/deepswe-preview:
+    provider: openai
+    context_window: 32768
+    prompt_profile: thinking
+    tool_call_format: openai
+    cost_per_mtok_in: 0.0
+    cost_per_mtok_out: 0.0
+    known_ceilings:
+      swe_bench_verified: 0.590  # per agentica-org
+    notes: "DeepSWE-Preview (Qwen3-32B, RL-trained for SWE). IQ3_XS ~13.7 GB. RTX 5070 Ti 16 GB fits w/ ~2 GB KV headroom. NO draft model (Qwen3 arch unknown compat). Use thinking profile + extended reasoning budget."
+
+  # ─── Local — llama.cpp Qwen2.5-Coder 14B (speculative decoding) ─────
+  openai/qwen2.5-coder-14b:
+    provider: openai
+    context_window: 32768
+    prompt_profile: default
+    tool_call_format: openai
+    cost_per_mtok_in: 0.0
+    cost_per_mtok_out: 0.0
+    known_ceilings:
+      humaneval: 64.0              # per Qwen2.5-Coder technical report
+      mbpp: 57.9
+      cruxeval_i: 56.5
+      cruxeval_o: 56.0
+      repo_eval_em: 0.463          # function body EM
+      bigcodebench: 39.8           # per FitMyLLM
+      ifeval: 84.1
+      mmlu_pro: 42.8
+    notes: "Qwen2.5-Coder-14B Q4_K_M via llama.cpp b9066 + RTX 5070 Ti. ~78 tok/s baseline. GPU spec decoding: ~750 tok/s (1.5B draft) or ~714 tok/s (0.5B draft). Greedy sampling for spec dec stability. No thinking mode."

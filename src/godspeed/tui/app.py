@@ -6,6 +6,7 @@ import asyncio
 import logging
 import signal
 import time
+from pathlib import Path
 from typing import Any
 
 from prompt_toolkit import PromptSession
@@ -59,6 +60,24 @@ from godspeed.tui.theme import (
 logger = logging.getLogger(__name__)
 
 
+def _schedule_dream(dream: Any) -> None:
+    """Schedule background dream consolidation if 24h interval has elapsed."""
+    from godspeed.skills.dream import SkillDream
+
+    if not isinstance(dream, SkillDream):
+        return
+    if not dream.should_run():
+        logger.debug("Dream consolidation skipped — interval not elapsed")
+        return
+    skills_dir = Path.home() / ".godspeed" / "skills"
+
+    async def _run_dream() -> None:
+        stats = dream.run(skills_dir)
+        logger.info("Background dream consolidation: %s", stats)
+
+    _dream_task = asyncio.ensure_future(_run_dream())  # noqa: RUF006
+
+
 def _build_key_bindings() -> KeyBindings:
     """Build prompt-toolkit key bindings.
 
@@ -104,6 +123,10 @@ class TUIApp:
         correction_tracker: Any | None = None,
         session_memory: Any | None = None,
         compact: bool = False,
+        skill_evolution: Any | None = None,
+        skill_hub: Any | None = None,
+        skill_dream: Any | None = None,
+        skills_dir: Any | None = None,
     ) -> None:
         self._llm_client = llm_client
         self._tool_registry = tool_registry
@@ -146,11 +169,22 @@ class TUIApp:
         if codebase_index is not None:
             self._commands._codebase_index = codebase_index
 
-        # Register skill commands
+        # Register skill commands with full skill system features
         if skills:
             from godspeed.skills.commands import register_skill_commands
 
-            register_skill_commands(self._commands, conversation, skills)
+            register_skill_commands(
+                self._commands,
+                conversation,
+                skills,
+                evolution=skill_evolution,
+                hub=skill_hub,
+                dream=skill_dream,
+                skills_dir=skills_dir,
+                llm_client=self._llm_client,
+            )
+
+        self._skill_dream = skill_dream
 
         self._completer = GodspeedCompleter(
             cwd=tool_context.cwd,
@@ -228,6 +262,10 @@ class TUIApp:
         tool_calls = 0
         tool_errors = 0
         tool_denied = 0
+
+        # Background dream consolidation (non-blocking, 24h interval)
+        if self._skill_dream is not None:
+            _schedule_dream(self._skill_dream)
 
         # Display welcome with config summary
         tool_names = (
@@ -670,14 +708,15 @@ class _InteractivePermissionProxy:
 
         if answer in ("y", "yes"):
             # Track approval for auto-permission suggestion
-            pattern = tool_call.format_for_permission()
+            pattern = tool_call.format_for_permission
             if self._tracker is not None:
                 self._tracker.record_approval(pattern)
                 if self._tracker.should_suggest(pattern):
                     self._suggest_auto_permission(pattern)
             return PermissionDecision(ALLOW, "user approved")
+
         if answer in ("a", "always"):
-            pattern = tool_call.format_for_permission()
+            pattern = tool_call.format_for_permission
             # LOW-risk tools get tool-level session grant (WebSearch(*) covers all queries)
             risk = self._engine._tool_risk_levels.get(tool_call.tool_name, RiskLevel.HIGH)
             if risk == RiskLevel.LOW:

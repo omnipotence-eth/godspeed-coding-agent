@@ -1,0 +1,46 @@
+# Godspeed settings for local Qwen2.5-Coder 14B via llama.cpp
+#
+# Performance (RTX 5070 Ti, qwen2.5-coder-14b-q4_K_M.gguf):
+#   No speculative decoding:           ~78 tok/s
+#   GPU spec decoding (1.5B draft):    ~750 tok/s cached, ~165 cold  ← DEFAULT
+#   GPU spec decoding (0.5B draft):    ~714 tok/s cached, ~129 cold
+#   CPU spec decoding (1.5B draft):    ~30 tok/s cold, ~150+ cached
+#
+# Draft model files (in ~/.llamacpp/models/):
+#   - qwen2.5-coder-1.5b-instruct-q5_k_m.gguf (~1.2 GB, ~97% acceptance)
+#   - Qwen2.5-Coder-0.5B-Instruct-Q5_K_M.gguf (~0.4 GB, ~85% acceptance)
+#   - Llama-3.2-1B-Instruct-Q4_K_M.gguf  (~0.7 GB, untested)  [alt draft]
+#
+# Requires llama.cpp build b9066 or newer (fixes GPU draft bug #22337).
+# b9046 crashes with "invalid vector subscript" on GPU draft.
+
+model: openai/qwen2.5-coder-14b
+
+# Fallback chain: if local server fails, fall back to cloud
+fallback_models:
+  - nvidia_nim/moonshotai/kimi-k2.5
+  - nvidia_nim/qwen/qwen3.5-397b-a17b
+
+# Task-aware shortcuts
+strong_model: openai/qwen2.5-coder-14b
+cheap_model: openai/qwen2.5-coder-14b
+
+# NO thinking mode — Qwen2.5-Coder doesn't support it
+thinking_budget: 0
+
+# Context management: 32K context window, compact at 80%
+max_context_tokens: 32768
+compaction_threshold: 0.8
+
+# Cost: local inference is free
+max_cost_usd: 0.0
+
+# Agent behavior
+parallel_tool_calls: true
+auto_fix_retries: 3
+
+# Sandbox
+sandbox: none
+
+# Logging
+log_conversations: true

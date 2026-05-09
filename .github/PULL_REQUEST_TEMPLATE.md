@@ -10,10 +10,10 @@
 ## Testing
 
 - [ ] Tests added/updated
-- [ ] `make lint` passes
-- [ ] `make type-check` passes
-- [ ] `make security` passes
-- [ ] `make test` passes
+- [ ] `ruff check .` passes
+- [ ] `mypy src/` passes
+- [ ] `pip-audit` + `bandit` pass
+- [ ] `pytest --cov` passes
 
 ## Security Checklist
 

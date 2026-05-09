@@ -25,6 +25,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Both are transitive dependencies pinned by upstream libraries with no
   satisfiable upgrade path.
 
+## [0.5.0] — 2026-05-08
+
+### Added
+
+- **Skills system overhaul** — new skill management infrastructure with
+  four new modules:
+  - **Security scanning** (`skills/security.py`) — static analysis of skill
+    files before installation. Detects 12+ threat categories including
+    obfuscated eval/exec, base64-encoded payloads, crypto-miner patterns,
+    and dangerous shell commands. Risk classification (clean/suspicious/dangerous).
+  - **Skill evolution** (`skills/evolution.py`) — lesson tracking and
+    automatic skill rewriting (AutoContext pattern). Accumulates corrections
+    per skill, merges duplicates, and rewrites SKILL.md when enough
+    high-confidence lessons accumulate. Timestamped backups before mutation.
+  - **Dream consolidation** (`skills/dream.py`) — cross-session pruning,
+    dedup, and date normalization modeled on Claude Code's Auto-Dream.
+    Runs periodically (24h) to scan skill directories, merge duplicates,
+    remove stale entries, and convert relative dates to absolute.
+  - **Wiki bridge** (`skills/wiki_bridge.py`) — auto-generate SKILL.md
+    files from llm-wiki knowledge base pages. Frontmatter extraction,
+    tag filtering, topic matching, and reference preservation.
+- **Retrieval sub-agent** (`agent/retrieval_agent.py`) — focused code
+  exploration tool that delegates deep searches to a read-only sub-agent.
+  Returns structured `file:line-range` results without polluting the
+  main agent's context. READ_ONLY risk level; registered as `retrieval`
+  tool.
+- **Speculative decoding benchmarks** (`scripts/benchmark_specdec.py`,
+  `scripts/start_draft_server.py`) — GPU-accelerated draft model server
+  and benchmark suite for measuring tokens-per-second with/without
+  speculative decoding on RTX 5070 Ti and compatible hardware.
+- **Enhanced codebase index** (`context/codebase_index.py`) — improved
+  semantic code search with better chunking, symbol extraction, and
+  index freshness detection. 118 lines of enhancements.
+- **Model presets** in config: `fast`, `balanced`, `quality`, `local`,
+  `cloud`, `frontier` shortcuts in `MODEL_PRESETS` dict. Default model
+  is now `openai/qwen2.5-coder-14b` with llama.cpp GPU spec decoding.
+- **Expanded driver catalog** (`llm/driver_catalog.yaml`) — new entries
+  for DeepSeek V4, Kimi K2.6, and updated NVIDIA NIM endpoints.
+- **`datasets` dependency** added for training pipeline integration.
+- **Removed unused `textual` dependency** — cleanup from prior framework
+  experimentation.
+- **Enhanced `llamacpp_manager` tool** — health checks, model lifecycle
+  management, and server status reporting for llama.cpp inference.
+- **Expanded LLM client tests** — 324 new assertions covering edge cases,
+  retry logic, and model fallback chains.
+
+### Changed
+
+- **Default model** changed from `ollama/qwen3:4b` to
+  `openai/qwen2.5-coder-14b` with llama.cpp GPU spec decoding (~750
+  tok/s on RTX 5070 Ti with 1.5B draft model).
+- **Documentation audit fixes**: standardized tool naming from `Bash`/`Shell`
+  to `shell(...)` across `docs/permissions.md`, `src/godspeed/security/rules.py`,
+  `src/godspeed/security/permissions.py`, and `src/godspeed/config.py`.
+- **Test reorganization**: moved `tests/test_skills_commands.py` to
+  `tests/test_skills/test_commands.py`; removed redundant
+  `tests/test_evolution/test_skill_gen.py`.
+
 ## [0.4.0] — 2026-05-01
 
 ### Added

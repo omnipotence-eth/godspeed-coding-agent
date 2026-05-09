@@ -16,6 +16,14 @@ def _make_executor(
     return HookExecutor(hooks=hooks, cwd=tmp_path, session_id="test-session-123")
 
 
+def _py_cmd(script: str) -> str:
+    """Build a shell command that runs a Python snippet.
+
+    Uses ``-c`` with properly quoted executable path for cmd.exe.
+    """
+    return f'"{sys.executable}" -c "{script}"'
+
+
 class TestPreToolHooks:
     """Test pre_tool_call hook execution."""
 
@@ -26,7 +34,7 @@ class TestPreToolHooks:
     def test_allows_on_success(self, tmp_path: Path) -> None:
         hook = HookDefinition(
             event="pre_tool_call",
-            command=f"{sys.executable} -c \"print('ok')\"",
+            command=_py_cmd("print('ok')"),
         )
         executor = _make_executor([hook], tmp_path)
         assert executor.run_pre_tool("shell") is True
@@ -34,7 +42,7 @@ class TestPreToolHooks:
     def test_blocks_on_failure(self, tmp_path: Path) -> None:
         hook = HookDefinition(
             event="pre_tool_call",
-            command=f'{sys.executable} -c "raise SystemExit(1)"',
+            command=_py_cmd("import sys; sys.exit(1)"),
         )
         executor = _make_executor([hook], tmp_path)
         assert executor.run_pre_tool("shell") is False
@@ -42,7 +50,7 @@ class TestPreToolHooks:
     def test_tool_filter_matches(self, tmp_path: Path) -> None:
         hook = HookDefinition(
             event="pre_tool_call",
-            command=f'{sys.executable} -c "raise SystemExit(1)"',
+            command=_py_cmd("import sys; sys.exit(1)"),
             tools=["shell"],
         )
         executor = _make_executor([hook], tmp_path)
@@ -54,7 +62,7 @@ class TestPreToolHooks:
     def test_tool_filter_none_matches_all(self, tmp_path: Path) -> None:
         hook = HookDefinition(
             event="pre_tool_call",
-            command=f'{sys.executable} -c "raise SystemExit(1)"',
+            command=_py_cmd("import sys; sys.exit(1)"),
             tools=None,
         )
         executor = _make_executor([hook], tmp_path)

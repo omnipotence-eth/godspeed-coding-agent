@@ -8,6 +8,9 @@ from typing import Any
 
 from godspeed.agent.conversation import Conversation
 from godspeed.agent.loop import agent_loop
+from godspeed.agent.retrieval_agent import (
+    RETRIEVAL_SYSTEM_PROMPT,
+)
 from godspeed.llm.client import LLMClient
 from godspeed.tools.base import RiskLevel, Tool, ToolContext, ToolResult
 from godspeed.tools.registry import ToolRegistry
@@ -112,6 +115,38 @@ class AgentCoordinator:
         logger.info("Spawning %d parallel sub-agents depth=%d", len(tasks), depth)
         coros = [self.spawn(task, depth=depth) for task in tasks]
         return list(await asyncio.gather(*coros, return_exceptions=False))
+
+    async def spawn_retrieval(
+        self,
+        query: str,
+    ) -> str:
+        """Spawn a retrieval sub-agent with read-only tools and structured output.
+
+        The retrieval agent uses a specialized system prompt focused on
+        code exploration and returns ``file:line-range`` results.
+        """
+        logger.info("Spawning retrieval agent query=%r", query[:100])
+
+        conversation = Conversation(
+            system_prompt=RETRIEVAL_SYSTEM_PROMPT,
+            model=self._llm_client.model,
+            max_tokens=getattr(self._llm_client, "_max_tokens", 100_000),
+        )
+
+        try:
+            result = await agent_loop(
+                user_input=query,
+                conversation=conversation,
+                llm_client=self._llm_client,
+                tool_registry=self._tool_registry,
+                tool_context=self._tool_context,
+                max_iterations=25,
+            )
+            logger.info("Retrieval agent completed result_len=%d", len(result))
+            return result
+        except Exception as exc:
+            logger.error("Retrieval agent failed error=%s", exc, exc_info=True)
+            return f"Retrieval error: {exc}"
 
 
 class SpawnAgentTool(Tool):

@@ -28,18 +28,19 @@ A coding agent you can point at a production codebase and trust. Built-in permis
 
 ---
 
-## What's new in v0.4.0
+## What's new in v0.5.0
 
-Five additions on top of the security-first core. Every one shipped with
-tests + CI-green across Python 3.11 / 3.12 / 3.13.
+Skills system overhaul, retrieval sub-agent, and speculative decoding benchmarks.
+Every change shipped with tests + CI-green across Python 3.11 / 3.12 / 3.13.
 
 | Area | What changed | Why |
 |---|---|---|
-| **`/remember` command** | Persist permission rules from the TUI without editing YAML. | Friction-free rule management — `approve`, `deny`, `ask` with `--project` scoping. |
-| **Model routing** | Task-aware routing (`plan`/`edit`/`read`/`shell`) to different models. | Use cheap models for edits, frontier models for planning. Zero config with `cheap_model`/`strong_model` shortcuts. |
-| **Auto-load env files** | `~/.godspeed/.env.local` and project `.env` files loaded on startup. | No more `$env:NVIDIA_NIM_API_KEY = ...` every shell session. |
-| **Post-edit syntax gate** | `.py` / `.pyi` / `.json` edits that break parse are rejected before write. | Catches indentation and syntax errors from fuzzy matching. |
-| **Windows UTF-8 stdio** | CLI auto-wraps stdout/stderr with `errors='replace'` at startup. | Fixes `UnicodeEncodeError` on default cp1252 consoles. |
+| **Skills overhaul** | Security scanning, evolution, dream consolidation, wiki bridge. | Four new modules for skill management: static analysis, lesson tracking, cross-session pruning, and knowledge-base integration. |
+| **Retrieval sub-agent** | Read-only sub-agent for focused code exploration. | Delegates deep code searches without polluting main agent context. Structured `file:line-range` output. |
+| **Speculative decoding** | GPU-accelerated draft model server + benchmark suite. | ~750 tok/s on RTX 5070 Ti with Qwen2.5-Coder-14B + 1.5B draft model. |
+| **Model presets** | `fast`/`balanced`/`quality`/`local`/`cloud`/`frontier` shortcuts. | One-word model switching for different cost/quality tradeoffs. |
+| **Default model** | Changed to `openai/qwen2.5-coder-14b` (llama.cpp). | Zero-cost local inference with GPU speculative decoding. |
+| **Enhanced codebase index** | Better chunking, symbol extraction, freshness detection. | Semantic code search now finds relevant code faster. |
 
 **Platform docs:** Windows users should read [`docs/quickstart_windows.md`](docs/quickstart_windows.md) for
 platform-specific setup (Miniconda, `PYTHONIOENCODING`, WSL for SWE-bench).

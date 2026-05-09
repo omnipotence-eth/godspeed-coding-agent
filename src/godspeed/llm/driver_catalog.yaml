@@ -201,3 +201,25 @@ drivers:
       ifeval: 84.1
       mmlu_pro: 42.8
     notes: "Qwen2.5-Coder-14B Q4_K_M via llama.cpp b9066 + RTX 5070 Ti. ~78 tok/s baseline. GPU spec decoding: ~750 tok/s (1.5B draft) or ~714 tok/s (0.5B draft). Greedy sampling for spec dec stability. No thinking mode."
+
+  # ─── Local — Zyphra ZAYA1-8B NF4 (transformers + bitsandbytes) ───────
+  openai/zaya1-8b:
+    provider: openai
+    context_window: 131072
+    prompt_profile: thinking
+    tool_call_format: openai
+    cost_per_mtok_in: 0.0
+    cost_per_mtok_out: 0.0
+    known_ceilings:
+      aime26: 89.1
+      hmmt_feb26: 71.6
+      imo_answerbench: 59.3
+      apex_shortlist: 32.2
+      livecodebench_v6: 65.8
+      gpqa_diamond: 71.0
+      mmlu_pro: 74.2
+      ifeval: 85.58
+      ifbench: 52.56
+      eqbench: 72.95
+      bfcl_v4: 39.22
+    notes: "Zyphra ZAYA1-8B NF4 via transformers + bitsandbytes. 0.7B active / 8.4B total params, MoE (16 experts, top-1). ~7.2GB VRAM loaded. Requires Zyphra transformers fork. Thinking profile with <think> tags. No GGUF yet (llama.cpp #22776)."

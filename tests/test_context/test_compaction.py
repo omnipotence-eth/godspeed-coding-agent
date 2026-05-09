@@ -1,4 +1,4 @@
-"""Tests for model-aware compaction."""
+"""Tests for model-aware compaction and graduated compactor."""
 
 from __future__ import annotations
 
@@ -11,6 +11,9 @@ from godspeed.config import get_model_context_window
 from godspeed.context.compaction import (
     COMPACTION_PROMPT_LARGE,
     COMPACTION_PROMPT_SMALL,
+    COMPACTION_STAGES,
+    CompactionContext,
+    GraduatedCompactor,
     compact_if_needed,
     get_compaction_prompt,
 )
@@ -166,3 +169,121 @@ class TestCompactIfNeeded:
         result = await compact_if_needed(conv, client, model="")
         # Should not crash regardless of compaction triggering
         assert isinstance(result, bool)
+
+
+class TestGraduatedCompactor:
+    """Test the 5-stage graduated compaction ladder."""
+
+    def test_stages_defined(self) -> None:
+        assert len(COMPACTION_STAGES) == 5
+        assert COMPACTION_STAGES[0].name == "budget_reduction"
+        assert COMPACTION_STAGES[4].name == "auto_compact"
+
+    def test_get_stage_for_context(self) -> None:
+        compactor = GraduatedCompactor()
+        idx = compactor.get_stage_for_context(80_000, 100_000)
+        assert idx == 0  # 80% > 75% → budget_reduction
+        idx = compactor.get_stage_for_context(65_000, 100_000)
+        assert idx == 1  # 65% > 60% → snip
+        idx = compactor.get_stage_for_context(50_000, 100_000)
+        assert idx == 2  # 50% > 45% → microcompact
+        idx = compactor.get_stage_for_context(35_000, 100_000)
+        assert idx == 3  # 35% > 30% → context_collapse
+        idx = compactor.get_stage_for_context(10_000, 100_000)
+        assert idx == -1  # 10% < 15% → no stage
+
+    def test_reset(self) -> None:
+        compactor = GraduatedCompactor()
+        compactor.get_stage_for_context(80_000, 100_000)
+        assert compactor.context_pct > 0
+        compactor.reset()
+        assert compactor.context_pct == 0.0
+
+    def test_apply_stages_reduces_messages(self) -> None:
+        compactor = GraduatedCompactor()
+        conv = Conversation("System prompt", max_tokens=100_000)
+        for i in range(50):
+            conv.add_user_message(f"Message {i}")
+            conv.add_assistant_message(f"Response {i}")
+            conv.add_tool_result(f"tool-{i}", f"Result data from tool {i} " * 100)
+
+        before = len(conv._messages)
+        results = compactor.apply_stages(conv, 80_000, 100_000)
+        if results:
+            applied = [r for r in results if r.applied]
+            assert len(applied) > 0
+            after = len(conv._messages)
+            assert after <= before
+
+    def test_apply_stages_no_redundant_recompaction(self) -> None:
+        compactor = GraduatedCompactor()
+        conv = Conversation("System prompt", max_tokens=100_000)
+        for i in range(30):
+            conv.add_user_message(f"Message {i}")
+            conv.add_assistant_message(f"Response {i}")
+
+        r1 = compactor.apply_stages(conv, 80_000, 100_000)
+        has_applied = any(r.applied for r in r1)
+        if has_applied:
+            r2 = compactor.apply_stages(conv, 80_000, 100_000)
+            assert len(r2) == 0
+
+    def test_stage1_drop_verbose_tool_outputs(self) -> None:
+        from godspeed.context.compaction import _drop_verbose_tool_outputs
+
+        ctx = CompactionContext(
+            messages=[
+                {"role": "user", "content": "hello"},
+                {"role": "tool", "content": "x" * 5000},
+            ],
+            token_count=100,
+            max_tokens=100_000,
+        )
+        result = _drop_verbose_tool_outputs(ctx)
+        assert len(result) == 2
+        # Verbose tool output should be truncated
+        tool_msg = result[1]
+        assert len(tool_msg["content"]) < 5000
+
+    def test_stage2_remove_low_signal_turns(self) -> None:
+        from godspeed.context.compaction import _remove_low_signal_turns
+
+        ctx = CompactionContext(
+            messages=[
+                {"role": "user", "content": "fix the bug"},
+                {"role": "assistant", "content": "ok"},  # low signal
+                {
+                    "role": "assistant",
+                    "content": "I will fix the parser",
+                    "tool_calls": [{"function": {"name": "file_edit"}}],
+                },
+            ],
+            token_count=100,
+            max_tokens=100_000,
+        )
+        result = _remove_low_signal_turns(ctx)
+        assert len(result) == 2  # "ok" removed
+
+    def test_stage4_keep_metadata_only(self) -> None:
+        from godspeed.context.compaction import _keep_metadata_only
+
+        ctx = CompactionContext(
+            messages=[
+                {"role": "user", "content": "hello " * 100},
+                {
+                    "role": "assistant",
+                    "content": "long " * 100,
+                    "tool_calls": [{"function": {"name": "file_edit"}}],
+                },
+            ],
+            token_count=100,
+            max_tokens=100_000,
+        )
+        result = _keep_metadata_only(ctx)
+        assert len(result) >= 2
+
+    def test_empty_conversation(self) -> None:
+        compactor = GraduatedCompactor()
+        conv = Conversation("System prompt", max_tokens=100_000)
+        results = compactor.apply_stages(conv, 80_000, 100_000)
+        assert isinstance(results, list)

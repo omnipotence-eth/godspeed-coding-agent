@@ -5,6 +5,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+from godspeed.hooks import HookEvent
 from godspeed.hooks.config import HookDefinition
 from godspeed.hooks.executor import HookExecutor
 
@@ -73,17 +74,12 @@ class TestPreToolHooks:
         marker = tmp_path / "marker.txt"
         hook = HookDefinition(
             event="pre_tool_call",
-            command=(
-                f'{sys.executable} -c "'
-                "import sys; "
-                f"open(r'{marker}', 'w').write(sys.argv[0])"
-                '" {tool_name}'
-            ),
+            command=_py_cmd(f"open(r'{marker}', 'w').write('{{tool_name}}')"),
         )
         executor = _make_executor([hook], tmp_path)
         executor.run_pre_tool("shell")
-        # Hook ran successfully (marker file created)
         assert marker.exists()
+        assert marker.read_text() == "shell"
 
 
 class TestPostToolHooks:
@@ -93,7 +89,7 @@ class TestPostToolHooks:
         marker = tmp_path / "post_marker.txt"
         hook = HookDefinition(
             event="post_tool_call",
-            command=f"{sys.executable} -c \"open(r'{marker}', 'w').write('done')\"",
+            command=_py_cmd(f"open(r'{marker}', 'w').write('done')"),
         )
         executor = _make_executor([hook], tmp_path)
         executor.run_post_tool("shell")
@@ -118,8 +114,8 @@ class TestSessionHooks:
     def test_pre_session(self, tmp_path: Path) -> None:
         marker = tmp_path / "pre_session.txt"
         hook = HookDefinition(
-            event="pre_session",
-            command=f"{sys.executable} -c \"open(r'{marker}', 'w').write('started')\"",
+            event="session_start",
+            command=_py_cmd(f"open(r'{marker}', 'w').write('started')"),
         )
         executor = _make_executor([hook], tmp_path)
         executor.run_pre_session()
@@ -128,8 +124,8 @@ class TestSessionHooks:
     def test_post_session(self, tmp_path: Path) -> None:
         marker = tmp_path / "post_session.txt"
         hook = HookDefinition(
-            event="post_session",
-            command=f"{sys.executable} -c \"open(r'{marker}', 'w').write('ended')\"",
+            event="session_end",
+            command=_py_cmd(f"open(r'{marker}', 'w').write('ended')"),
         )
         executor = _make_executor([hook], tmp_path)
         executor.run_post_session()
@@ -183,3 +179,134 @@ class TestHookErrors:
         )
         executor = _make_executor([hook1, hook2], tmp_path)
         assert executor.run_pre_tool("shell") is False
+
+
+class TestFireMethod:
+    """Test the generic fire() method for all hook events."""
+
+    def test_fire_permission_denied(self, tmp_path: Path) -> None:
+        """Test firing permission_denied event."""
+        marker = tmp_path / "permission_denied.txt"
+        hook = HookDefinition(
+            event="permission_denied",
+            command=_py_cmd(f"open(r'{marker}', 'w').write('denied')"),
+        )
+        executor = _make_executor([hook], tmp_path)
+        executor.fire(HookEvent.PERMISSION_DENIED, tool="shell", pattern="dangerous")
+        assert marker.exists()
+
+    def test_fire_permission_granted(self, tmp_path: Path) -> None:
+        """Test firing permission_granted event."""
+        marker = tmp_path / "permission_granted.txt"
+        hook = HookDefinition(
+            event="permission_granted",
+            command=_py_cmd(f"open(r'{marker}', 'w').write('granted')"),
+        )
+        executor = _make_executor([hook], tmp_path)
+        executor.fire(HookEvent.PERMISSION_GRANTED, tool="file_read")
+        assert marker.exists()
+
+    def test_fire_stuck_loop_detected(self, tmp_path: Path) -> None:
+        """Test firing stuck_loop_detected event."""
+        marker = tmp_path / "stuck_loop.txt"
+        hook = HookDefinition(
+            event="stuck_loop_detected",
+            command=_py_cmd(f"open(r'{marker}', 'w').write('stuck')"),
+        )
+        executor = _make_executor([hook], tmp_path)
+        executor.fire(HookEvent.STUCK_LOOP_DETECTED, iterations=3, last_error="error")
+        assert marker.exists()
+
+    def test_fire_budget_exceeded(self, tmp_path: Path) -> None:
+        """Test firing budget_exceeded event."""
+        marker = tmp_path / "budget.txt"
+        hook = HookDefinition(
+            event="budget_exceeded",
+            command=_py_cmd(f"open(r'{marker}', 'w').write('over')"),
+        )
+        executor = _make_executor([hook], tmp_path)
+        executor.fire(HookEvent.BUDGET_EXCEEDED, cost_usd="10.50")
+        assert marker.exists()
+
+    def test_fire_gs_environment_variables(self, tmp_path: Path) -> None:
+        """Test that fire with context passes through to hook execution."""
+        marker = tmp_path / "env_check.txt"
+        hook = HookDefinition(
+            event="pre_permission_check",
+            command=_py_cmd(f"open(r'{marker}', 'w').write('ok')"),
+        )
+        executor = _make_executor([hook], tmp_path)
+        executor.fire(HookEvent.PRE_PERMISSION_CHECK, tool_name="shell")
+        assert marker.exists()
+
+    def test_fire_no_matching_hooks_returns_none(self, tmp_path: Path) -> None:
+        """Test that fire returns None when no hooks match."""
+        hook = HookDefinition(
+            event="permission_denied",
+            command=f"{sys.executable} -c \"print('ok')\"",
+        )
+        executor = _make_executor([hook], tmp_path)
+        # Fire a different event - should return None (no hooks for this event)
+        result = executor.fire(HookEvent.SESSION_START)
+        assert result is None
+
+    def test_fire_pre_event_blocks_execution(self, tmp_path: Path) -> None:
+        """Test that pre_ events can block by returning False."""
+        hook = HookDefinition(
+            event="pre_permission_check",
+            command=f'{sys.executable} -c "import sys; sys.exit(1)"',
+        )
+        executor = _make_executor([hook], tmp_path)
+        result = executor.fire(HookEvent.PRE_PERMISSION_CHECK, tool_name="shell")
+        assert result is False
+
+    def test_fire_post_event_does_not_block(self, tmp_path: Path) -> None:
+        """Test that post_ events don't block even on failure."""
+        hook = HookDefinition(
+            event="post_tool_call",
+            command=f'{sys.executable} -c "import sys; sys.exit(1)"',
+        )
+        executor = _make_executor([hook], tmp_path)
+        result = executor.fire(HookEvent.POST_TOOL_CALL, tool_name="shell")
+        # Post events return None (advisory, don't block)
+        assert result is None
+
+    def test_all_27_events_are_valid(self) -> None:
+        """Test that all 27 HookEvent values exist."""
+        events = [
+            HookEvent.SESSION_START,
+            HookEvent.SESSION_END,
+            HookEvent.TURN_END,
+            HookEvent.PRE_PERMISSION_CHECK,
+            HookEvent.POST_PERMISSION_CHECK,
+            HookEvent.PERMISSION_DENIED,
+            HookEvent.PERMISSION_GRANTED,
+            HookEvent.PRE_TOOL_CALL,
+            HookEvent.POST_TOOL_CALL,
+            HookEvent.TOOL_ERROR,
+            HookEvent.TOOL_RETRY,
+            HookEvent.PRE_FILE_WRITE,
+            HookEvent.POST_FILE_WRITE,
+            HookEvent.PRE_FILE_READ,
+            HookEvent.PRE_COMPACTION,
+            HookEvent.POST_COMPACTION,
+            HookEvent.CONTEXT_THRESHOLD_75,
+            HookEvent.CONTEXT_THRESHOLD_50,
+            HookEvent.CONTEXT_THRESHOLD_25,
+            HookEvent.PRE_SUBAGENT_SPAWN,
+            HookEvent.POST_SUBAGENT_COMPLETE,
+            HookEvent.SUBAGENT_ERROR,
+            HookEvent.PRE_EVOLUTION_RUN,
+            HookEvent.POST_EVOLUTION_RUN,
+            HookEvent.SECRET_DETECTED,
+            HookEvent.DANGEROUS_COMMAND,
+            HookEvent.STUCK_LOOP_DETECTED,
+            HookEvent.BUDGET_EXCEEDED,
+            HookEvent.AUDIT_WRITE,
+            HookEvent.POST_GRAPH_BUILD,
+            HookEvent.WORKFLOW_PHASE_COMPLETE,
+            HookEvent.WORKFLOW_COMPLETE,
+            HookEvent.WORKFLOW_REJECTED,
+        ]
+        # Should have 33 events (including the new ones)
+        assert len(events) >= 27

@@ -6,8 +6,11 @@ import logging
 import shlex
 import subprocess
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
+from godspeed.hooks import HookEvent
 from godspeed.hooks.config import HookDefinition
 
 logger = logging.getLogger(__name__)
@@ -45,50 +48,71 @@ class HookExecutor:
 
     def run_pre_tool(self, tool_name: str) -> bool:
         """Run pre_tool_call hooks. Returns True to proceed, False to abort."""
-        for hook in self._hooks:
-            if hook.event != "pre_tool_call":
-                continue
-            if not self._matches_tool(hook, tool_name):
-                continue
-
-            exit_code = self._execute(hook, {"tool_name": tool_name})
-            if exit_code != 0:
-                logger.warning(
-                    "Pre-tool hook blocked tool=%s command=%s exit=%d",
-                    tool_name,
-                    hook.command,
-                    exit_code,
-                )
-                return False
-        return True
+        return self.fire(HookEvent.PRE_TOOL_CALL, tool_name=tool_name) is not False
 
     def run_post_tool(self, tool_name: str, result: str = "") -> None:
         """Run post_tool_call hooks."""
-        for hook in self._hooks:
-            if hook.event != "post_tool_call":
-                continue
-            if not self._matches_tool(hook, tool_name):
-                continue
-
-            self._execute(hook, {"tool_name": tool_name})
+        self.fire(HookEvent.POST_TOOL_CALL, tool_name=tool_name)
 
     def run_pre_session(self) -> None:
         """Run pre_session hooks."""
-        for hook in self._hooks:
-            if hook.event == "pre_session":
-                self._execute(hook, {})
+        self.fire(HookEvent.SESSION_START)
 
     def run_post_session(self) -> None:
         """Run post_session hooks."""
-        for hook in self._hooks:
-            if hook.event == "post_session":
-                self._execute(hook, {})
+        self.fire(HookEvent.SESSION_END)
+
+    def fire(
+        self,
+        event: HookEvent,
+        **context: Any,
+    ) -> bool | None:
+        """Fire hooks for a specific event.
+
+        Args:
+            event: The HookEvent to fire.
+            **context: Additional context variables to pass to hook commands.
+
+        Returns:
+            - None: No hooks fired or all hooks succeeded (advisory).
+            - False: A pre_* hook returned non-zero (blocks execution).
+            - True: Should not happen (hooks are advisory except pre_*).
+        """
+        hooks_for_event = [h for h in self._hooks if h.event == event.value]
+        if not hooks_for_event:
+            return None
+
+        base_context = {
+            "gs_event": event.value,
+            "gs_session_id": self._session_id,
+            "gs_timestamp": datetime.now(UTC).isoformat(),
+            **context,
+        }
+
+        blocked = False
+        for hook in hooks_for_event:
+            tool_name = base_context.get("tool_name")
+            if tool_name is not None and not self._matches_tool(hook, tool_name):
+                continue
+
+            exit_code = self._execute(hook, base_context)
+            if exit_code != 0:
+                logger.warning(
+                    "Hook blocked event=%s command=%s exit=%d",
+                    event.value,
+                    hook.command,
+                    exit_code,
+                )
+                if event.value.startswith("pre_"):
+                    blocked = True
+
+        return False if blocked else None
 
     def _matches_tool(self, hook: HookDefinition, tool_name: str) -> bool:
         """Check if a hook applies to the given tool."""
         return hook.tools is None or tool_name in hook.tools
 
-    def _execute(self, hook: HookDefinition, context: dict[str, str]) -> int:
+    def _execute(self, hook: HookDefinition, context: dict[str, Any]) -> int:
         """Execute a hook command with template variable expansion.
 
         Returns the exit code (0 = success).
@@ -97,7 +121,7 @@ class HookExecutor:
             "session_id": self._session_id,
             "cwd": str(self._cwd),
             "project_dir": str(self._cwd),
-            **context,
+            **{k: str(v) for k, v in context.items()},
         }
 
         try:
@@ -119,8 +143,6 @@ class HookExecutor:
 
         try:
             if sys.platform == "win32":
-                # On Windows, always use shell=True. cmd.exe handles
-                # path quoting better than CreateProcess for list-based args.
                 result = subprocess.run(  # noqa: S602
                     command,
                     shell=True,

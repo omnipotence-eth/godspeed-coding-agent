@@ -56,7 +56,7 @@ def _walk(directory: Path) -> list[Path]:
             if f.is_file() and f.name != ".gitkeep":
                 files.append(f)
     except OSError:
-        pass
+        return files
     return files
 
 

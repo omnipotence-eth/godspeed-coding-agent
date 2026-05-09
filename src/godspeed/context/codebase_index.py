@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import threading
 import time
@@ -136,6 +137,23 @@ class CodebaseIndex:
         self._collection = None
         self._client = None
 
+    def _mtimes_path(self) -> Path:
+        return self._db_path.parent / "file_mtimes.json"
+
+    def _load_mtimes(self) -> dict[str, float]:
+        path = self._mtimes_path()
+        if path.exists():
+            try:
+                return json.loads(path.read_text())
+            except Exception:
+                return {}
+        return {}
+
+    def _save_mtimes(self, mtimes: dict[str, float]) -> None:
+        path = self._mtimes_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(mtimes, indent=2))
+
     def _ensure_collection(self) -> Any:
         """Get or create the ChromaDB collection."""
         if self._collection is not None:
@@ -205,6 +223,9 @@ class CodebaseIndex:
                 return 0
 
             self._index_time = time.time()
+            self._save_mtimes(
+                {str(p): p.stat().st_mtime for p in self._iter_files(excludes)}
+            )
             logger.info(
                 "Indexed %d chunks from %s",
                 total,
@@ -217,9 +238,15 @@ class CodebaseIndex:
 
     @staticmethod
     def _add_batch(collection: Any, batch: list[Any], base_id: int) -> None:
-        """Add a batch of chunks to the ChromaDB collection."""
-        collection.add(
-            ids=[f"chunk_{base_id + j}" for j in range(len(batch))],
+        """Add a batch of chunks to the ChromaDB collection.
+
+        Uses deterministic IDs (``file_path|Lstart_line``) so that
+        ``collection.upsert`` is idempotent — re-indexing the same file
+        overwrites its own chunks without colliding with other files.
+        ``base_id`` is ignored (kept for API compatibility).
+        """
+        collection.upsert(
+            ids=[f"{c.file_path}|L{c.start_line}" for c in batch],
             documents=[c.content for c in batch],
             metadatas=[
                 {
@@ -235,6 +262,55 @@ class CodebaseIndex:
     async def build_index_async(self, exclude: list[str] | None = None) -> int:
         """Build index in a background thread."""
         return await asyncio.get_event_loop().run_in_executor(None, self.build_index, exclude)
+
+    def update_index(self, exclude: list[str] | None = None) -> int:
+        """Incrementally update the index — only re-index changed files.
+
+        Compares current file mtimes against a cached sidecar
+        (``.godspeed/index/file_mtimes.json``). New and modified files are
+        re-indexed; deleted files are removed from the index.
+        """
+        if not self.is_available:
+            return 0
+
+        self._building = True
+        excludes = DEFAULT_EXCLUDES | set(exclude or [])
+
+        try:
+            self._ensure_collection()
+            old_mtimes = self._load_mtimes()
+            current_files = {str(p): p for p in self._iter_files(excludes)}
+            new_mtimes: dict[str, float] = {}
+            total_chunks = 0
+
+            for file_path_str, path in current_files.items():
+                mtime = path.stat().st_mtime
+                new_mtimes[file_path_str] = mtime
+
+                old_mtime = old_mtimes.get(file_path_str)
+                if old_mtime is None or mtime > old_mtime + 0.001:
+                    self.reindex_file(path)
+                    total_chunks += len(list(chunk_file(path)))
+
+            for file_path_str in old_mtimes:
+                if file_path_str not in current_files:
+                    self.remove_file(Path(file_path_str))
+
+            self._save_mtimes(new_mtimes)
+            self._index_time = time.time()
+
+            if total_chunks == 0:
+                logger.debug("Index is already up-to-date (%d files)", len(current_files))
+            else:
+                logger.info("Index incrementally updated: %d chunks re-indexed", total_chunks)
+            return total_chunks
+
+        finally:
+            self._building = False
+
+    async def update_index_async(self, exclude: list[str] | None = None) -> int:
+        """Update index in a background thread."""
+        return await asyncio.get_event_loop().run_in_executor(None, self.update_index, exclude)
 
     def search(self, query: str, top_k: int = 5) -> list[SearchResult]:
         """Search the codebase index.
@@ -288,9 +364,12 @@ class CodebaseIndex:
             return []
 
     def needs_reindex(self) -> bool:
-        """Check if the index is stale (newer files exist than index time)."""
+        """Check if the index is stale (newer files exist than index time).
+
+        Uses the mtime sidecar for O(1) staleness detection instead of
+        scanning all indexable files.
+        """
         if self._index_time is None:
-            # Check if DB exists with data
             if not self._db_path.exists():
                 return True
             if self.is_available:
@@ -301,13 +380,25 @@ class CodebaseIndex:
                     return True
             return True
 
-        # Check if any source file is newer than index
-        for path in self._iter_files(set(DEFAULT_EXCLUDES)):
-            try:
-                if path.stat().st_mtime > self._index_time:
-                    return True
-            except OSError:
-                continue
+        old_mtimes = self._load_mtimes()
+        if not old_mtimes:
+            # No mtime sidecar (e.g. upgraded from old index format).
+            # Fall back to legacy scan-based check.
+            for path in self._iter_files(set(DEFAULT_EXCLUDES)):
+                try:
+                    if path.stat().st_mtime > self._index_time:
+                        return True
+                except OSError:
+                    continue
+            return False
+
+        excludes = set(DEFAULT_EXCLUDES)
+        for path in self._iter_files(excludes):
+            str_path = str(path)
+            mtime = path.stat().st_mtime
+            old = old_mtimes.get(str_path)
+            if old is None or mtime > old + 0.001:
+                return True
 
         return False
 
@@ -370,8 +461,7 @@ class CodebaseIndex:
             chunks = list(chunk_file(file_path))
             if not chunks:
                 return True
-            base_id = collection.count()
-            self._add_batch(collection, chunks, base_id)
+            self._add_batch(collection, chunks, 0)
             return True
         except Exception as exc:
             logger.warning("Add file failed: %s", exc)

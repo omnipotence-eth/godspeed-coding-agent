@@ -111,6 +111,7 @@ class _LoopState:
     must_fix_injections: int = 0
     recent_error_hashes: list[str] = field(default_factory=list)
     speculative_cache: dict[str, asyncio.Task[ToolResult]] = field(default_factory=dict)
+    pending_background_tasks: list[asyncio.Task] = field(default_factory=list)
 
     # --- Loop config (set once at loop start) ---
     auto_fix_retries: int = 3
@@ -261,6 +262,8 @@ async def agent_loop(
             await _compact_conversation(conversation, llm_client)
             loop_metrics.record_compaction()
 
+        await _drain_background_tasks(state, conversation, metrics)
+
         # Task-aware routing: classify the upcoming call from conversation
         # state. Cheap heuristic (no extra LLM call); resolves to one of
         # plan/edit/read/shell. The router translates that to a model
@@ -375,9 +378,12 @@ async def agent_loop(
         for raw_tc in response.tool_calls:
             parsed_calls.append((raw_tc, _parse_tool_call(raw_tc)))
 
-        # --- Phase 2: Permission checks + pre-tool hooks (sequential) ---
-        # These are fast and order-sensitive, so always sequential.
+        # --- Phase 2: Permission checks + pre-tool hooks (parallel) ---
+        # Malformed calls are trivial O(1) checks handled sequentially first.
+        # Permission and hook evaluations for valid calls are I/O-bound and
+        # batched with asyncio.gather for latency reduction.
         permitted: list[ToolCall] = []
+        valid_calls: list[ToolCall] = []
         for raw_tc, tool_call in parsed_calls:
             _check_cancel(cancel_event)
             if tool_call is None:
@@ -394,50 +400,53 @@ async def agent_loop(
                     ),
                 )
                 continue
+            retries = 0
+            valid_calls.append(tool_call)
 
-            retries = 0  # Reset on valid tool call
+        if valid_calls:
+            async def _eval_one(tc: ToolCall) -> ToolCall | None:
+                if tool_context.permissions is not None:
+                    if inspect.iscoroutinefunction(tool_context.permissions.evaluate):
+                        decision = await tool_context.permissions.evaluate(tc)
+                    else:
+                        decision = tool_context.permissions.evaluate(tc)
+                    if decision == "deny":
+                        reason = f"Permission denied for {tc.format_for_permission}"
+                        logger.info("Permission denied tool=%s", tc.tool_name)
+                        loop_metrics.record_tool_denial()
+                        if on_permission_denied:
+                            on_permission_denied(tc.tool_name, reason)
+                        conversation.add_tool_result(
+                            tool_call_id=tc.call_id,
+                            content=(
+                                f"DENIED: {reason}. "
+                                "This tool call was blocked by the permission engine."
+                            ),
+                        )
+                        return None
 
-            # Permission check
-            if tool_context.permissions is not None:
-                if inspect.iscoroutinefunction(tool_context.permissions.evaluate):
-                    decision = await tool_context.permissions.evaluate(tool_call)
-                else:
-                    decision = tool_context.permissions.evaluate(tool_call)
-                if decision == "deny":
-                    reason = f"Permission denied for {tool_call.format_for_permission()}"
-                    logger.info("Permission denied tool=%s", tool_call.tool_name)
-                    loop_metrics.record_tool_denial()
-                    if on_permission_denied:
-                        on_permission_denied(tool_call.tool_name, reason)
-                    conversation.add_tool_result(
-                        tool_call_id=tool_call.call_id,
-                        content=(
-                            f"DENIED: {reason}. "
-                            "This tool call was blocked by the permission engine."
-                        ),
+                if on_tool_call:
+                    on_tool_call(tc.tool_name, tc.arguments)
+
+                if hook_executor is not None:
+                    hook_ok = await asyncio.get_running_loop().run_in_executor(
+                        None, hook_executor.run_pre_tool, tc.tool_name
                     )
-                    continue
+                    if not hook_ok:
+                        logger.info("Pre-tool hook blocked tool=%s", tc.tool_name)
+                        conversation.add_tool_result(
+                            tool_call_id=tc.call_id,
+                            content="BLOCKED: Pre-tool hook returned non-zero exit.",
+                        )
+                        return None
 
-            if on_tool_call:
-                on_tool_call(tool_call.tool_name, tool_call.arguments)
+                return tc
 
-            # Pre-tool hook: can block execution
-            if hook_executor is not None:
-                hook_ok = await asyncio.get_running_loop().run_in_executor(
-                    None, hook_executor.run_pre_tool, tool_call.tool_name
-                )
-                if not hook_ok:
-                    logger.info("Pre-tool hook blocked tool=%s", tool_call.tool_name)
-                    conversation.add_tool_result(
-                        tool_call_id=tool_call.call_id,
-                        content="BLOCKED: Pre-tool hook returned non-zero exit.",
-                    )
-                    continue
-
-            permitted.append(tool_call)
+            results = await asyncio.gather(*[_eval_one(tc) for tc in valid_calls])
+            permitted = [r for r in results if r is not None]
 
         if not permitted:
-            # All calls were malformed, denied, or blocked — continue to next LLM turn
+            await _drain_background_tasks(state, conversation, metrics)
             loop_metrics.record_iteration(time.monotonic() - iter_t0)
             if metrics_sink is not None:
                 metrics_sink.emit("loop_iteration", loop_metrics.to_dict())
@@ -476,6 +485,9 @@ async def agent_loop(
         loop_metrics.record_iteration(time.monotonic() - iter_t0)
         if metrics_sink is not None:
             metrics_sink.emit("loop_iteration", loop_metrics.to_dict())
+
+        # Drain completed background tasks from this iteration before proceeding
+        await _drain_background_tasks(state, conversation, metrics)
 
     if metrics is not None:
         metrics.iterations_used = iteration_limit
@@ -716,7 +728,8 @@ async def _post_process_results(
         else:
             state.recent_error_hashes.clear()
 
-        # Auto-verify for write operations
+        # Auto-verify for write operations — fire-and-forget in background.
+        # The next iteration drains pending tasks before the LLM call.
         if (
             not result.is_error
             and tc.tool_name in ("file_edit", "file_write")
@@ -724,24 +737,15 @@ async def _post_process_results(
         ):
             file_path = tc.arguments.get("file_path", "")
             if file_path and file_path.endswith(VERIFIABLE_EXTENSIONS):
-                verify_result = await _auto_verify_file(
-                    file_path, tc.call_id, tool_registry, tool_context, state.auto_fix_retries
+                task = asyncio.create_task(
+                    _auto_verify_background(
+                        file_path, tc.call_id, tool_registry, tool_context,
+                        state.auto_fix_retries,
+                    )
                 )
-                conversation.add_tool_result(
-                    tool_call_id=tc.call_id,
-                    content=verify_result.output or "",
-                )
-                verify_text = verify_result.error or verify_result.output or ""
-                state.must_fix_injections = _maybe_inject_must_fix(
-                    conversation,
-                    file_path,
-                    verify_text,
-                    state.must_fix_injections,
-                    metrics,
-                    state.must_fix_cap,
-                )
+                state.pending_background_tasks.append(task)
 
-    # Update write tracking from collected results
+        # Update write tracking from collected results
     batch_writes = len(write_results)
     if has_non_write:
         state.consecutive_writes = batch_writes
@@ -830,22 +834,13 @@ async def _post_process_single_result(
     ):
         file_path = tool_call.arguments.get("file_path", "")
         if file_path and file_path.endswith(VERIFIABLE_EXTENSIONS):
-            verify_result = await _auto_verify_file(
-                file_path, tool_call.call_id, tool_registry, tool_context, state.auto_fix_retries
+            task = asyncio.create_task(
+                _auto_verify_background(
+                    file_path, tool_call.call_id, tool_registry, tool_context,
+                    state.auto_fix_retries,
+                )
             )
-            conversation.add_tool_result(
-                tool_call_id=tool_call.call_id,
-                content=verify_result.output or "",
-            )
-            verify_text = verify_result.error or verify_result.output or ""
-            state.must_fix_injections = _maybe_inject_must_fix(
-                conversation,
-                file_path,
-                verify_text,
-                state.must_fix_injections,
-                metrics,
-                state.must_fix_cap,
-            )
+            state.pending_background_tasks.append(task)
 
     if not result.is_error and tool_call.tool_name in ("file_edit", "file_write"):
         state.consecutive_writes += 1
@@ -952,6 +947,83 @@ async def _auto_verify_file(
         call_id=parent_call_id,
     )
     return await tool_registry.dispatch(verify_call, tool_context)
+
+
+@dataclass
+class _VerifyResult:
+    call_id: str
+    output: str
+    must_fix_file: str
+    must_fix_text: str
+    must_fix_increment: bool
+
+
+async def _auto_verify_background(
+    file_path: str,
+    call_id: str,
+    tool_registry: ToolRegistry,
+    tool_context: ToolContext,
+    auto_fix_retries: int,
+) -> _VerifyResult:
+    """Run auto-verify in background. Returns a result for the drain to apply.
+
+    Never mutates conversation or state directly — the caller processes results
+    in the main loop, avoiding data races with in-flight LLM calls.
+    """
+    verify_result = await _auto_verify_file(
+        file_path, call_id, tool_registry, tool_context, auto_fix_retries
+    )
+    verify_text = verify_result.error or verify_result.output or ""
+    from godspeed.tools.verify import REMAINING_ERRORS_FINGERPRINT
+    return _VerifyResult(
+        call_id=call_id,
+        output=verify_result.output or "",
+        must_fix_file=file_path,
+        must_fix_text=verify_text,
+        must_fix_increment=REMAINING_ERRORS_FINGERPRINT in verify_text,
+    )
+
+
+async def _drain_background_tasks(
+    state: _LoopState,
+    conversation: Conversation,
+    metrics: AgentMetrics | None,
+) -> None:
+    """Non-blocking drain of completed background tasks.
+
+    Only processes tasks that have already completed. Never awaits in-flight
+    tasks, avoiding data races where a task mutates ``conversation`` while
+    an LLM call is in progress.
+    """
+    if not state.pending_background_tasks:
+        return
+    # Yield to event loop so recently-scheduled tasks have a chance to execute
+    # before we check ``t.done()``. This is needed because ``create_task`` only
+    # schedules the coroutine — it doesn't run until the next ``await``.
+    await asyncio.sleep(0)
+    still_pending: list[asyncio.Task] = []
+    for t in state.pending_background_tasks:
+        if not t.done():
+            still_pending.append(t)
+            continue
+        exc = t.exception()
+        if exc:
+            logger.warning("Background task failed: %s", exc)
+            continue
+        result: _VerifyResult = t.result()
+        conversation.add_tool_result(
+            tool_call_id=result.call_id,
+            content=result.output,
+        )
+        state.must_fix_injections = _maybe_inject_must_fix(
+            conversation,
+            result.must_fix_file,
+            result.must_fix_text,
+            state.must_fix_injections,
+            metrics,
+            state.must_fix_cap,
+        )
+    state.pending_background_tasks = still_pending
 
 
 def _maybe_inject_must_fix(

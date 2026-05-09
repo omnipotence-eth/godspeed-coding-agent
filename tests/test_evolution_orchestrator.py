@@ -855,19 +855,19 @@ class TestToolCallFormatForPermission:
         from godspeed.tools.base import ToolCall
 
         tc = ToolCall(tool_name="git", arguments={"action": "status"})
-        assert tc.format_for_permission() == "git(status)"
+        assert tc.format_for_permission == "git(status)"
 
     def test_empty_dict_arguments(self) -> None:
         from godspeed.tools.base import ToolCall
 
         tc = ToolCall(tool_name="repo_map", arguments={})
-        assert tc.format_for_permission() == "repo_map()"
+        assert tc.format_for_permission == "repo_map()"
 
     def test_no_string_values_fallback(self) -> None:
         from godspeed.tools.base import ToolCall
 
         tc = ToolCall(tool_name="unknown", arguments={"count": 42})
-        assert tc.format_for_permission() == "unknown(*)"
+        assert tc.format_for_permission == "unknown(*)"
 
 
 class TestToolResult:

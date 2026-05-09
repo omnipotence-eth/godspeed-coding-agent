@@ -174,13 +174,13 @@ class TestPermissionBypass:
             tool_name="shell",
             arguments={"description": "safe description", "command": "rm -rf /"},
         )
-        formatted = tc.format_for_permission()
+        formatted = tc.format_for_permission
         assert "rm -rf" in formatted
         assert "safe description" not in formatted
 
     def test_format_for_permission_empty_dict(self) -> None:
         tc = ToolCall(tool_name="shell", arguments={})
-        formatted = tc.format_for_permission()
+        formatted = tc.format_for_permission
         assert formatted == "shell()"
 
     def test_destructive_tool_blocked_by_default(self) -> None:
@@ -456,7 +456,7 @@ class TestToolCallInjection:
             tool_name="shell",
             arguments={"command": {"__class__": "os.system", "arg": "rm -rf /"}},
         )
-        formatted = tc.format_for_permission()
+        formatted = tc.format_for_permission
         assert "shell(" in formatted
         # Should not crash or leak the nested structure as executable
 

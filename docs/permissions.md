@@ -50,7 +50,7 @@ permissions:
 ```
 
 Pattern format is `Tool(glob)` — fnmatch globbing on the argument.
-Examples: `Shell(git *)`, `FileRead(*.pem)`, `FileWrite(src/*.py)`.
+Examples: `shell(git *)`, `FileRead(*.pem)`, `FileWrite(src/*.py)`.
 
 ---
 
@@ -60,10 +60,10 @@ Manually editing YAML is friction. Use `/remember` inside the TUI to
 persist a rule without leaving the session:
 
 ```text
-/remember approve Shell(pytest *)        # ALLOW, global
+/remember approve shell(pytest *)        # ALLOW, global
 /remember deny FileWrite(*.env*)         # DENY,  global
-/remember ask Shell(rm *)                # ASK,   global
-/remember approve Shell(make) --project  # ALLOW, this repo only
+/remember ask shell(rm *)                # ASK,   global
+/remember approve shell(make) --project  # ALLOW, this repo only
 ```
 
 Each command:
@@ -100,7 +100,7 @@ During a session you see the ASK prompt:
 You could also pre-authorize ahead of time:
 
 ```text
-/remember approve Shell(pytest *)
+/remember approve shell(pytest *)
 ```
 
 ### 2. Scope a rule to one repo only
@@ -108,7 +108,7 @@ You could also pre-authorize ahead of time:
 When testing an experimental tool that should only run in *this* repo:
 
 ```text
-/remember approve Shell(./experimental_script.sh) --project
+/remember approve shell(./experimental_script.sh) --project
 ```
 
 Goes to `<repo>/.godspeed/settings.yaml`. Other repos on this machine

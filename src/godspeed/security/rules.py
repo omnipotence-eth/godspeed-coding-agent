@@ -30,9 +30,9 @@ class PermissionRule(BaseModel):
 
     Pattern format: 'ToolName(argument_pattern)'
     Examples:
-        - 'Bash(git *)' — matches any git command
+        - 'shell(git *)' — matches any git command
         - 'FileRead(.env)' — matches reading .env
-        - 'Bash(*)' — matches any bash command
+        - 'shell(*)' — matches any shell command
         - 'FileRead(*.pem)' — matches reading any .pem file
 
     The glob pattern is compiled to a regex at construction time for

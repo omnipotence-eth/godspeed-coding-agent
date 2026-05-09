@@ -136,11 +136,38 @@ and specific edits, then wait for user approval before executing.
 """
 
 
+CODECT_EXECUTION_PROMPT = """\
+
+## CodeAct Execution Mode Active
+You are in CodeAct mode. Your primary action mechanism is writing executable
+code. Follow these rules:
+
+1. **Python scripts** — write a ``script`` code block with a ``python``
+   shebang. It will be executed automatically. Use ``argparse`` or read
+   from ``sys.stdin`` for parameters.
+2. **Shell commands** — write a ``bash`` code block for one-liners or
+   short scripts. For anything longer than 5 lines, prefer a Python script.
+3. **File operations** — write Python using ``pathlib`` and ``sys.stdout``
+   for output. Prefer ``file_read`` / ``file_edit`` tools when the operation
+   is simple (single file, small change).
+4. **Return results** — print structured output to stdout. The output is
+   captured and shown to the user.
+5. **No interactive prompts** — scripts must be non-interactive.
+6. **Safety** — all code blocks are reviewed for dangerous patterns before
+   execution. Do not attempt to bypass security.
+"""
+
+
+_tool_descriptions_cache: str | None = None
+_tool_hash_cache: int = 0
+
+
 def build_system_prompt(
     tools: list[Tool],
     project_instructions: str | None = None,
     cwd: Path | None = None,
     plan_mode: bool = False,
+    execution_mode: str = "tool",
     memory_hints: str | None = None,
 ) -> str:
     """Assemble the full system prompt.
@@ -149,13 +176,17 @@ def build_system_prompt(
     1. Core agent prompt (role, guidelines, safety)
     2. Project instructions from GODSPEED.md (if present)
     3. Memory hints (user preferences and corrections)
-    4. Available tool descriptions
+    4. Available tool descriptions (cached between calls)
     5. Working directory context
+    6. Execution mode instructions (CodeAct vs tool-based)
     """
     parts = [CORE_PROMPT, WORKFLOW_PROMPT, QUALITY_PROMPT]
 
     if plan_mode:
         parts.append(PLAN_MODE_PROMPT)
+
+    if execution_mode == "codeact":
+        parts.append(CODECT_EXECUTION_PROMPT)
 
     if cwd:
         parts.append(f"\n## Working Directory\n{cwd}\n")
@@ -167,12 +198,17 @@ def build_system_prompt(
         parts.append(f"\n## Memory\n{memory_hints}\n")
 
     if tools:
-        tool_descriptions = "\n## Available Tools\n"
-        for tool in tools:
-            tool_descriptions += (
-                f"\n### {tool.name}\n{tool.description}\nRisk level: {tool.risk_level}\n"
-            )
-        parts.append(tool_descriptions)
+        global _tool_descriptions_cache, _tool_hash_cache
+        tool_hash = hash(tuple(id(t) for t in tools))
+        if tool_hash != _tool_hash_cache or _tool_descriptions_cache is None:
+            desc = "\n## Available Tools\n"
+            for tool in tools:
+                desc += (
+                    f"\n### {tool.name}\n{tool.description}\nRisk level: {tool.risk_level}\n"
+                )
+            _tool_descriptions_cache = desc
+            _tool_hash_cache = tool_hash
+        parts.append(_tool_descriptions_cache)
 
     return "\n".join(parts)
 

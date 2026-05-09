@@ -132,7 +132,7 @@ class PermissionEngine:
             if risk != RiskLevel.READ_ONLY:
                 return PermissionDecision(DENY, "Plan mode active — read-only tools only")
 
-        formatted = tool_call.format_for_permission()
+        formatted = tool_call.format_for_permission
         tool_name = tool_call.tool_name
 
         # 1. Deny rules first — always win (indexed lookup)
@@ -141,7 +141,7 @@ class PermissionEngine:
                 return PermissionDecision(DENY, f"Matched deny rule: {rule.pattern}")
 
         # 2. Dangerous command detection (for shell commands) — BEFORE session grants
-        #    so that a session grant like "Bash(npm *)" cannot bypass dangerous detection
+        #    so that a session grant like "shell(npm *)" cannot bypass dangerous detection
         if tool_name.lower() in ("bash", "shell"):
             command = ""
             if isinstance(tool_call.arguments, dict):

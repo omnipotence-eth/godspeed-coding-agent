@@ -15,8 +15,8 @@ class TestLooksLikeJsonToolCallOutput:
     def test_plain_text(self):
         assert looks_like_json_tool_call_output("Hello world") is False
 
-    def test_no_code_block(self):
-        assert looks_like_json_tool_call_output('{"name": "foo"}') is False
+    def test_bare_json(self):
+        assert looks_like_json_tool_call_output('{"name": "foo"}') is True
 
     def test_code_block_without_tool_call(self):
         assert looks_like_json_tool_call_output("```json\n{'a': 1}\n```") is False
@@ -121,6 +121,22 @@ Some explanation...
         ids = [r["id"] for r in result]
         assert len(ids) == len(set(ids))
         assert all(i.startswith("call_") for i in ids)
+
+    def test_bare_json_tool_call(self):
+        content = """{"name": "file_write", "arguments": {"file_path": "test.txt", "content": "hello"}}"""
+        result = extract_json_markdown_tool_calls(content)
+        assert len(result) == 1
+        assert result[0]["function"]["name"] == "file_write"
+
+    def test_bare_json_in_text(self):
+        content = """Let me create that file for you.
+{"name": "file_write", "arguments": {"file_path": "test.txt", "content": "hello"}}
+This should work."""
+        result = extract_json_markdown_tool_calls(content)
+        assert len(result) == 1
+        assert result[0]["function"]["name"] == "file_write"
+        args = result[0]["function"]["arguments"]
+        assert '"file_path": "test.txt"' in args
 
     def test_mixed_content_ignored(self):
         content = """

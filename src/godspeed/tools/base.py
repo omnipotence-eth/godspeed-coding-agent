@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import abc
+import functools
 from enum import StrEnum
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
@@ -54,8 +55,9 @@ class ToolCall(BaseModel):
     arguments: dict[str, Any] = Field(default_factory=dict)
     call_id: str = ""
 
+    @functools.cached_property
     def format_for_permission(self) -> str:
-        """Format as 'ToolName(arg_summary)' for permission rule matching.
+        """Cached: 'ToolName(arg_summary)' for permission rule matching.
 
         Prioritizes security-relevant keys over arbitrary first-string-value.
         For shell-like tools, always uses the 'command' key so that a benign
@@ -66,17 +68,13 @@ class ToolCall(BaseModel):
         if isinstance(self.arguments, dict):
             if not self.arguments:
                 return f"{self.tool_name}()"
-            # Prefer 'command' key for shell-like tools
             if "command" in self.arguments:
                 return f"{self.tool_name}({self.arguments['command']})"
-            # Then try 'file_path' for file tools
             if "file_path" in self.arguments:
                 return f"{self.tool_name}({self.arguments['file_path']})"
-            # Then 'action' for git-like tools
             if "action" in self.arguments:
                 action = self.arguments["action"]
                 return f"{self.tool_name}({action})"
-            # Fall back to first string value
             for value in self.arguments.values():
                 if isinstance(value, str):
                     return f"{self.tool_name}({value})"

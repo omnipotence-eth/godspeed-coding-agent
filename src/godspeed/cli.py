@@ -562,7 +562,14 @@ def main(
     if ctx.invoked_subcommand is None:
         with contextlib.suppress(KeyboardInterrupt):
             asyncio.run(
-                _run_app(model, project_dir, verbose, audit_dir, permission_mode, execution_mode or "tool")
+                _run_app(
+                    model,
+                    project_dir,
+                    verbose,
+                    audit_dir,
+                    permission_mode,
+                    execution_mode or "tool",
+                )
             )
 
 

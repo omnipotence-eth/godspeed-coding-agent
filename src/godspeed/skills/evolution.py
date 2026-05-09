@@ -47,13 +47,17 @@ class SkillEvolution:
             "source": lesson.source,
         })
         self._save_lessons(lesson.skill_name, lessons)
-        logger.info("Recorded lesson for skill=%s confidence=%.1f", lesson.skill_name, lesson.confidence)
+        logger.info(
+            "Recorded lesson for skill=%s confidence=%.1f",
+            lesson.skill_name,
+            lesson.confidence,
+        )
 
     def get_eligible_lessons(self, skill_name: str, min_confidence: float = 1.5) -> list[dict]:
         """Return lessons with cumulative confidence >= min_confidence."""
         lessons = self._load_lessons(skill_name)
         merged = self._merge_duplicates(lessons)
-        return [l for l in merged if l.get("confidence", 0) >= min_confidence]
+        return [lesson for lesson in merged if lesson.get("confidence", 0) >= min_confidence]
 
     def evolve(self, skill_name: str, skill_path: Path) -> bool:
         """Rewrite SKILL.md with eligible lessons folded in.
@@ -72,14 +76,20 @@ class SkillEvolution:
             logger.error("Cannot read skill=%s: %s", skill_name, exc)
             return False
 
-        backup = self._backups_dir / f"{skill_name}_{datetime.now(tz=UTC).strftime('%Y%m%d_%H%M%S')}.md"
+        timestamp = datetime.now(tz=UTC).strftime("%Y%m%d_%H%M%S")
+        backup = self._backups_dir / f"{skill_name}_{timestamp}.md"
         backup.write_text(original)
 
         evolved = self._apply_lessons(original, eligible)
         skill_path.write_text(evolved)
 
         self._mark_folded(skill_name, eligible)
-        logger.info("Evolved skill=%s (%d lessons folded, backup=%s)", skill_name, len(eligible), backup.name)
+        logger.info(
+            "Evolved skill=%s (%d lessons folded, backup=%s)",
+            skill_name,
+            len(eligible),
+            backup.name,
+        )
         return True
 
     def _load_lessons(self, skill_name: str) -> list[dict]:
@@ -95,13 +105,13 @@ class SkillEvolution:
 
     def _merge_duplicates(self, lessons: list[dict]) -> list[dict]:
         by_text: dict[str, list[dict]] = defaultdict(list)
-        for l in lessons:
-            norm = l.get("text", "").strip().lower()
+        for lesson in lessons:
+            norm = lesson.get("text", "").strip().lower()
             if norm:
-                by_text[norm].append(l)
+                by_text[norm].append(lesson)
 
         result = []
-        for text, group in by_text.items():
+        for _text, group in by_text.items():
             result.append({
                 "text": group[0]["text"],
                 "confidence": sum(g.get("confidence", 1.0) for g in group),
@@ -111,10 +121,10 @@ class SkillEvolution:
         return result
 
     def _apply_lessons(self, original: str, lessons: list[dict]) -> str:
-        lines = original.split("\n")
+        original.split("\n")
         inserts = ["", "## Lessons", ""]
-        for l in lessons:
-            inserts.append(f"- {l['text']}")
+        for lesson in lessons:
+            inserts.append(f"- {lesson['text']}")
         inserts.append("")
 
         if "## Lessons" in original:
@@ -125,11 +135,11 @@ class SkillEvolution:
     def _mark_folded(self, skill_name: str, folded: list[dict]) -> None:
         lessons = self._load_lessons(skill_name)
         kept = []
-        for l in lessons:
-            l_norm = l.get("text", "").strip().lower()
-            matched = any(f.get("text", "").strip().lower() == l_norm for f in folded)
+        for lesson in lessons:
+            lesson_norm = lesson.get("text", "").strip().lower()
+            matched = any(f.get("text", "").strip().lower() == lesson_norm for f in folded)
             if not matched:
-                kept.append(l)
+                kept.append(lesson)
         if kept:
             self._save_lessons(skill_name, kept)
         else:

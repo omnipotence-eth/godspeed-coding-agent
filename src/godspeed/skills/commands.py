@@ -136,7 +136,8 @@ def register_skill_commands(
                 _output.console.print(f"  [{SUCCESS}]Skill is clean: {target.name}[/{SUCCESS}]")
             else:
                 risk = classify_risk(issues)
-                _output.console.print(f"  [{ERROR if risk == 'dangerous' else 'yellow'}]{risk.upper()}:[/]")
+                risk_color = ERROR if risk == "dangerous" else "yellow"
+                _output.console.print(f"  [{risk_color}]{risk.upper()}:[/]")
                 for i in issues:
                     _output.console.print(f"    [{DIM}]- {i}[/{DIM}]")
             return CommandResult()
@@ -163,13 +164,17 @@ def register_skill_commands(
             table.add_column("Version")
             table.add_column("Installed")
             for entry in installed:
-                table.add_row(entry["name"], entry.get("version", ""), entry.get("installed_at", ""))
+                name = entry["name"]
+                version = entry.get("version", "")
+                installed_at = entry.get("installed_at", "")
+                table.add_row(name, version, installed_at)
             _output.console.print(table)
             return CommandResult()
 
         elif sub == "generate":
             if not rest:
-                _output.console.print(f"  [{ERROR}]Usage: /skill generate <topic> [--as <name>][/{ERROR}]")
+                msg = f"  [{ERROR}]Usage: /skill generate <topic> [--as <name>][/{ERROR}]"
+                _output.console.print(msg)
                 return CommandResult()
             parts = rest.split(" --as ", maxsplit=1)
             topic = parts[0].strip()
@@ -188,7 +193,8 @@ def register_skill_commands(
 
         else:
             _output.console.print(
-                f"  [{NEUTRAL}]Usage: /skill <list|install|remove|scan|verify|hub|generate> [args][/{NEUTRAL}]"
+                f"  [{NEUTRAL}]Usage: /skill <list|install|remove|scan|verify|hub|generate>"
+                f" [args][/{NEUTRAL}]"
             )
             return CommandResult()
 

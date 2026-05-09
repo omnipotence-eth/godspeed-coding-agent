@@ -123,7 +123,10 @@ Some explanation...
         assert all(i.startswith("call_") for i in ids)
 
     def test_bare_json_tool_call(self):
-        content = """{"name": "file_write", "arguments": {"file_path": "test.txt", "content": "hello"}}"""
+        content = (
+            '{"name": "file_write", "arguments":'
+            ' {"file_path": "test.txt", "content": "hello"}}'
+        )
         result = extract_json_markdown_tool_calls(content)
         assert len(result) == 1
         assert result[0]["function"]["name"] == "file_write"

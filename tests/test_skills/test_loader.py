@@ -39,7 +39,10 @@ class TestSkillValidation:
     """Test Skill dataclass validation."""
 
     def test_valid_name(self) -> None:
-        s = Skill(name="my-skill", description="Test", trigger="my-skill", content="Body", path=Path("/x"))
+        s = Skill(
+            name="my-skill", description="Test", trigger="my-skill",
+            content="Body", path=Path("/x"),
+        )
         assert s.name == "my-skill"
 
     def test_invalid_name_uppercase(self) -> None:
@@ -109,7 +112,11 @@ class TestLoadSkillDirectory:
     """Test _load_skill_directory()."""
 
     def test_loads_valid_skill(self, tmp_path: Path) -> None:
-        d = _make_skill_dir(tmp_path, "my-skill", "name: my-skill\ndescription: A skill\ntrigger: ms", "Do the thing.")
+        d = _make_skill_dir(
+            tmp_path, "my-skill",
+            "name: my-skill\ndescription: A skill\ntrigger: ms",
+            "Do the thing.",
+        )
         skill = _load_skill_directory(d)
         assert skill is not None
         assert skill.name == "my-skill"
@@ -136,7 +143,11 @@ class TestLoadSkillDirectory:
         assert _load_skill_directory(tmp_path / "nonexistent") is None
 
     def test_reads_references_subdir(self, tmp_path: Path) -> None:
-        d = _make_skill_dir(tmp_path, "with-refs", "name: with-refs\ndescription: Has refs\ntrigger: wr", "Body")
+        d = _make_skill_dir(
+            tmp_path, "with-refs",
+            "name: with-refs\ndescription: Has refs\ntrigger: wr",
+            "Body",
+        )
         ref_dir = d / "references"
         ref_dir.mkdir()
         (ref_dir / "guide.md").write_text("Guide content")
@@ -145,7 +156,11 @@ class TestLoadSkillDirectory:
         assert len(skill.files.references) == 1
 
     def test_reads_scripts_and_assets(self, tmp_path: Path) -> None:
-        d = _make_skill_dir(tmp_path, "full-skill", "name: full-skill\ndescription: Full\ntrigger: fs", "Body")
+        d = _make_skill_dir(
+            tmp_path, "full-skill",
+            "name: full-skill\ndescription: Full\ntrigger: fs",
+            "Body",
+        )
         (d / "scripts").mkdir()
         (d / "scripts" / "run.sh").write_text("echo hi")
         (d / "assets").mkdir()
@@ -156,7 +171,11 @@ class TestLoadSkillDirectory:
         assert len(skill.files.assets) == 1
 
     def test_invalid_skill_name(self, tmp_path: Path) -> None:
-        d = _make_skill_dir(tmp_path, "Bad-Name", "name: Bad-Name\ndescription: Bad\ntrigger: bn", "Body")
+        d = _make_skill_dir(
+            tmp_path, "Bad-Name",
+            "name: Bad-Name\ndescription: Bad\ntrigger: bn",
+            "Body",
+        )
         assert _load_skill_directory(d) is None
 
     def test_sets_hash(self, tmp_path: Path) -> None:
@@ -180,8 +199,16 @@ class TestDiscoverSkills:
         assert skills == []
 
     def test_discovers_valid_skills(self, tmp_path: Path) -> None:
-        _make_skill_dir(tmp_path, "review", "name: review\ndescription: Review code\ntrigger: review", "Review.")
-        _make_skill_dir(tmp_path, "test", "name: test\ndescription: Run tests\ntrigger: test", "Test.")
+        _make_skill_dir(
+            tmp_path, "review",
+            "name: review\ndescription: Review code\ntrigger: review",
+            "Review.",
+        )
+        _make_skill_dir(
+            tmp_path, "test",
+            "name: test\ndescription: Run tests\ntrigger: test",
+            "Test.",
+        )
         skills = discover_skills([tmp_path])
         assert len(skills) >= 2  # may also find std dirs
         triggers = {s.trigger for s in skills}
@@ -201,8 +228,16 @@ class TestDiscoverSkills:
         override = tmp_path / "override"
         base.mkdir()
         override.mkdir()
-        _make_skill_dir(base, "skill-a", "name: skill-a\ndescription: Base\ntrigger: a", "Base version.")
-        _make_skill_dir(override, "skill-a", "name: skill-a-override\ndescription: Override\ntrigger: a", "Override version.")
+        _make_skill_dir(
+            base, "skill-a",
+            "name: skill-a\ndescription: Base\ntrigger: a",
+            "Base version.",
+        )
+        _make_skill_dir(
+            override, "skill-a",
+            "name: skill-a-override\ndescription: Override\ntrigger: a",
+            "Override version.",
+        )
         skills = discover_skills([base, override])
         matches = [s for s in skills if s.trigger == "a"]
         assert len(matches) == 1

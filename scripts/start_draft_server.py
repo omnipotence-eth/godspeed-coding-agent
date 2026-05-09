@@ -7,7 +7,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from godspeed.tools.llamacpp_manager import start_server, is_server_running, DEFAULT_URL
+from godspeed.tools.llamacpp_manager import DEFAULT_URL, is_server_running, start_server
 
 proc = start_server()
 if proc:

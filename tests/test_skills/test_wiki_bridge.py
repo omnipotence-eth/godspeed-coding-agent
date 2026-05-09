@@ -8,7 +8,6 @@ import pytest
 
 from godspeed.skills.wiki_bridge import WikiBridge
 
-
 # ── Helpers ────────────────────────────────────────────────────────────
 
 
@@ -82,11 +81,12 @@ class TestConstructor:
         assert isinstance(bridge._wiki_dir, Path)
 
     def test_uses_provided_wiki_dir(self) -> None:
-        bridge = WikiBridge(wiki_dir=str(Path("/tmp", "test-wiki")))
-        assert bridge._wiki_dir == Path("/tmp", "test-wiki")
+        tmp = tempfile.mkdtemp()
+        bridge = WikiBridge(wiki_dir=str(Path(tmp, "test-wiki")))
+        assert bridge._wiki_dir == Path(tmp, "test-wiki")
 
     def test_output_dir_is_godspeed_skills(self) -> None:
-        bridge = WikiBridge(wiki_dir="/tmp")
+        bridge = WikiBridge(wiki_dir=tempfile.mkdtemp())
         assert bridge._output_dir == Path.home() / ".godspeed" / "skills"
 
 
@@ -322,7 +322,9 @@ class TestGenerateAll:
         results = bridge.generate_all(tag_filter="untagged")
         assert len(results) >= 1
 
-    def test_generate_all_logs_warning_for_missing_dir(self, caplog: pytest.LogCaptureFixture) -> None:
+    def test_generate_all_logs_warning_for_missing_dir(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
         bridge = WikiBridge(wiki_dir=str(Path(tempfile.mkdtemp(), "does-not-exist")))
         results = bridge.generate_all()
         assert results == []

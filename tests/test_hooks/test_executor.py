@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 
@@ -19,7 +18,7 @@ def _make_executor(
 
 def _py_cmd(script: str) -> str:
     """Build a shell command that runs a Python snippet.
-    
+
     Uses ``-c`` with properly quoted executable path for cmd.exe.
     """
     return f'"{sys.executable}" -c "{script}"'

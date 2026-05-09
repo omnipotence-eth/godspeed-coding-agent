@@ -15,7 +15,7 @@ PATTERNS: list[tuple[str, re.Pattern]] = [
     ("encoded-payload", re.compile(r"[A-Za-z0-9+/]{100,}={0,2}")),
     ("shell-pipe-curl-sh", re.compile(r"curl\s+\S+\s*\|\s*(?:bash|sh)")),
     ("wget-pipe-shell", re.compile(r"wget\s+\S+\s*\|\s*(?:bash|sh)")),
-    ("hardcoded-token", re.compile(r"(?i)(?:api[_-]?key|secret|token)\s*[:=]\s*['\"][A-Za-z0-9_\-]{16,}")),
+    ("hardcoded-token", re.compile(r"(?i)(?:api[_-]?key|secret|token)\s*[:=]\s*['\"][A-Za-z0-9_\-]{16,}")),  # noqa: E501
     ("crypto-miner", re.compile(r"(?i)(?:minerd|cryptonight|xmrig|ethminer)")),
     ("known-vuln-template", re.compile(r"\{\{.*__globals__.*\}\}")),
     ("env-exfil", re.compile(r"(?i)(?:os\.environ|\$ENV|process\.env)\b")),

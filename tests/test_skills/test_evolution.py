@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from godspeed.skills.evolution import Lesson, SkillEvolution
 
 
@@ -99,13 +97,17 @@ class TestEvolve:
         skill_dir = tmp_path / "skills" / name
         skill_dir.mkdir(parents=True)
         skill_path = skill_dir / "SKILL.md"
-        skill_path.write_text("---\nname: test-skill\ndescription: T\ntrigger: ts\n---\n\nOriginal content.")
+        skill_path.write_text(
+            "---\nname: test-skill\ndescription: T\ntrigger: ts\n---\n\nOriginal content."
+        )
         return skill_path
 
     def test_appends_lessons_section(self, tmp_path: Path) -> None:
         evo = SkillEvolution(base_dir=tmp_path / "evo")
         skill_path = self._setup_skill(tmp_path)
-        evo.record_lesson(Lesson(skill_name="test-skill", text="Use async patterns", confidence=2.0))
+        evo.record_lesson(
+            Lesson(skill_name="test-skill", text="Use async patterns", confidence=2.0)
+        )
         updated = evo.evolve("test-skill", skill_path)
         assert updated
         text = skill_path.read_text()
@@ -144,7 +146,7 @@ class TestEvolve:
         evo.record_lesson(Lesson(skill_name="test-skill", text="Remaining lesson", confidence=0.5))
         evo.evolve("test-skill", skill_path)
         remaining = evo._load_lessons("test-skill")
-        texts = [l["text"] for l in remaining]
+        texts = [lesson["text"] for lesson in remaining]
         assert "Folded lesson" not in texts
         assert "Remaining lesson" in texts
 

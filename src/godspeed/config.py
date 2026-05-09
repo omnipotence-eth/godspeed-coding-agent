@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections import OrderedDict
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -52,7 +52,7 @@ _SANDBOX_MODES = ("none", "docker")
 _EXECUTION_MODES = ("tool", "codeact")
 
 
-class ExecutionMode(str, Enum):
+class ExecutionMode(StrEnum):
     """Agent execution strategy.
 
     ``tool`` (default):  Agent uses tool calls as its primary action mechanism.

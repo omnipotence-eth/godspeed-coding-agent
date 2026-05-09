@@ -18,10 +18,7 @@ _SHELL_META = set("|<>;&")
 
 def _needs_shell(command: str) -> bool:
     """Check if a command contains shell metacharacters that require shell=True."""
-    for ch in _SHELL_META:
-        if ch in command:
-            return True
-    return False
+    return any(ch in command for ch in _SHELL_META)
 
 
 class HookExecutor:
@@ -124,7 +121,7 @@ class HookExecutor:
             if sys.platform == "win32":
                 # On Windows, always use shell=True. cmd.exe handles
                 # path quoting better than CreateProcess for list-based args.
-                result = subprocess.run(
+                result = subprocess.run(  # noqa: S602
                     command,
                     shell=True,
                     cwd=self._cwd,

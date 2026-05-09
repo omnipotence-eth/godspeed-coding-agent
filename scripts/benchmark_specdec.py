@@ -30,14 +30,14 @@ PAYLOAD = {
 
 
 def benchmark() -> dict:
-    req = urllib.request.Request(
+    req = urllib.request.Request(  # noqa: S310
         URL,
         data=json.dumps(PAYLOAD).encode(),
         headers={"Content-Type": "application/json"},
         method="POST",
     )
     t0 = time.perf_counter()
-    with urllib.request.urlopen(req, timeout=120) as resp:
+    with urllib.request.urlopen(req, timeout=120) as resp:  # noqa: S310
         data = json.loads(resp.read().decode())
     elapsed = time.perf_counter() - t0
 
@@ -69,7 +69,7 @@ def benchmark() -> dict:
 
 def get_server_props() -> dict:
     req = urllib.request.Request("http://127.0.0.1:8080/props", method="GET")
-    with urllib.request.urlopen(req, timeout=5) as resp:
+    with urllib.request.urlopen(req, timeout=5) as resp:  # noqa: S310
         return json.loads(resp.read().decode())
 
 
@@ -86,7 +86,11 @@ if __name__ == "__main__":
         try:
             r = benchmark()
             results.append(r)
-            print(f"Run {i+1}: {r['tok_s']:.1f} tok/s | {r['completion_tokens']} tokens | {r['predicted_ms']:.0f} ms")
+            print(
+                f"Run {i+1}: {r['tok_s']:.1f} tok/s"
+                f" | {r['completion_tokens']} tokens"
+                f" | {r['predicted_ms']:.0f} ms"
+            )
         except Exception as exc:
             print(f"Run {i+1} failed:", exc)
 

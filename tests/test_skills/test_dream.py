@@ -2,18 +2,17 @@
 
 from __future__ import annotations
 
+import tempfile
 from pathlib import Path
 
-import pytest
-
-from godspeed.skills.dream import RELATIVE_DATE_RE, SkillDream
+from godspeed.skills.dream import SkillDream
 
 
 class TestDateNormalization:
     """Test _normalize_dates relative date conversion."""
 
     def _normalize(self, text: str) -> str:
-        dream = SkillDream(base_dir=Path("/tmp"))
+        dream = SkillDream(base_dir=Path(tempfile.mkdtemp()))
         return dream._normalize_dates(text)
 
     def test_yesterday(self) -> None:
@@ -73,7 +72,9 @@ class TestDreamRun:
         skill_dir = skills_dir / "test-skill"
         skill_dir.mkdir(parents=True)
         skill_md = skill_dir / "SKILL.md"
-        skill_md.write_text("---\nname: test-skill\ndescription: T\ntrigger: ts\n---\n\nUpdated yesterday.")
+        skill_md.write_text(
+            "---\nname: test-skill\ndescription: T\ntrigger: ts\n---\n\nUpdated yesterday."
+        )
 
         stats = dream.run(skills_dir)
         assert stats["dates_normalized"] == 1
@@ -102,7 +103,9 @@ class TestDreamRun:
         for name in ("skill-a", "skill-b"):
             d = skills_dir / name
             d.mkdir(parents=True)
-            (d / "SKILL.md").write_text(f"---\nname: {name}\ndescription: D\ntrigger: {name}\n---\n\nCreated yesterday.")
+            (d / "SKILL.md").write_text(
+                f"---\nname: {name}\ndescription: D\ntrigger: {name}\n---\n\nCreated yesterday."
+            )
 
         stats = dream.run(skills_dir)
         assert stats["dates_normalized"] == 2

@@ -88,7 +88,7 @@ def _compute_hash(text: str) -> str:
 def _find_project_root() -> Path | None:
     """Walk up from cwd to find git worktree root."""
     cwd = Path.cwd().resolve()
-    for parent in [cwd] + list(cwd.parents):
+    for parent in [cwd, *list(cwd.parents)]:
         if (parent / ".git").exists():
             return parent
     return None

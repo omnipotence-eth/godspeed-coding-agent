@@ -9,7 +9,6 @@ from typing import Any
 from godspeed.agent.conversation import Conversation
 from godspeed.agent.loop import agent_loop
 from godspeed.agent.retrieval_agent import (
-    RETRIEVAL_READ_ONLY_TOOLS,
     RETRIEVAL_SYSTEM_PROMPT,
 )
 from godspeed.llm.client import LLMClient

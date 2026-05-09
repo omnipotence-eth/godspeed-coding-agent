@@ -160,7 +160,7 @@ class TestSkillSubCommands:
         )
         for call in commands.register.call_args_list:
             if call[0][0] == "/skill":
-                h = call[0][1]
+                call[0][1]
                 break
         else:
             msg = "/skill handler not registered"
@@ -209,7 +209,9 @@ class TestSkillSubCommands:
         assert result is not None
 
     @patch("godspeed.skills.commands.scan_skill", return_value=[])
-    def test_skill_scan_clean(self, mock_scan: MagicMock, handler: callable, tmp_path: Path) -> None:
+    def test_skill_scan_clean(
+        self, mock_scan: MagicMock, handler: callable, tmp_path: Path
+    ) -> None:
         result = handler(f"scan {tmp_path}")
         assert result is not None
 
@@ -238,7 +240,10 @@ class TestSkillSubCommands:
         result = handler("hub")
         assert result is not None
 
-    @patch("godspeed.skills.commands.SkillHub.list_installed", return_value=[{"name": "s1", "version": "1.0", "installed_at": "now"}])
+    @patch(
+        "godspeed.skills.commands.SkillHub.list_installed",
+        return_value=[{"name": "s1", "version": "1.0", "installed_at": "now"}],
+    )
     def test_skill_hub_with_items(self, mock_list: MagicMock, handler: callable) -> None:
         result = handler("hub")
         assert result is not None
@@ -248,18 +253,22 @@ class TestSkillSubCommands:
         assert result is not None
 
     @patch("godspeed.skills.commands.WikiBridge")
-    def test_skill_generate_success(self, mock_bridge_cls: MagicMock, handler: callable) -> None:
+    def test_skill_generate_success(
+        self, mock_bridge_cls: MagicMock, handler: callable, tmp_path: Path
+    ) -> None:
         mock_bridge = MagicMock()
-        mock_bridge.generate_skill.return_value = Path("/tmp/generated-skill")
+        mock_bridge.generate_skill.return_value = tmp_path / "generated-skill"
         mock_bridge_cls.return_value = mock_bridge
         result = handler("generate nvfp4-benchmarks")
         assert result is not None
         mock_bridge.generate_skill.assert_called_once_with("nvfp4-benchmarks", output_name=None)
 
     @patch("godspeed.skills.commands.WikiBridge")
-    def test_skill_generate_with_custom_name(self, mock_bridge_cls: MagicMock, handler: callable) -> None:
+    def test_skill_generate_with_custom_name(
+        self, mock_bridge_cls: MagicMock, handler: callable, tmp_path: Path
+    ) -> None:
         mock_bridge = MagicMock()
-        mock_bridge.generate_skill.return_value = Path("/tmp/generated-skill")
+        mock_bridge.generate_skill.return_value = tmp_path / "generated-skill"
         mock_bridge_cls.return_value = mock_bridge
         result = handler("generate nvfp4 --as nvfp4-bench")
         assert result is not None
@@ -309,7 +318,9 @@ class TestSkillEvolve:
         assert result is not None
 
     @patch("godspeed.skills.commands.SkillEvolution.evolve", return_value=True)
-    def test_evolve_success(self, mock_evolve: MagicMock, handler: callable, tmp_path: Path) -> None:
+    def test_evolve_success(
+        self, mock_evolve: MagicMock, handler: callable, tmp_path: Path
+    ) -> None:
         skill_dir = tmp_path / ".godspeed" / "skills" / "myskill"
         skill_dir.mkdir(parents=True)
         (skill_dir / "SKILL.md").write_text("---\nname: myskill\ndescription: test\n---\nbody")
@@ -317,7 +328,9 @@ class TestSkillEvolve:
         assert result is not None
 
     @patch("godspeed.skills.commands.SkillEvolution.evolve", return_value=False)
-    def test_evolve_no_eligible_lessons(self, mock_evolve: MagicMock, handler: callable, tmp_path: Path) -> None:
+    def test_evolve_no_eligible_lessons(
+        self, mock_evolve: MagicMock, handler: callable, tmp_path: Path
+    ) -> None:
         skill_dir = tmp_path / ".godspeed" / "skills" / "myskill"
         skill_dir.mkdir(parents=True)
         (skill_dir / "SKILL.md").write_text("---\nname: myskill\ndescription: test\n---\nbody")
@@ -350,7 +363,10 @@ class TestSkillDream:
         msg = "/skill-dream handler not registered"
         raise AssertionError(msg)
 
-    @patch("godspeed.skills.commands.SkillDream.run", return_value={"dates_normalized": 3, "errors": 0})
+    @patch(
+        "godspeed.skills.commands.SkillDream.run",
+        return_value={"dates_normalized": 3, "errors": 0},
+    )
     def test_dream_success(self, mock_run: MagicMock, handler: callable) -> None:
         result = handler("")
         assert result is not None

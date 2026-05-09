@@ -1119,7 +1119,7 @@ wheels = [
 
 [[package]]
 name = "godspeed-coding-agent"
-version = "0.4.0"
+version = "0.5.0"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
@@ -1202,7 +1202,6 @@ requires-dist = [
     { name = "readability-lxml", specifier = ">=0.8.4.1" },
     { name = "rich", specifier = ">=15.0.0,<16.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.15.12,<1.0" },
-
     { name = "tiktoken", specifier = ">=0.9.0,<1.0" },
     { name = "tree-sitter", marker = "extra == 'context'", specifier = ">=0.25.2,<1.0" },
     { name = "tree-sitter-language-pack", marker = "extra == 'context'", specifier = ">=0.5.0,<2.0" },

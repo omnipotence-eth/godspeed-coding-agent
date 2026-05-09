@@ -90,12 +90,10 @@ metadata:
         generated: list[Path] = []
         for page in sorted(self._wiki_dir.glob("*.md")):
             if tag_filter:
-                frontmatter = self._extract_frontmatter(page.read_text(encoding="utf-8", errors="replace"))
+                raw = page.read_text(encoding="utf-8", errors="replace")
+                frontmatter = self._extract_frontmatter(raw)
                 tags = frontmatter.get("tags", [])
-                if isinstance(tags, list):
-                    tags_str = " ".join(tags).lower()
-                else:
-                    tags_str = str(tags).lower()
+                tags_str = " ".join(tags).lower() if isinstance(tags, list) else str(tags).lower()
                 if tag_filter.lower() not in tags_str:
                     continue
 

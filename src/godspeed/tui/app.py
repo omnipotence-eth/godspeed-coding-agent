@@ -75,7 +75,7 @@ def _schedule_dream(dream: Any) -> None:
         stats = dream.run(skills_dir)
         logger.info("Background dream consolidation: %s", stats)
 
-    asyncio.ensure_future(_run_dream())
+    _dream_task = asyncio.ensure_future(_run_dream())  # noqa: RUF006
 
 
 def _build_key_bindings() -> KeyBindings:

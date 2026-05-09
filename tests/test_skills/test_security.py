@@ -17,7 +17,9 @@ from godspeed.skills.security import (
 def skill_dir(tmp_path: Path) -> Path:
     d = tmp_path / "myskill"
     d.mkdir()
-    (d / "SKILL.md").write_text("---\nname: myskill\ndescription: S\ntrigger: ms\n---\n\nClean content.")
+    (d / "SKILL.md").write_text(
+        "---\nname: myskill\ndescription: S\ntrigger: ms\n---\n\nClean content."
+    )
     return d
 
 

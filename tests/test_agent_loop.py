@@ -2994,7 +2994,7 @@ class TestStreamingCallAdditional:
             async def aclose(self):
                 pass
 
-        llm = LLMC(model="test")
+        llm = LLMClient(model="test")
         llm.stream_chat = lambda **_: FakeStream()
 
         conversation = Conversation("You are a coding agent.", max_tokens=100_000)
@@ -3049,7 +3049,7 @@ class TestStreamingCallAdditional:
             async def aclose(self):
                 pass
 
-        llm = LLMC(model="test")
+        llm = LLMClient(model="test")
         llm.stream_chat = lambda **_: FakeStream()
 
         conversation = Conversation("You are a coding agent.", max_tokens=100_000)

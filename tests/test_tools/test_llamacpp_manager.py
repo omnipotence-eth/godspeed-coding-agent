@@ -386,7 +386,7 @@ class TestFindDraftModel:
 
         mock_stat.return_value.st_size = 8 * 1024**3
         mock_exists.return_value = True
-        dummy = P("/models/dummy-1.5b.gguf")
+        dummy = Path("/models/dummy-1.5b.gguf")
         mock_glob.return_value = [dummy]
 
         result = _find_draft_model()

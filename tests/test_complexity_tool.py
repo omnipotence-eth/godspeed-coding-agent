@@ -137,7 +137,9 @@ class TestComplexityTool:
             ),
             patch(
                 "godspeed.tools.complexity.subprocess.run",
-                side_effect=subprocess.TimeoutExpired(cmd=["radon", "cc"], timeout=COMPLEXITY_TIMEOUT),
+                side_effect=subprocess.TimeoutExpired(
+                    cmd=["radon", "cc"], timeout=COMPLEXITY_TIMEOUT
+                ),
             ),
         ):
             result = await tool.execute({"target": "src"}, ctx)
@@ -185,7 +187,9 @@ class TestComplexityTool:
         tool = ComplexityTool()
         with patch("godspeed.tools.complexity.shutil.which", return_value="/usr/bin/radon"):
             with patch("godspeed.tools.complexity.subprocess.run") as mock_run:
-                mock_run.return_value = CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+                mock_run.return_value = CompletedProcess(
+                    args=[], returncode=0, stdout="", stderr=""
+                )
                 result = await tool.execute({}, ctx)
         assert not result.is_error
         assert "Complexity scan of ." in result.output

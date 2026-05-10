@@ -456,7 +456,9 @@ class TestFileEditValidation:
         assert "non-empty" in result.error.lower()
 
     @pytest.mark.asyncio
-    async def test_new_string_not_string_type(self, tool: FileEditTool, tool_context: ToolContext) -> None:
+    async def test_new_string_not_string_type(
+        self, tool: FileEditTool, tool_context: ToolContext
+    ) -> None:
         f = tool_context.cwd / "test.py"
         f.write_text("hello\n")
         result = await tool.execute(
@@ -467,7 +469,9 @@ class TestFileEditValidation:
         assert "new_string must be a string" in result.error
 
     @pytest.mark.asyncio
-    async def test_binary_file_rejected(self, tool: FileEditTool, tool_context: ToolContext) -> None:
+    async def test_binary_file_rejected(
+        self, tool: FileEditTool, tool_context: ToolContext
+    ) -> None:
         f = tool_context.cwd / "data.bin"
         f.write_bytes(b"\x80\x81\x82\x83")
         result = await tool.execute(

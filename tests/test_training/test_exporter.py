@@ -402,12 +402,12 @@ class TestLoadSession:
     def test_skips_blank_lines(self, tmp_path: Path) -> None:
         path = tmp_path / "with_blanks.conversation.jsonl"
         with open(path, "w", encoding="utf-8") as f:
-            f.write('\n')
+            f.write("\n")
             f.write(json.dumps({"role": "user", "content": "hi"}) + "\n")
-            f.write('\n')
-            f.write('\n')
+            f.write("\n")
+            f.write("\n")
             f.write(json.dumps({"role": "assistant", "content": "hello"}) + "\n")
-            f.write('\n')
+            f.write("\n")
         messages = _load_session(path)
         assert len(messages) == 2
 

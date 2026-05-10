@@ -494,7 +494,9 @@ class TestStartServerExtended:
                     return_value=Path("/fake/model.gguf"),
                 ):
                     with patch("subprocess.Popen", return_value=mock_proc):
-                        with patch("godspeed.tools.llamacpp_manager.time.monotonic", side_effect=[0, 999]):
+                        with patch(
+                            "godspeed.tools.llamacpp_manager.time.monotonic", side_effect=[0, 999]
+                        ):
                             result = start_server(timeout=1)
         assert result is mock_proc
 
@@ -560,11 +562,15 @@ class TestGetServerStatusExtended:
     @patch("godspeed.tools.llamacpp_manager.is_server_running", return_value=True)
     @patch("urllib.request.urlopen")
     @patch("urllib.request.Request")
-    def test_running_with_version_from_props(self, mock_request, mock_urlopen, mock_is_running) -> None:
+    def test_running_with_version_from_props(
+        self, mock_request, mock_urlopen, mock_is_running
+    ) -> None:
         models_resp = MagicMock()
         models_resp.read.return_value = b'{"data": [{"id": "test-model"}]}'
         props_resp = MagicMock()
-        props_resp.read.return_value = b'{"version": "b9066", "default_generation_settings": {"n_predict": 256}}'
+        props_resp.read.return_value = (
+            b'{"version": "b9066", "default_generation_settings": {"n_predict": 256}}'
+        )
 
         mock_urlopen.return_value.__enter__.side_effect = [models_resp, props_resp]
 
@@ -600,7 +606,9 @@ class TestGetServerStatusExtended:
     @patch("godspeed.tools.llamacpp_manager.is_server_running", return_value=True)
     @patch("urllib.request.urlopen")
     @patch("urllib.request.Request")
-    def test_models_dict_without_data_key(self, mock_request, mock_urlopen, mock_is_running) -> None:
+    def test_models_dict_without_data_key(
+        self, mock_request, mock_urlopen, mock_is_running
+    ) -> None:
         models_resp = MagicMock()
         models_resp.read.return_value = b'{"object": "list"}'
 

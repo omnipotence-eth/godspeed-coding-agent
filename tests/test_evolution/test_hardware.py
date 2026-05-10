@@ -239,6 +239,7 @@ class TestScanMachineCpuFallback:
             patch("psutil.virtual_memory") as mock_mem,
         ):
             from unittest.mock import MagicMock
+
             mock_mem.return_value = MagicMock(total=16 * 1024**3)
             with patch("os.cpu_count", return_value=None):
                 specs = hw_module.scan_machine()
@@ -256,9 +257,7 @@ class TestRecommendModelsCpuMode:
     def test_cpu_mode_budget_calculation(self) -> None:
         from godspeed.evolution.hardware import MachineSpecs, recommend_models_for_machine
 
-        specs = MachineSpecs(
-            platform="linux", vram_mb=None, ram_gb=8.0, cpu_cores=4, gpu_name=""
-        )
+        specs = MachineSpecs(platform="linux", vram_mb=None, ram_gb=8.0, cpu_cores=4, gpu_name="")
         recs = recommend_models_for_machine(specs)
         # CPU budget = int(8.0 * 1024 * 0.6) = 4915 MB → should get fallback (1500)
         # and maybe fast_alt (3000)
@@ -269,9 +268,7 @@ class TestRecommendModelsCpuMode:
     def test_zero_vram_cpu_mode_budget(self) -> None:
         from godspeed.evolution.hardware import MachineSpecs, recommend_models_for_machine
 
-        specs = MachineSpecs(
-            platform="linux", vram_mb=0, ram_gb=32.0, cpu_cores=8, gpu_name=""
-        )
+        specs = MachineSpecs(platform="linux", vram_mb=0, ram_gb=32.0, cpu_cores=8, gpu_name="")
         recs = recommend_models_for_machine(specs)
         assert recs["fast"] is not None
         assert "balanced" in recs
@@ -279,9 +276,7 @@ class TestRecommendModelsCpuMode:
     def test_cpu_mode_low_ram_only_fallback(self) -> None:
         from godspeed.evolution.hardware import MachineSpecs, recommend_models_for_machine
 
-        specs = MachineSpecs(
-            platform="linux", vram_mb=0, ram_gb=1.0, cpu_cores=2, gpu_name=""
-        )
+        specs = MachineSpecs(platform="linux", vram_mb=0, ram_gb=1.0, cpu_cores=2, gpu_name="")
         recs = recommend_models_for_machine(specs)
         # Budget = int(1.0 * 1024 * 0.6) = 614 MB — below 1500 fallback minimum
         # So only the initial selected_fast (ollama/qwen2.5:1.5b) persists
@@ -298,9 +293,7 @@ class TestFormatMachineReportEdgeCases:
     def test_format_with_none_vram_and_empty_gpu(self) -> None:
         from godspeed.evolution.hardware import MachineSpecs, format_machine_report
 
-        specs = MachineSpecs(
-            platform="linux", vram_mb=None, ram_gb=4.0, cpu_cores=2, gpu_name=""
-        )
+        specs = MachineSpecs(platform="linux", vram_mb=None, ram_gb=4.0, cpu_cores=2, gpu_name="")
         report = format_machine_report(specs)
         assert "GODSPEED MACHINE SCAN" in report
         assert "CPU-only mode" in report
@@ -319,6 +312,7 @@ class TestFormatMachineReportEdgeCases:
 
         with patch("godspeed.evolution.hardware.scan_machine") as mock_scan:
             from godspeed.evolution.hardware import MachineSpecs
+
             mock_scan.return_value = MachineSpecs(
                 platform="darwin", vram_mb=None, ram_gb=32.0, cpu_cores=10, gpu_name="M3"
             )

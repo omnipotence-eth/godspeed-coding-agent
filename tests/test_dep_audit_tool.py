@@ -202,8 +202,10 @@ class TestDepAuditTool:
         ctx = ToolContext(cwd=tmp_path, session_id="t")
         tool = DepAuditTool()
         vuln = CompletedProcess(
-            args=[], returncode=1,
-            stdout="lodash 4.17.21 has CVE-2021-23337", stderr="",
+            args=[],
+            returncode=1,
+            stdout="lodash 4.17.21 has CVE-2021-23337",
+            stderr="",
         )
         with (
             patch(
@@ -253,7 +255,9 @@ class TestDepAuditTool:
         (tmp_path / "Cargo.toml").write_text("[package]\nname='x'\n", encoding="utf-8")
         ctx = ToolContext(cwd=tmp_path, session_id="t")
         tool = DepAuditTool()
-        clean = CompletedProcess(args=[], returncode=0, stdout="Success no vulnerabilities", stderr="")
+        clean = CompletedProcess(
+            args=[], returncode=0, stdout="Success no vulnerabilities", stderr=""
+        )
         with (
             patch(
                 "godspeed.tools.dep_audit.shutil.which",
@@ -272,8 +276,10 @@ class TestDepAuditTool:
         ctx = ToolContext(cwd=tmp_path, session_id="t")
         tool = DepAuditTool()
         vuln = CompletedProcess(
-            args=[], returncode=1,
-            stdout="CVE: RUSTSEC-2024-0336", stderr="",
+            args=[],
+            returncode=1,
+            stdout="CVE: RUSTSEC-2024-0336",
+            stderr="",
         )
         with (
             patch(
@@ -303,8 +309,10 @@ class TestDepAuditTool:
         ctx = ToolContext(cwd=tmp_path, session_id="t")
         tool = DepAuditTool()
         not_installed = CompletedProcess(
-            args=[], returncode=101,
-            stdout="", stderr="error: no such command: `audit`",
+            args=[],
+            returncode=101,
+            stdout="",
+            stderr="error: no such command: `audit`",
         )
         with (
             patch(
@@ -437,8 +445,10 @@ class TestDepAuditTool:
         ctx = ToolContext(cwd=tmp_path, session_id="t")
         tool = DepAuditTool()
         vuln = CompletedProcess(
-            args=[], returncode=0,
-            stdout="", stderr="pydantic 2.10.6 has CVE-2026-28684",
+            args=[],
+            returncode=0,
+            stdout="",
+            stderr="pydantic 2.10.6 has CVE-2026-28684",
         )
         with (
             patch(

@@ -742,9 +742,7 @@ class TestPermissionInsightsEdgeCases:
 
 class TestGenerateReportEdgeCases:
     def test_report_with_empty_latencies(self, tmp_path: Path) -> None:
-        records = _make_tool_call_response_pair(
-            tool_name="bash", latency_ms=0.0
-        )
+        records = _make_tool_call_response_pair(tool_name="bash", latency_ms=0.0)
         _write_session(tmp_path, "sess-1", records)
 
         analyzer = TraceAnalyzer()
@@ -1192,9 +1190,7 @@ class TestToolFrequencyWithThresholds:
         sessions = analyzer.load_sessions(tmp_path)
         sequences = analyzer.analyze_multi_tool_sequences(sessions, min_frequency=3)
 
-        triple = next(
-            (s for s in sequences if s.tools == ("file_read", "file_edit", "bash")), None
-        )
+        triple = next((s for s in sequences if s.tools == ("file_read", "file_edit", "bash")), None)
         assert triple is not None
         assert triple.frequency >= 3
 
@@ -1309,6 +1305,7 @@ class TestParseSessionMoreEdgeCases:
         bad_path.write_text('{"valid": "json", "but": "not_audit_record"}\n')
         # Make it unreadable
         import os
+
         os.chmod(str(bad_path), 0o000)
         try:
             analyzer = TraceAnalyzer()
@@ -1386,9 +1383,7 @@ class TestGenerateReportMultiSource:
     def test_report_most_used_tools_are_top_10(self, tmp_path: Path) -> None:
         records = []
         for i in range(5):
-            records.extend(
-                _make_tool_call_response_pair(tool_name=f"tool-{i}", seq_start=i * 2)
-            )
+            records.extend(_make_tool_call_response_pair(tool_name=f"tool-{i}", seq_start=i * 2))
         _write_session(tmp_path, "sess-1", records)
 
         analyzer = TraceAnalyzer()
@@ -1427,9 +1422,7 @@ class TestGenerateReportMultiSource:
 class TestErrorPatternClustering:
     def test_same_tool_different_categories(self, tmp_path: Path) -> None:
         records = [
-            *_make_tool_call_response_pair(
-                tool_name="bash", outcome="timeout", seq_start=0
-            ),
+            *_make_tool_call_response_pair(tool_name="bash", outcome="timeout", seq_start=0),
             *_make_tool_call_response_pair(
                 tool_name="bash",
                 arguments={"path": "not found"},

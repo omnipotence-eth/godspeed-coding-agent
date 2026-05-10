@@ -92,8 +92,7 @@ class TestChunkFile:
     def test_python_with_async_function(self, tmp_path: Path) -> None:
         f = tmp_path / "async_mod.py"
         f.write_text(
-            "async def fetch():\n    return await do_stuff()\n\n"
-            "def sync():\n    return 1\n",
+            "async def fetch():\n    return await do_stuff()\n\ndef sync():\n    return 1\n",
             encoding="utf-8",
         )
         chunks = chunk_file(f)

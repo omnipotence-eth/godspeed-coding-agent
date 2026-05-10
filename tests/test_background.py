@@ -607,6 +607,7 @@ def test_background_check_tool_risk_level():
     """Line 150: risk_level is HIGH."""
     tool = BackgroundCheckTool()
     from godspeed.tools.base import RiskLevel
+
     assert tool.risk_level == RiskLevel.HIGH
 
 
@@ -623,8 +624,6 @@ def test_background_check_tool_schema():
 # ---------------------------------------------------------------------------
 # BackgroundCheckTool: status
 # ---------------------------------------------------------------------------
-
-
 
 
 @pytest.mark.asyncio

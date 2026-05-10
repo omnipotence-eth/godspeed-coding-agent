@@ -521,7 +521,9 @@ class TestSkillHubAdvanced:
     def test_install_security_scan_fails_with_many_issues(self, tmp_path: Path) -> None:
         hub = SkillHub(base_dir=tmp_path / "hub")
         src = tmp_path / "src"
-        _make_skill_dir(src, "dangerous", "name: dangerous\ndescription: D\ntrigger: d", "Bad stuff.")
+        _make_skill_dir(
+            src, "dangerous", "name: dangerous\ndescription: D\ntrigger: d", "Bad stuff."
+        )
         issues = ["issue 1", "issue 2", "issue 3", "issue 4", "issue 5", "issue 6", "issue 7"]
         with patch("godspeed.skills.security.scan_skill", return_value=issues):
             with pytest.raises(SkillSecurityError, match="failed security scan"):

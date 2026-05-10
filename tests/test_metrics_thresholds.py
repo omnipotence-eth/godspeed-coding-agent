@@ -417,6 +417,7 @@ class TestLoopMetricsToDict:
 class TestHistogram:
     def test_empty_histogram_properties(self) -> None:
         from godspeed.observability.metrics import _Histogram
+
         h = _Histogram()
         assert h.count == 0
         assert h.p50 is None
@@ -425,6 +426,7 @@ class TestHistogram:
 
     def test_single_value_histogram(self) -> None:
         from godspeed.observability.metrics import _Histogram
+
         h = _Histogram()
         h.observe(42.0)
         assert h.count == 1
@@ -434,6 +436,7 @@ class TestHistogram:
 
     def test_histogram_retains_last_100(self) -> None:
         from godspeed.observability.metrics import _Histogram
+
         h = _Histogram()
         for i in range(150):
             h.observe(float(i))
@@ -442,6 +445,7 @@ class TestHistogram:
 
     def test_histogram_p99(self) -> None:
         from godspeed.observability.metrics import _Histogram
+
         h = _Histogram()
         for i in range(100):
             h.observe(float(i))
@@ -456,6 +460,7 @@ class TestHistogram:
 class TestMetricsSink:
     def test_emit_to_stdout(self) -> None:
         from godspeed.observability.metrics import MetricsSink
+
         sink = MetricsSink(path=None)
         sink.emit("test_event", {"value": 42})
         sink.close()
@@ -478,6 +483,7 @@ class TestMetricsSink:
 
     def test_emit_to_file_creates_parent_dirs(self, tmp_path: Path) -> None:
         from godspeed.observability.metrics import MetricsSink
+
         sink = MetricsSink(path=tmp_path / "deep" / "nested" / "metrics.jsonl")
         sink.emit("test", {"key": "val"})
         sink.close()
@@ -485,6 +491,7 @@ class TestMetricsSink:
 
     def test_emit_write_failure_graceful(self, tmp_path: Path) -> None:
         from godspeed.observability.metrics import MetricsSink
+
         sink = MetricsSink(path=tmp_path / "metrics.jsonl")
         with patch("builtins.open", side_effect=OSError("disk full")):
             sink.emit("test", {"key": "val"})
@@ -492,11 +499,13 @@ class TestMetricsSink:
 
     def test_close_when_no_file(self) -> None:
         from godspeed.observability.metrics import MetricsSink
+
         sink = MetricsSink(path=None)
         sink.close()
 
     def test_close_suppresses_os_error(self, tmp_path: Path) -> None:
         from godspeed.observability.metrics import MetricsSink
+
         sink = MetricsSink(path=tmp_path / "metrics.jsonl")
         sink.emit("test", {"key": "val"})
         with patch.object(sink._file, "close", side_effect=OSError("close error")):
@@ -505,12 +514,14 @@ class TestMetricsSink:
 
     def test_context_manager(self, tmp_path: Path) -> None:
         from godspeed.observability.metrics import MetricsSink
+
         with MetricsSink(path=tmp_path / "ctx_metrics.jsonl") as sink:
             sink.emit("test", {"ctx": True})
         assert (tmp_path / "ctx_metrics.jsonl").exists()
 
     def test_context_manager_exit(self, tmp_path: Path) -> None:
         from godspeed.observability.metrics import MetricsSink
+
         sink = MetricsSink(path=tmp_path / "exit_metrics.jsonl")
         sink.__enter__()
         sink.__exit__(None, None, None)
@@ -518,12 +529,14 @@ class TestMetricsSink:
 
     def test_emit_without_path_logs_debug(self) -> None:
         from godspeed.observability.metrics import MetricsSink
+
         sink = MetricsSink(path=None)
         sink.emit("test", {"key": "value"})
         sink.close()
 
     def test_emit_multiple_events_to_same_file(self, tmp_path: Path) -> None:
         from godspeed.observability.metrics import MetricsSink
+
         sink = MetricsSink(path=tmp_path / "multi.jsonl")
         for i in range(10):
             sink.emit("iteration", {"i": i})
@@ -568,6 +581,7 @@ class TestLoopMetricsReset:
 class TestAlertDataClass:
     def test_alert_creation(self) -> None:
         from godspeed.observability.metrics import Alert, AlertSeverity
+
         a = Alert(
             severity=AlertSeverity.WARNING,
             metric="test_metric",
@@ -581,6 +595,7 @@ class TestAlertDataClass:
 
     def test_alert_critical(self) -> None:
         from godspeed.observability.metrics import Alert, AlertSeverity
+
         a = Alert(
             severity=AlertSeverity.CRITICAL,
             metric="error_rate",

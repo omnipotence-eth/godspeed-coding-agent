@@ -185,9 +185,7 @@ class TestCoverageTool:
                 side_effect=[run_result, report_result],
             ) as mock_run,
         ):
-            result = await tool.execute(
-                {"target": "tests/test_api.py", "source": "src/mypkg"}, ctx
-            )
+            result = await tool.execute({"target": "tests/test_api.py", "source": "src/mypkg"}, ctx)
         assert not result.is_error
         run_call_args = mock_run.call_args_list[0][0][0]
         assert "--source" in run_call_args

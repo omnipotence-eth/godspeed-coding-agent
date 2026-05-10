@@ -118,7 +118,9 @@ class TestGlobSearchTool:
         assert "not a directory" in result.error.lower()
 
     @pytest.mark.asyncio
-    async def test_invalid_glob_pattern(self, tool: GlobSearchTool, tool_context: ToolContext) -> None:
+    async def test_invalid_glob_pattern(
+        self, tool: GlobSearchTool, tool_context: ToolContext
+    ) -> None:
         from unittest.mock import patch
 
         with patch("pathlib.Path.glob", side_effect=ValueError("Invalid pattern")):
@@ -138,8 +140,6 @@ class TestGlobSearchTool:
     async def test_path_outside_project_rejected(
         self, tool: GlobSearchTool, tool_context: ToolContext
     ) -> None:
-        result = await tool.execute(
-            {"pattern": "*.py", "path": "/etc"}, tool_context
-        )
+        result = await tool.execute({"pattern": "*.py", "path": "/etc"}, tool_context)
         assert result.is_error
         assert "within project" in result.error.lower()

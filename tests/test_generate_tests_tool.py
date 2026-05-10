@@ -173,7 +173,9 @@ class TestGenerateTestsTool:
         tool = GenerateTestsTool()
         result = await tool.execute({"source_path": "big.py"}, ctx)
         assert result.is_error
-        assert "too large" in (result.error or "").lower() or "max is" in (result.error or "").lower()
+        assert (
+            "too large" in (result.error or "").lower() or "max is" in (result.error or "").lower()
+        )
 
     @pytest.mark.asyncio
     async def test_resolve_tool_path_value_error(self, tmp_path: Path) -> None:
@@ -221,9 +223,7 @@ class TestGenerateTestsTool:
         tool = GenerateTestsTool()
 
         abs_path = tmp_path / "abs_tests" / "test_abs.py"
-        result = await tool.execute(
-            {"source_path": "util.py", "output_path": str(abs_path)}, ctx
-        )
+        result = await tool.execute({"source_path": "util.py", "output_path": str(abs_path)}, ctx)
         assert not result.is_error
         assert abs_path.is_file()
 
@@ -269,7 +269,11 @@ class TestDisplayRel:
         f = tmp_path / "tests" / "test_x.py"
         f.parent.mkdir(parents=True, exist_ok=True)
         f.touch()
-        assert _display_rel(f, tmp_path) == "tests\\test_x.py" if os.name == "nt" else "tests/test_x.py"
+        assert (
+            _display_rel(f, tmp_path) == "tests\\test_x.py"
+            if os.name == "nt"
+            else "tests/test_x.py"
+        )
 
     def test_outside_cwd(self, tmp_path: Path) -> None:
         f = Path("/absolute/path/test_x.py")

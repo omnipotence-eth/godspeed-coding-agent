@@ -846,9 +846,7 @@ class TestMalformedToolCallMaxRetries:
 
         malformed = ChatResponse(
             content="",
-            tool_calls=[
-                {"id": "call_bad", "function": {"name": "shell", "arguments": "broken{"}}
-            ],
+            tool_calls=[{"id": "call_bad", "function": {"name": "shell", "arguments": "broken{"}}],
             finish_reason="tool_calls",
         )
 
@@ -1376,13 +1374,18 @@ class TestMustFixInjection:
 
         async def simulate_verify(*args, **kwargs):
             from godspeed.tools.verify import REMAINING_ERRORS_FINGERPRINT
-            return type("VerifyResult", (), {
-                "call_id": args[2],
-                "output": f"err: {REMAINING_ERRORS_FINGERPRINT} unused import os",
-                "must_fix_file": args[1],
-                "must_fix_text": f"err: {REMAINING_ERRORS_FINGERPRINT} unused import os",
-                "must_fix_increment": True,
-            })()
+
+            return type(
+                "VerifyResult",
+                (),
+                {
+                    "call_id": args[2],
+                    "output": f"err: {REMAINING_ERRORS_FINGERPRINT} unused import os",
+                    "must_fix_file": args[1],
+                    "must_fix_text": f"err: {REMAINING_ERRORS_FINGERPRINT} unused import os",
+                    "must_fix_increment": True,
+                },
+            )()
 
         with patch("godspeed.agent.loop._auto_verify_background", side_effect=simulate_verify):
             result = await agent_loop(
@@ -1427,13 +1430,18 @@ class TestMustFixInjection:
 
         async def simulate_verify(*args, **kwargs):
             from godspeed.tools.verify import REMAINING_ERRORS_FINGERPRINT
-            return type("VerifyResult", (), {
-                "call_id": args[2],
-                "output": f"err: {REMAINING_ERRORS_FINGERPRINT} issue",
-                "must_fix_file": args[1],
-                "must_fix_text": f"err: {REMAINING_ERRORS_FINGERPRINT} issue",
-                "must_fix_increment": True,
-            })()
+
+            return type(
+                "VerifyResult",
+                (),
+                {
+                    "call_id": args[2],
+                    "output": f"err: {REMAINING_ERRORS_FINGERPRINT} issue",
+                    "must_fix_file": args[1],
+                    "must_fix_text": f"err: {REMAINING_ERRORS_FINGERPRINT} issue",
+                    "must_fix_increment": True,
+                },
+            )()
 
         with patch("godspeed.agent.loop._auto_verify_background", side_effect=simulate_verify):
             result = await agent_loop(
@@ -1552,9 +1560,7 @@ class TestSkipUserMessage:
             skip_user_message=True,
         )
         # User message "Hi" should NOT be in messages
-        user_msgs = [
-            m for m in conversation.messages if m.get("role") == "user"
-        ]
+        user_msgs = [m for m in conversation.messages if m.get("role") == "user"]
         assert not any(m.get("content") == "Hi" for m in user_msgs)
 
 
@@ -1570,9 +1576,7 @@ class TestMaxIterations:
         registry.register(MockTool(name="shell", result=ToolResult.success("ok")))
 
         client = LLMClient(model="test")
-        client.chat = AsyncMock(
-            return_value=_make_tool_response("shell", {"command": "echo loop"})
-        )
+        client.chat = AsyncMock(return_value=_make_tool_response("shell", {"command": "echo loop"}))
 
         metrics = AgentMetrics()
         result = await agent_loop(
@@ -1872,9 +1876,7 @@ class TestAutoStashExtended:
             ]
         )
 
-        result = await agent_loop(
-            "Edit", conversation, client, registry, tool_context
-        )
+        result = await agent_loop("Edit", conversation, client, registry, tool_context)
         assert "Done" in result
 
 
@@ -1984,7 +1986,15 @@ class TestSpeculativeOverflow:
             for i in range(3)
         ]
 
-        with patch("godspeed.agent.loop._parse_tool_call", side_effect=[ToolCall(tool_name="file_read", arguments={"file_path": "f.py"}, call_id=f"call_{i:03d}") for i in range(3)]):
+        with patch(
+            "godspeed.agent.loop._parse_tool_call",
+            side_effect=[
+                ToolCall(
+                    tool_name="file_read", arguments={"file_path": "f.py"}, call_id=f"call_{i:03d}"
+                )
+                for i in range(3)
+            ],
+        ):
             _speculative_dispatch(raw_tool_calls, registry, tool_context, cache, max_size=1)
 
         assert len(cache) == 1
@@ -2001,9 +2011,7 @@ class TestSpeculativeOverflow:
         tool_context = MagicMock()
         cache = {}
 
-        raw_tool_calls = [
-            {"id": "call_001", "function": {"name": "unknown", "arguments": "{}"}}
-        ]
+        raw_tool_calls = [{"id": "call_001", "function": {"name": "unknown", "arguments": "{}"}}]
 
         _speculative_dispatch(raw_tool_calls, registry, tool_context, cache)
         assert len(cache) == 0
@@ -2020,9 +2028,7 @@ class TestSpeculativeOverflow:
         tool_context = MagicMock()
         cache = {}
 
-        raw_tool_calls = [
-            {"id": "call_001", "function": {"name": "unknown", "arguments": "{}"}}
-        ]
+        raw_tool_calls = [{"id": "call_001", "function": {"name": "unknown", "arguments": "{}"}}]
 
         _speculative_dispatch(raw_tool_calls, registry, tool_context, cache)
         assert len(cache) == 0
@@ -2058,9 +2064,7 @@ class TestSpeculativeOverflow:
         tool_context = MagicMock()
         cache = {}
 
-        raw_tool_calls = [
-            {"id": "call_001", "function": {"name": "", "arguments": "broken{"}}
-        ]
+        raw_tool_calls = [{"id": "call_001", "function": {"name": "", "arguments": "broken{"}}]
 
         _speculative_dispatch(raw_tool_calls, registry, tool_context, cache)
         assert len(cache) == 0
@@ -2311,13 +2315,15 @@ class TestAutoStashExtendedMore:
             call_id += 1
             return ChatResponse(
                 content="",
-                tool_calls=[{
-                    "id": f"call_{call_id:03d}",
-                    "function": {
-                        "name": "file_edit",
-                        "arguments": json.dumps({"file_path": "test.txt"}),
-                    },
-                }],
+                tool_calls=[
+                    {
+                        "id": f"call_{call_id:03d}",
+                        "function": {
+                            "name": "file_edit",
+                            "arguments": json.dumps({"file_path": "test.txt"}),
+                        },
+                    }
+                ],
                 finish_reason="tool_calls",
             )
 
@@ -2347,13 +2353,15 @@ class TestAutoStashExtendedMore:
             call_id += 1
             return ChatResponse(
                 content="",
-                tool_calls=[{
-                    "id": f"call_{call_id:03d}",
-                    "function": {
-                        "name": "file_edit",
-                        "arguments": json.dumps({"file_path": f"file{call_id}.txt"}),
-                    },
-                }],
+                tool_calls=[
+                    {
+                        "id": f"call_{call_id:03d}",
+                        "function": {
+                            "name": "file_edit",
+                            "arguments": json.dumps({"file_path": f"file{call_id}.txt"}),
+                        },
+                    }
+                ],
                 finish_reason="tool_calls",
             )
 
@@ -2386,13 +2394,15 @@ class TestAutoStashExtendedMore:
             call_id += 1
             return ChatResponse(
                 content="",
-                tool_calls=[{
-                    "id": f"call_{call_id:03d}",
-                    "function": {
-                        "name": "file_edit",
-                        "arguments": json.dumps({"file_path": "test.txt"}),
-                    },
-                }],
+                tool_calls=[
+                    {
+                        "id": f"call_{call_id:03d}",
+                        "function": {
+                            "name": "file_edit",
+                            "arguments": json.dumps({"file_path": "test.txt"}),
+                        },
+                    }
+                ],
                 finish_reason="tool_calls",
             )
 
@@ -2423,13 +2433,15 @@ class TestAutoVerifyBackground:
             side_effect=[
                 ChatResponse(
                     content="",
-                    tool_calls=[{
-                        "id": "call_v1",
-                        "function": {
-                            "name": "file_write",
-                            "arguments": json.dumps({"file_path": "main.py", "content": "x=1"}),
-                        },
-                    }],
+                    tool_calls=[
+                        {
+                            "id": "call_v1",
+                            "function": {
+                                "name": "file_write",
+                                "arguments": json.dumps({"file_path": "main.py", "content": "x=1"}),
+                            },
+                        }
+                    ],
                     finish_reason="tool_calls",
                 ),
                 _make_text_response("Wrote file."),
@@ -2451,13 +2463,17 @@ class TestAutoVerifyBackground:
             side_effect=[
                 ChatResponse(
                     content="",
-                    tool_calls=[{
-                        "id": "call_v2",
-                        "function": {
-                            "name": "file_write",
-                            "arguments": json.dumps({"file_path": "README.md", "content": "# Hi"}),
-                        },
-                    }],
+                    tool_calls=[
+                        {
+                            "id": "call_v2",
+                            "function": {
+                                "name": "file_write",
+                                "arguments": json.dumps(
+                                    {"file_path": "README.md", "content": "# Hi"}
+                                ),
+                            },
+                        }
+                    ],
                     finish_reason="tool_calls",
                 ),
                 _make_text_response("Done."),
@@ -2666,8 +2682,14 @@ class TestSpeculativeDispatchAllModes:
         tool_context_mock = MagicMock()
 
         raw_tool_calls = [
-            {"id": "call_dup", "function": {"name": "file_read", "arguments": '{"file_path": "a.py"}'}},
-            {"id": "call_dup", "function": {"name": "file_read", "arguments": '{"file_path": "b.py"}'}},
+            {
+                "id": "call_dup",
+                "function": {"name": "file_read", "arguments": '{"file_path": "a.py"}'},
+            },
+            {
+                "id": "call_dup",
+                "function": {"name": "file_read", "arguments": '{"file_path": "b.py"}'},
+            },
         ]
 
         cache = {}
@@ -2691,13 +2713,15 @@ class TestParallelExecutionSequential:
             side_effect=[
                 ChatResponse(
                     content="reading",
-                    tool_calls=[{
-                        "id": "call_seq1",
-                        "function": {
-                            "name": "file_read",
-                            "arguments": json.dumps({"file_path": "test.py"}),
-                        },
-                    }],
+                    tool_calls=[
+                        {
+                            "id": "call_seq1",
+                            "function": {
+                                "name": "file_read",
+                                "arguments": json.dumps({"file_path": "test.py"}),
+                            },
+                        }
+                    ],
                     finish_reason="tool_calls",
                 ),
                 _make_text_response("Read from cache."),
@@ -2705,7 +2729,11 @@ class TestParallelExecutionSequential:
         )
 
         result = await agent_loop(
-            "Read", conversation, client, registry, tool_context,
+            "Read",
+            conversation,
+            client,
+            registry,
+            tool_context,
             parallel_tool_calls=False,
         )
         assert "Read" in result or "cached" in result.lower()
@@ -2739,28 +2767,38 @@ class TestAutoCommitMore:
                     call_id += 1
                     return ChatResponse(
                         content="",
-                        tool_calls=[{
-                            "id": f"call_{call_id:03d}",
-                            "function": {
-                                "name": "file_edit",
-                                "arguments": json.dumps({"file_path": f"f{call_id}.py"}),
-                            },
-                        }],
+                        tool_calls=[
+                            {
+                                "id": f"call_{call_id:03d}",
+                                "function": {
+                                    "name": "file_edit",
+                                    "arguments": json.dumps({"file_path": f"f{call_id}.py"}),
+                                },
+                            }
+                        ],
                         finish_reason="tool_calls",
                     )
 
                 client.chat = AsyncMock(
                     side_effect=[
-                        make_edit(), make_edit(), make_edit(),
-                        make_edit(), make_edit(),  # triggers auto-commit at 5
+                        make_edit(),
+                        make_edit(),
+                        make_edit(),
+                        make_edit(),
+                        make_edit(),  # triggers auto-commit at 5
                         make_edit(),  # 1st after commit reset
                         _make_text_response("Done."),
                     ]
                 )
 
                 result = await agent_loop(
-                    "Edit", conversation, client, registry, tool_context,
-                    auto_commit=True, auto_commit_threshold=5,
+                    "Edit",
+                    conversation,
+                    client,
+                    registry,
+                    tool_context,
+                    auto_commit=True,
+                    auto_commit_threshold=5,
                 )
         assert "Done" in result
 
@@ -2789,27 +2827,37 @@ class TestAutoCommitMore:
                     call_id += 1
                     return ChatResponse(
                         content="",
-                        tool_calls=[{
-                            "id": f"call_{call_id:03d}",
-                            "function": {
-                                "name": "file_edit",
-                                "arguments": json.dumps({"file_path": "test.txt"}),
-                            },
-                        }],
+                        tool_calls=[
+                            {
+                                "id": f"call_{call_id:03d}",
+                                "function": {
+                                    "name": "file_edit",
+                                    "arguments": json.dumps({"file_path": "test.txt"}),
+                                },
+                            }
+                        ],
                         finish_reason="tool_calls",
                     )
 
                 client.chat = AsyncMock(
                     side_effect=[
-                        make_edit(), make_edit(), make_edit(),
-                        make_edit(), make_edit(),
+                        make_edit(),
+                        make_edit(),
+                        make_edit(),
+                        make_edit(),
+                        make_edit(),
                         _make_text_response("Done."),
                     ]
                 )
 
                 result = await agent_loop(
-                    "Edit", conversation, client, registry, tool_context,
-                    auto_commit=True, auto_commit_threshold=5,
+                    "Edit",
+                    conversation,
+                    client,
+                    registry,
+                    tool_context,
+                    auto_commit=True,
+                    auto_commit_threshold=5,
                 )
         assert "Done" in result
 
@@ -2839,7 +2887,11 @@ class TestRetrievalSubagentMore:
         )
 
         result = await agent_loop(
-            "Search", conversation, client, registry, tool_context,
+            "Search",
+            conversation,
+            client,
+            registry,
+            tool_context,
             retrieval_subagent=retrieval,
         )
         assert "result" in result.lower() or "differently" in result.lower()
@@ -2866,7 +2918,11 @@ class TestRetrievalSubagentMore:
         )
 
         result = await agent_loop(
-            "Grep", conversation, client, registry, tool_context,
+            "Grep",
+            conversation,
+            client,
+            registry,
+            tool_context,
             retrieval_subagent=retrieval,
         )
         assert "Found" in result
@@ -2893,7 +2949,11 @@ class TestRetrievalSubagentMore:
         )
 
         result = await agent_loop(
-            "Glob", conversation, client, registry, tool_context,
+            "Glob",
+            conversation,
+            client,
+            registry,
+            tool_context,
             retrieval_subagent=retrieval,
         )
         assert "results" in result.lower() or "Glob" in result
@@ -2941,7 +3001,11 @@ class TestStreamingCallAdditional:
         registry = ToolRegistry()
 
         result = await agent_loop(
-            "Hi", conversation, llm, registry, tool_context,
+            "Hi",
+            conversation,
+            llm,
+            registry,
+            tool_context,
             on_assistant_chunk=lambda c: on_chunks.append(c),
         )
 
@@ -2958,7 +3022,11 @@ class TestStreamingCallAdditional:
             def __init__(self):
                 self._chunks = [
                     ChatResponse(content='{"tool": "file_read', tool_calls=[], finish_reason=None),
-                    ChatResponse(content='", "arguments": {"path": "x.py"}}', tool_calls=[], finish_reason=None),
+                    ChatResponse(
+                        content='", "arguments": {"path": "x.py"}}',
+                        tool_calls=[],
+                        finish_reason=None,
+                    ),
                     ChatResponse(
                         content='{"tool": "file_read", "arguments": {"path": "x.py"}}',
                         tool_calls=[],
@@ -2989,7 +3057,11 @@ class TestStreamingCallAdditional:
         registry.register(MockTool(name="file_read", result=ToolResult.success("contents")))
 
         result = await agent_loop(
-            "Read x.py", conversation, llm, registry, tool_context,
+            "Read x.py",
+            conversation,
+            llm,
+            registry,
+            tool_context,
             on_assistant_chunk=lambda c: on_chunks.append(c),
         )
 

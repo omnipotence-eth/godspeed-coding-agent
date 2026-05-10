@@ -83,7 +83,9 @@ class TestFileReadTool:
         assert "non-empty string" in result.error.lower()
 
     @pytest.mark.asyncio
-    async def test_offset_as_convertible_float(self, tool: FileReadTool, tool_context: ToolContext) -> None:
+    async def test_offset_as_convertible_float(
+        self, tool: FileReadTool, tool_context: ToolContext
+    ) -> None:
         test_file = tool_context.cwd / "test.py"
         test_file.write_text("a\nb\nc\nd\ne\n")
         result = await tool.execute({"file_path": "test.py", "offset": 3.0}, tool_context)
@@ -99,7 +101,9 @@ class TestFileReadTool:
         assert "offset must be an integer" in result.error
 
     @pytest.mark.asyncio
-    async def test_limit_as_convertible_float(self, tool: FileReadTool, tool_context: ToolContext) -> None:
+    async def test_limit_as_convertible_float(
+        self, tool: FileReadTool, tool_context: ToolContext
+    ) -> None:
         test_file = tool_context.cwd / "test.py"
         test_file.write_text("a\nb\nc\nd\n")
         result = await tool.execute({"file_path": "test.py", "limit": 2.0}, tool_context)
@@ -115,13 +119,17 @@ class TestFileReadTool:
         assert "limit must be an integer" in result.error
 
     @pytest.mark.asyncio
-    async def test_file_path_not_string(self, tool: FileReadTool, tool_context: ToolContext) -> None:
+    async def test_file_path_not_string(
+        self, tool: FileReadTool, tool_context: ToolContext
+    ) -> None:
         result = await tool.execute({"file_path": 123}, tool_context)
         assert result.is_error
         assert "non-empty string" in result.error.lower()
 
     @pytest.mark.asyncio
-    async def test_offset_below_one_clamped(self, tool: FileReadTool, tool_context: ToolContext) -> None:
+    async def test_offset_below_one_clamped(
+        self, tool: FileReadTool, tool_context: ToolContext
+    ) -> None:
         test_file = tool_context.cwd / "test.py"
         test_file.write_text("line 1\nline 2\n")
         result = await tool.execute({"file_path": "test.py", "offset": 0}, tool_context)
@@ -129,7 +137,9 @@ class TestFileReadTool:
         assert "1\tline 1" in result.output
 
     @pytest.mark.asyncio
-    async def test_limit_clamped_to_max(self, tool: FileReadTool, tool_context: ToolContext) -> None:
+    async def test_limit_clamped_to_max(
+        self, tool: FileReadTool, tool_context: ToolContext
+    ) -> None:
         test_file = tool_context.cwd / "test.py"
         test_file.write_text("a\nb\n")
         result = await tool.execute({"file_path": "test.py", "limit": 99999}, tool_context)
@@ -153,7 +163,9 @@ class TestFileReadTool:
         assert "too large" in result.error.lower()
 
     @pytest.mark.asyncio
-    async def test_binary_file_detection(self, tool: FileReadTool, tool_context: ToolContext) -> None:
+    async def test_binary_file_detection(
+        self, tool: FileReadTool, tool_context: ToolContext
+    ) -> None:
         test_file = tool_context.cwd / "data.bin"
         test_file.write_bytes(b"\x00\x01\x02\x03\xff\xfe\xfd")
         result = await tool.execute({"file_path": "data.bin"}, tool_context)
@@ -175,7 +187,9 @@ class TestFileReadTool:
         assert "empty notebook" in result.output.lower()
 
     @pytest.mark.asyncio
-    async def test_notebook_with_code_cell(self, tool: FileReadTool, tool_context: ToolContext) -> None:
+    async def test_notebook_with_code_cell(
+        self, tool: FileReadTool, tool_context: ToolContext
+    ) -> None:
         nb_path = tool_context.cwd / "test.ipynb"
         nb = {
             "cells": [
@@ -196,7 +210,9 @@ class TestFileReadTool:
         assert "[Cell 0: code]" in result.output
 
     @pytest.mark.asyncio
-    async def test_notebook_with_stream_output(self, tool: FileReadTool, tool_context: ToolContext) -> None:
+    async def test_notebook_with_stream_output(
+        self, tool: FileReadTool, tool_context: ToolContext
+    ) -> None:
         nb_path = tool_context.cwd / "outputs.ipynb"
         nb = {
             "cells": [
@@ -223,7 +239,9 @@ class TestFileReadTool:
         assert "hi" in result.output
 
     @pytest.mark.asyncio
-    async def test_notebook_with_execute_result_output(self, tool: FileReadTool, tool_context: ToolContext) -> None:
+    async def test_notebook_with_execute_result_output(
+        self, tool: FileReadTool, tool_context: ToolContext
+    ) -> None:
         nb_path = tool_context.cwd / "result.ipynb"
         nb = {
             "cells": [
@@ -252,7 +270,9 @@ class TestFileReadTool:
         assert "42" in result.output
 
     @pytest.mark.asyncio
-    async def test_notebook_with_error_output(self, tool: FileReadTool, tool_context: ToolContext) -> None:
+    async def test_notebook_with_error_output(
+        self, tool: FileReadTool, tool_context: ToolContext
+    ) -> None:
         nb_path = tool_context.cwd / "error.ipynb"
         nb = {
             "cells": [
@@ -280,7 +300,9 @@ class TestFileReadTool:
         assert "ZeroDivisionError" in result.output
 
     @pytest.mark.asyncio
-    async def test_notebook_invalid_json(self, tool: FileReadTool, tool_context: ToolContext) -> None:
+    async def test_notebook_invalid_json(
+        self, tool: FileReadTool, tool_context: ToolContext
+    ) -> None:
         nb_path = tool_context.cwd / "broken.ipynb"
         nb_path.write_text("not valid json")
         result = await tool.execute({"file_path": "broken.ipynb"}, tool_context)
@@ -288,7 +310,9 @@ class TestFileReadTool:
         assert "Failed to parse notebook" in result.error
 
     @pytest.mark.asyncio
-    async def test_notebook_with_display_data(self, tool: FileReadTool, tool_context: ToolContext) -> None:
+    async def test_notebook_with_display_data(
+        self, tool: FileReadTool, tool_context: ToolContext
+    ) -> None:
         nb_path = tool_context.cwd / "display.ipynb"
         nb = {
             "cells": [
@@ -315,7 +339,9 @@ class TestFileReadTool:
         assert "[Output: display_data]" in result.output
 
     @pytest.mark.asyncio
-    async def test_notebook_cell_without_source(self, tool: FileReadTool, tool_context: ToolContext) -> None:
+    async def test_notebook_cell_without_source(
+        self, tool: FileReadTool, tool_context: ToolContext
+    ) -> None:
         nb_path = tool_context.cwd / "nosource.ipynb"
         nb = {
             "cells": [
@@ -333,7 +359,9 @@ class TestFileReadTool:
         assert "[Cell 0: markdown]" in result.output
 
     @pytest.mark.asyncio
-    async def test_notebook_unknown_output_type(self, tool: FileReadTool, tool_context: ToolContext) -> None:
+    async def test_notebook_unknown_output_type(
+        self, tool: FileReadTool, tool_context: ToolContext
+    ) -> None:
         nb_path = tool_context.cwd / "unknown.ipynb"
         nb = {
             "cells": [
@@ -362,7 +390,9 @@ class TestFileReadTool:
         assert "Access denied" in result.error
 
     @pytest.mark.asyncio
-    async def test_notebook_binary_error(self, tool: FileReadTool, tool_context: ToolContext) -> None:
+    async def test_notebook_binary_error(
+        self, tool: FileReadTool, tool_context: ToolContext
+    ) -> None:
         nb_path = tool_context.cwd / "bin.ipynb"
         nb_path.write_bytes(b"\x00\x01\x02\xff\xfe")
         result = await tool.execute({"file_path": "bin.ipynb"}, tool_context)
@@ -371,7 +401,9 @@ class TestFileReadTool:
     # --- Offset edge cases ---
 
     @pytest.mark.asyncio
-    async def test_offset_none_type_error(self, tool: FileReadTool, tool_context: ToolContext) -> None:
+    async def test_offset_none_type_error(
+        self, tool: FileReadTool, tool_context: ToolContext
+    ) -> None:
         test_file = tool_context.cwd / "test.py"
         test_file.write_text("a\nb\n")
         result = await tool.execute({"file_path": "test.py", "offset": None}, tool_context)
@@ -379,7 +411,9 @@ class TestFileReadTool:
         assert "offset must be an integer" in result.error
 
     @pytest.mark.asyncio
-    async def test_offset_list_type_error(self, tool: FileReadTool, tool_context: ToolContext) -> None:
+    async def test_offset_list_type_error(
+        self, tool: FileReadTool, tool_context: ToolContext
+    ) -> None:
         test_file = tool_context.cwd / "test.py"
         test_file.write_text("a\nb\n")
         result = await tool.execute({"file_path": "test.py", "offset": [1, 2]}, tool_context)
@@ -389,7 +423,9 @@ class TestFileReadTool:
     # --- Limit edge cases ---
 
     @pytest.mark.asyncio
-    async def test_limit_none_type_error(self, tool: FileReadTool, tool_context: ToolContext) -> None:
+    async def test_limit_none_type_error(
+        self, tool: FileReadTool, tool_context: ToolContext
+    ) -> None:
         test_file = tool_context.cwd / "test.py"
         test_file.write_text("a\nb\n")
         result = await tool.execute({"file_path": "test.py", "limit": None}, tool_context)
@@ -397,7 +433,9 @@ class TestFileReadTool:
         assert "limit must be an integer" in result.error
 
     @pytest.mark.asyncio
-    async def test_limit_list_type_error(self, tool: FileReadTool, tool_context: ToolContext) -> None:
+    async def test_limit_list_type_error(
+        self, tool: FileReadTool, tool_context: ToolContext
+    ) -> None:
         test_file = tool_context.cwd / "test.py"
         test_file.write_text("a\nb\n")
         result = await tool.execute({"file_path": "test.py", "limit": [5]}, tool_context)
@@ -407,7 +445,9 @@ class TestFileReadTool:
     # --- Large file edge cases ---
 
     @pytest.mark.asyncio
-    async def test_file_exactly_at_max_size(self, tool: FileReadTool, tool_context: ToolContext) -> None:
+    async def test_file_exactly_at_max_size(
+        self, tool: FileReadTool, tool_context: ToolContext
+    ) -> None:
         test_file = tool_context.cwd / "exact.bin"
         content = "x" * int(MAX_FILE_SIZE_KB * 1024)
         test_file.write_text(content)
@@ -415,7 +455,9 @@ class TestFileReadTool:
         assert not result.is_error
 
     @pytest.mark.asyncio
-    async def test_file_just_below_max_size(self, tool: FileReadTool, tool_context: ToolContext) -> None:
+    async def test_file_just_below_max_size(
+        self, tool: FileReadTool, tool_context: ToolContext
+    ) -> None:
         test_file = tool_context.cwd / "below.bin"
         content = "x" * int((MAX_FILE_SIZE_KB - 1) * 1024)
         test_file.write_text(content)
@@ -425,7 +467,9 @@ class TestFileReadTool:
     # --- Binary file detection edge cases ---
 
     @pytest.mark.asyncio
-    async def test_binary_file_null_bytes(self, tool: FileReadTool, tool_context: ToolContext) -> None:
+    async def test_binary_file_null_bytes(
+        self, tool: FileReadTool, tool_context: ToolContext
+    ) -> None:
         test_file = tool_context.cwd / "nulls.bin"
         test_file.write_bytes(b"\xff\xfe\xfd\xfc\xfb\xfa")
         result = await tool.execute({"file_path": "nulls.bin"}, tool_context)
@@ -433,7 +477,9 @@ class TestFileReadTool:
         assert "binary file" in result.error.lower()
 
     @pytest.mark.asyncio
-    async def test_binary_file_mixed_ascii_and_binary(self, tool: FileReadTool, tool_context: ToolContext) -> None:
+    async def test_binary_file_mixed_ascii_and_binary(
+        self, tool: FileReadTool, tool_context: ToolContext
+    ) -> None:
         test_file = tool_context.cwd / "mixed.bin"
         test_file.write_bytes(b"Hello\x80\x81\x82World")
         result = await tool.execute({"file_path": "mixed.bin"}, tool_context)
@@ -443,7 +489,9 @@ class TestFileReadTool:
     # --- Notebook: display_data with string text/plain ---
 
     @pytest.mark.asyncio
-    async def test_notebook_display_data_string_text(self, tool: FileReadTool, tool_context: ToolContext) -> None:
+    async def test_notebook_display_data_string_text(
+        self, tool: FileReadTool, tool_context: ToolContext
+    ) -> None:
         nb_path = tool_context.cwd / "str_display.ipynb"
         nb = {
             "cells": [
@@ -470,7 +518,9 @@ class TestFileReadTool:
         assert "[Output: display_data]" in result.output
 
     @pytest.mark.asyncio
-    async def test_notebook_execute_result_string_text(self, tool: FileReadTool, tool_context: ToolContext) -> None:
+    async def test_notebook_execute_result_string_text(
+        self, tool: FileReadTool, tool_context: ToolContext
+    ) -> None:
         nb_path = tool_context.cwd / "str_result.ipynb"
         nb = {
             "cells": [
@@ -498,7 +548,9 @@ class TestFileReadTool:
         assert "[Output: execute_result]" in result.output
 
     @pytest.mark.asyncio
-    async def test_notebook_source_is_string(self, tool: FileReadTool, tool_context: ToolContext) -> None:
+    async def test_notebook_source_is_string(
+        self, tool: FileReadTool, tool_context: ToolContext
+    ) -> None:
         nb_path = tool_context.cwd / "string_source.ipynb"
         nb = {
             "cells": [
@@ -518,7 +570,9 @@ class TestFileReadTool:
         assert "print('single string source')" in result.output
 
     @pytest.mark.asyncio
-    async def test_notebook_stream_text_as_string(self, tool: FileReadTool, tool_context: ToolContext) -> None:
+    async def test_notebook_stream_text_as_string(
+        self, tool: FileReadTool, tool_context: ToolContext
+    ) -> None:
         nb_path = tool_context.cwd / "stream_str.ipynb"
         nb = {
             "cells": [
@@ -544,7 +598,9 @@ class TestFileReadTool:
         assert "[Output: stream]" in result.output
 
     @pytest.mark.asyncio
-    async def test_notebook_no_cells_key(self, tool: FileReadTool, tool_context: ToolContext) -> None:
+    async def test_notebook_no_cells_key(
+        self, tool: FileReadTool, tool_context: ToolContext
+    ) -> None:
         nb_path = tool_context.cwd / "no_cells.ipynb"
         nb_path.write_text(json.dumps({"metadata": {}, "nbformat": 4}))
         result = await tool.execute({"file_path": "no_cells.ipynb"}, tool_context)
@@ -552,7 +608,9 @@ class TestFileReadTool:
         assert "empty notebook" in result.output.lower()
 
     @pytest.mark.asyncio
-    async def test_notebook_empty_source_list(self, tool: FileReadTool, tool_context: ToolContext) -> None:
+    async def test_notebook_empty_source_list(
+        self, tool: FileReadTool, tool_context: ToolContext
+    ) -> None:
         nb_path = tool_context.cwd / "empty_source.ipynb"
         nb = {
             "cells": [
@@ -572,7 +630,9 @@ class TestFileReadTool:
         assert "[Cell 0: code]" in result.output
 
     @pytest.mark.asyncio
-    async def test_notebook_multiple_cells_with_outputs(self, tool: FileReadTool, tool_context: ToolContext) -> None:
+    async def test_notebook_multiple_cells_with_outputs(
+        self, tool: FileReadTool, tool_context: ToolContext
+    ) -> None:
         nb_path = tool_context.cwd / "multi.ipynb"
         nb = {
             "cells": [
@@ -620,7 +680,9 @@ class TestFileReadTool:
     # --- Absolute and relative path resolution ---
 
     @pytest.mark.asyncio
-    async def test_absolute_path_within_cwd(self, tool: FileReadTool, tool_context: ToolContext) -> None:
+    async def test_absolute_path_within_cwd(
+        self, tool: FileReadTool, tool_context: ToolContext
+    ) -> None:
         test_file = tool_context.cwd / "abs_test.py"
         test_file.write_text("content\n")
         abs_path = str(test_file)

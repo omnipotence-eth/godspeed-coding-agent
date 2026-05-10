@@ -25,6 +25,7 @@ def mapper() -> RepoMapper:
 
 # ── Tree-sitter not available tests ─────────────────────────────────────────
 
+
 class TestRepoMapperNotAvailableBranches:
     """Cover all branches when tree-sitter is not available."""
 
@@ -52,6 +53,7 @@ class TestRepoMapperNotAvailableBranches:
 
 
 # ── Parse file edge cases ───────────────────────────────────────────────────
+
 
 @_skip_no_treesitter
 class TestParseFileEdges:
@@ -96,7 +98,9 @@ class TestParseFileEdges:
         symbols = mapper.parse_file(f)
         assert symbols == []
 
-    def test_parse_file_binary_content_utf8_fallback(self, mapper: RepoMapper, tmp_path: Path) -> None:
+    def test_parse_file_binary_content_utf8_fallback(
+        self, mapper: RepoMapper, tmp_path: Path
+    ) -> None:
         f = tmp_path / "data.py"
         f.write_bytes(b"\x00\x01\x02")
         symbols = mapper.parse_file(f)
@@ -104,6 +108,7 @@ class TestParseFileEdges:
 
 
 # ── Decorated definition edge cases ─────────────────────────────────────────
+
 
 @_skip_no_treesitter
 class TestDecoratedDefinitions:
@@ -124,10 +129,7 @@ class TestDecoratedDefinitions:
     def test_decorated_class_member(self, mapper: RepoMapper, tmp_path: Path) -> None:
         f = tmp_path / "dec_member.py"
         f.write_text(
-            "class Service:\n"
-            "    @property\n"
-            "    def name(self):\n"
-            "        return self._name\n"
+            "class Service:\n    @property\n    def name(self):\n        return self._name\n"
         )
         symbols = mapper.parse_file(f)
         assert len(symbols) == 1
@@ -135,6 +137,7 @@ class TestDecoratedDefinitions:
 
 
 # ── Export statement edge cases ─────────────────────────────────────────────
+
 
 @_skip_no_treesitter
 class TestExportStatements:
@@ -155,6 +158,7 @@ class TestExportStatements:
 
 # ── Class/method definition edge cases ──────────────────────────────────────
 
+
 @_skip_no_treesitter
 class TestClassAndMethodEdges:
     """Cover class_definition and method_declaration branch edges."""
@@ -168,6 +172,7 @@ class TestClassAndMethodEdges:
 
 
 # ── Go-specific edge cases ─────────────────────────────────────────────────
+
 
 @_skip_no_treesitter
 class TestGoSpecific:
@@ -185,16 +190,13 @@ class TestGoSpecific:
 
     def test_go_type_declaration_with_type_spec(self, mapper: RepoMapper, tmp_path: Path) -> None:
         f = tmp_path / "types.go"
-        f.write_text(
-            "package main\n\n"
-            "type MyInt int\n\n"
-            "type MyStruct struct {\n\tX int\n}\n"
-        )
+        f.write_text("package main\n\ntype MyInt int\n\ntype MyStruct struct {\n\tX int\n}\n")
         symbols = mapper.parse_file(f)
         assert isinstance(symbols, list)
 
 
 # ── _member_to_symbol edge cases ────────────────────────────────────────────
+
 
 @_skip_no_treesitter
 class TestMemberToSymbol:
@@ -202,26 +204,20 @@ class TestMemberToSymbol:
 
     def test_member_decorated_without_function(self, mapper: RepoMapper, tmp_path: Path) -> None:
         f = tmp_path / "dec_member2.py"
-        f.write_text(
-            "class Foo:\n"
-            "    @decorator\n"
-            "    x = 1\n"
-        )
+        f.write_text("class Foo:\n    @decorator\n    x = 1\n")
         symbols = mapper.parse_file(f)
         assert len(symbols) == 1
 
     def test_member_unknown_type_returns_none(self, mapper: RepoMapper, tmp_path: Path) -> None:
         f = tmp_path / "unknown_member.py"
-        f.write_text(
-            "class Foo:\n"
-            "    pass\n"
-        )
+        f.write_text("class Foo:\n    pass\n")
         symbols = mapper.parse_file(f)
         assert len(symbols) == 1
         assert len(symbols[0].children) == 0
 
 
 # ── map_directory edge cases ────────────────────────────────────────────────
+
 
 @_skip_no_treesitter
 class TestMapDirectoryEdges:
@@ -242,21 +238,27 @@ class TestMapDirectoryEdges:
         assert "main" in result
         assert "junk" not in result
 
-    def test_map_directory_unsupported_extensions_skipped(self, mapper: RepoMapper, tmp_path: Path) -> None:
+    def test_map_directory_unsupported_extensions_skipped(
+        self, mapper: RepoMapper, tmp_path: Path
+    ) -> None:
         (tmp_path / "data.csv").write_text("a,b,c\n")
         (tmp_path / "valid.py").write_text("def foo(): pass\n")
         result = mapper.map_directory(tmp_path)
         assert "foo" in result
         assert "data.csv" not in result
 
-    def test_map_directory_file_with_no_symbols_skipped(self, mapper: RepoMapper, tmp_path: Path) -> None:
+    def test_map_directory_file_with_no_symbols_skipped(
+        self, mapper: RepoMapper, tmp_path: Path
+    ) -> None:
         (tmp_path / "blank.py").write_text("")
         (tmp_path / "real.py").write_text("def bar(): pass\n")
         result = mapper.map_directory(tmp_path)
         assert "bar" in result
         assert "blank" not in result
 
-    def test_map_directory_preserves_source_with_symlinks(self, mapper: RepoMapper, tmp_path: Path) -> None:
+    def test_map_directory_preserves_source_with_symlinks(
+        self, mapper: RepoMapper, tmp_path: Path
+    ) -> None:
         (tmp_path / "src").mkdir()
         (tmp_path / "src" / "core.py").write_text("class Core:\n    def run(self): pass\n")
         result = mapper.map_directory(tmp_path)
@@ -287,7 +289,9 @@ class TestMapDirectoryEdges:
         assert "a" in result
         assert "b" in result
 
-    def test_map_directory_windows_path_separators(self, mapper: RepoMapper, tmp_path: Path) -> None:
+    def test_map_directory_windows_path_separators(
+        self, mapper: RepoMapper, tmp_path: Path
+    ) -> None:
         (tmp_path / "pkg").mkdir()
         (tmp_path / "pkg" / "module.py").write_text("def win(): pass\n")
         result = mapper.map_directory(tmp_path)

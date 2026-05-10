@@ -33,9 +33,7 @@ class TestResolveToolPath:
             mock_cwd = MagicMock(spec=Path)
             mock_cwd.resolve.return_value = mock_cwd
             mock_cwd.__str__.return_value = "/home/user/project"
-            with pytest.raises(
-                ValueError, match=r"Access denied.*Windows absolute path"
-            ):
+            with pytest.raises(ValueError, match=r"Access denied.*Windows absolute path"):
                 resolve_tool_path(r"C:\Users\test\file.txt", mock_cwd)
 
     def test_windows_drive_letter_path_on_windows_passes(self) -> None:
@@ -55,9 +53,7 @@ class TestResolveToolPath:
             outside = Path(tmp).parent / "outside_file.txt"
             try:
                 outside.touch()
-                with pytest.raises(
-                    ValueError, match=r"Access denied.*outside the project"
-                ):
+                with pytest.raises(ValueError, match=r"Access denied.*outside the project"):
                     resolve_tool_path(str(outside), cwd)
             finally:
                 if outside.exists():
@@ -86,9 +82,7 @@ class TestResolveToolPath:
                     return norm
 
                 with patch("os.path.realpath", side_effect=fake_realpath):
-                    with pytest.raises(
-                        ValueError, match=r"resolves via symlinks to outside"
-                    ):
+                    with pytest.raises(ValueError, match=r"resolves via symlinks to outside"):
                         resolve_tool_path(str(evil_link), cwd)
             finally:
                 if outside_real.exists():

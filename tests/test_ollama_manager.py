@@ -657,7 +657,7 @@ class TestPullModelAsync:
             mock_proc.stdout = AsyncMock()
             mock_proc.stdout.readline = AsyncMock(
                 side_effect=[
-                    b'\x80\x81invalid utf8\n',
+                    b"\x80\x81invalid utf8\n",
                     b"",
                 ]
             )
@@ -797,11 +797,7 @@ class TestShowModelAdditional:
 
     def test_multiline_value_continuation(self):
         """Multi-line values where continuation is indented get skipped."""
-        stdout = (
-            "architecture    llama3\n"
-            "  Additional architecture details\n"
-            "parameters      8B\n"
-        )
+        stdout = "architecture    llama3\n  Additional architecture details\nparameters      8B\n"
         with patch("godspeed.tools.ollama_manager._ollama_installed", return_value=True):
             with patch("godspeed.tools.ollama_manager._run_ollama", return_value=(0, stdout, "")):
                 info = show_model("llama3:8b")

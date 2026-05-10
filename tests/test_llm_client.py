@@ -842,30 +842,38 @@ class TestLLMClientStreaming:
         class MockStream:
             async def __aiter__(self):
                 tc_delta = SimpleNamespace(
-                    index=0, id="call_1",
+                    index=0,
+                    id="call_1",
                     function=SimpleNamespace(name="file_read", arguments='{"file_path":'),
                 )
                 yield SimpleNamespace(
-                    choices=[SimpleNamespace(
-                        delta=SimpleNamespace(content=None, tool_calls=[tc_delta]),
-                        finish_reason=None,
-                    )]
+                    choices=[
+                        SimpleNamespace(
+                            delta=SimpleNamespace(content=None, tool_calls=[tc_delta]),
+                            finish_reason=None,
+                        )
+                    ]
                 )
                 tc_delta2 = SimpleNamespace(
-                    index=0, id=None,
+                    index=0,
+                    id=None,
                     function=SimpleNamespace(name=None, arguments='"x.py"}'),
                 )
                 yield SimpleNamespace(
-                    choices=[SimpleNamespace(
-                        delta=SimpleNamespace(content=None, tool_calls=[tc_delta2]),
-                        finish_reason=None,
-                    )]
+                    choices=[
+                        SimpleNamespace(
+                            delta=SimpleNamespace(content=None, tool_calls=[tc_delta2]),
+                            finish_reason=None,
+                        )
+                    ]
                 )
                 yield SimpleNamespace(
-                    choices=[SimpleNamespace(
-                        delta=SimpleNamespace(content="", tool_calls=None),
-                        finish_reason="tool_calls",
-                    )]
+                    choices=[
+                        SimpleNamespace(
+                            delta=SimpleNamespace(content="", tool_calls=None),
+                            finish_reason="tool_calls",
+                        )
+                    ]
                 )
 
         with patch("godspeed.llm.client._get_litellm") as mock_litellm:
@@ -965,7 +973,9 @@ class TestLLMClientDeepSeek:
         mock_resp = SimpleNamespace(
             choices=[
                 SimpleNamespace(
-                    message=SimpleNamespace(content="", tool_calls=[tc_item], reasoning_content=None),
+                    message=SimpleNamespace(
+                        content="", tool_calls=[tc_item], reasoning_content=None
+                    ),
                     finish_reason="tool_calls",
                 )
             ],
@@ -1021,10 +1031,19 @@ class TestLLMClientDeepSeek:
         messages = [
             {"role": "user", "content": "do stuff"},
             {
-                "role": "assistant", "content": "",
+                "role": "assistant",
+                "content": "",
                 "tool_calls": [
-                    {"id": "t1", "type": "function", "function": {"name": "read", "arguments": "{}"}},
-                    {"id": "t2", "type": "function", "function": {"name": "grep", "arguments": "{}"}},
+                    {
+                        "id": "t1",
+                        "type": "function",
+                        "function": {"name": "read", "arguments": "{}"},
+                    },
+                    {
+                        "id": "t2",
+                        "type": "function",
+                        "function": {"name": "grep", "arguments": "{}"},
+                    },
                 ],
             },
             {"role": "tool", "tool_call_id": "t1", "content": "result1"},
@@ -1174,7 +1193,9 @@ class TestLLMClientCallExtended:
         mock_resp = SimpleNamespace(
             choices=[
                 SimpleNamespace(
-                    message=SimpleNamespace(content="deepseek ok", tool_calls=None, reasoning_content=""),
+                    message=SimpleNamespace(
+                        content="deepseek ok", tool_calls=None, reasoning_content=""
+                    ),
                     finish_reason="stop",
                 )
             ],
@@ -1206,7 +1227,8 @@ class TestLLMClientCallExtended:
             )
             with pytest.raises(RuntimeError, match="All models failed"):
                 await client.chat(
-                    [{"role": "user", "content": "plan"}], task_type="plan",
+                    [{"role": "user", "content": "plan"}],
+                    task_type="plan",
                 )
 
         assert client.model == "ollama/qwen3:4b"
@@ -1281,9 +1303,7 @@ class TestLLMClientTokenTracking:
         mock_resp2 = _mock_response(input_tokens=20, output_tokens=10)
 
         with patch("godspeed.llm.client._get_litellm") as mock_litellm:
-            mock_litellm.return_value.acompletion = AsyncMock(
-                side_effect=[mock_resp1, mock_resp2]
-            )
+            mock_litellm.return_value.acompletion = AsyncMock(side_effect=[mock_resp1, mock_resp2])
             await client.chat([{"role": "user", "content": "hi"}])
             await client.chat([{"role": "user", "content": "again"}])
 

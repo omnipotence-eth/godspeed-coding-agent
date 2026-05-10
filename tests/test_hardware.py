@@ -229,9 +229,7 @@ class TestRecommendModelsForMachine:
         assert isinstance(recs, dict)
 
     def test_no_vram_cpu_mode(self):
-        specs = MachineSpecs(
-            platform="linux", vram_mb=None, ram_gb=32.0, cpu_cores=8, gpu_name=""
-        )
+        specs = MachineSpecs(platform="linux", vram_mb=None, ram_gb=32.0, cpu_cores=8, gpu_name="")
         recs = recommend_models_for_machine(specs=specs)
         assert isinstance(recs, dict)
         assert recs["fast"] is not None
@@ -239,9 +237,7 @@ class TestRecommendModelsForMachine:
         assert recs["frontier"] is not None
 
     def test_zero_vram_cpu_mode(self):
-        specs = MachineSpecs(
-            platform="linux", vram_mb=0, ram_gb=16.0, cpu_cores=4, gpu_name=""
-        )
+        specs = MachineSpecs(platform="linux", vram_mb=0, ram_gb=16.0, cpu_cores=4, gpu_name="")
         recs = recommend_models_for_machine(specs=specs)
         assert isinstance(recs, dict)
         assert recs["fast"] is not None
@@ -255,23 +251,17 @@ class TestRecommendModelsForMachine:
             assert tier in recs
 
     def test_fast_tier_never_none(self):
-        specs = MachineSpecs(
-            platform="windows", vram_mb=500, ram_gb=4.0, cpu_cores=2, gpu_name=""
-        )
+        specs = MachineSpecs(platform="windows", vram_mb=500, ram_gb=4.0, cpu_cores=2, gpu_name="")
         recs = recommend_models_for_machine(specs=specs)
         assert recs["fast"] is not None
 
     def test_no_vram_detected_quality_is_none(self):
-        specs = MachineSpecs(
-            platform="linux", vram_mb=None, ram_gb=8.0, cpu_cores=4, gpu_name=""
-        )
+        specs = MachineSpecs(platform="linux", vram_mb=None, ram_gb=8.0, cpu_cores=4, gpu_name="")
         recs = recommend_models_for_machine(specs=specs)
         assert recs.get("quality") is None
 
     def test_darwin_platform(self):
-        specs = MachineSpecs(
-            platform="darwin", vram_mb=None, ram_gb=16.0, cpu_cores=8, gpu_name=""
-        )
+        specs = MachineSpecs(platform="darwin", vram_mb=None, ram_gb=16.0, cpu_cores=8, gpu_name="")
         recs = recommend_models_for_machine(specs=specs)
         assert isinstance(recs, dict)
         assert recs["fast"] is not None
@@ -294,9 +284,7 @@ class TestFormatMachineReport:
     def test_without_gpu(self):
         from godspeed.evolution.hardware import format_machine_report
 
-        specs = MachineSpecs(
-            platform="linux", vram_mb=None, ram_gb=8.0, cpu_cores=4, gpu_name=""
-        )
+        specs = MachineSpecs(platform="linux", vram_mb=None, ram_gb=8.0, cpu_cores=4, gpu_name="")
         report = format_machine_report(specs)
         assert "CPU-only mode" in report
 
@@ -314,9 +302,7 @@ class TestFormatMachineReport:
     def test_quality_insufficient_vram_shows_cross(self):
         from godspeed.evolution.hardware import format_machine_report
 
-        specs = MachineSpecs(
-            platform="windows", vram_mb=2000, ram_gb=8.0, cpu_cores=4, gpu_name=""
-        )
+        specs = MachineSpecs(platform="windows", vram_mb=2000, ram_gb=8.0, cpu_cores=4, gpu_name="")
         report = format_machine_report(specs)
         assert "insufficient VRAM" in report or "\u2717" in report
 
@@ -519,9 +505,7 @@ class TestGetCachedVramThreadSafety:
         try:
             hw_module._cached_vram = 12000
             hw_module._cached_vram_checked = True
-            with patch(
-                "godspeed.evolution.hardware.detect_vram_mb"
-            ) as mock_detect:
+            with patch("godspeed.evolution.hardware.detect_vram_mb") as mock_detect:
                 vram = _get_cached_vram()
                 assert vram == 12000
                 mock_detect.assert_not_called()

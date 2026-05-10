@@ -607,7 +607,12 @@ async def test_chained_exception_analysis(ctx_empty: ToolContext) -> None:
 @pytest.mark.asyncio
 async def test_import_error_analysis(ctx_empty: ToolContext) -> None:
     tool = TracebackAnalyzerTool()
-    tb = "Traceback (most recent call last):\n" '  File "app.py", line 1, in <module>\n' "    import non_existent_module\n" "ModuleNotFoundError: No module named 'non_existent_module'\n"
+    tb = (
+        "Traceback (most recent call last):\n"
+        '  File "app.py", line 1, in <module>\n'
+        "    import non_existent_module\n"
+        "ModuleNotFoundError: No module named 'non_existent_module'\n"
+    )
     result = await tool.execute({"traceback": tb}, ctx_empty)
     assert not result.is_error
     assert "ModuleNotFoundError" in result.output

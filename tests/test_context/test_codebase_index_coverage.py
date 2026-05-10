@@ -17,6 +17,7 @@ from godspeed.context.codebase_index import (
 
 # ── _is_chromadb_available — actual import path ─────────────────────────────
 
+
 class TestIsChromadbAvailableCoverage:
     """Cover the actual _is_chromadb_available import success/failure paths."""
 
@@ -30,6 +31,7 @@ class TestIsChromadbAvailableCoverage:
 
 
 # ── _load_mtimes / _save_mtimes — error path ────────────────────────────────
+
 
 class TestMtimesHandling:
     """Cover _load_mtimes error path and _save_mtimes."""
@@ -58,6 +60,7 @@ class TestMtimesHandling:
 
 # ── _add_batch in build_index ──────────────────────────────────────────────
 
+
 class TestBuildIndexBatch:
     """Cover _add_batch calls within build_index loop."""
 
@@ -74,7 +77,12 @@ class TestBuildIndexBatch:
                 with patch.object(idx, "_iter_files", return_value=[test_file]):
                     with patch("godspeed.context.codebase_index.chunk_file") as mock_chunk:
                         chunks = [
-                            Chunk(content=f"chunk_{i}", file_path=str(test_file), start_line=i * 2 + 1, end_line=i * 2 + 2)
+                            Chunk(
+                                content=f"chunk_{i}",
+                                file_path=str(test_file),
+                                start_line=i * 2 + 1,
+                                end_line=i * 2 + 2,
+                            )
                             for i in range(250)
                         ]
                         mock_chunk.return_value = chunks
@@ -114,7 +122,10 @@ class TestBuildIndexBatch:
         with patch("godspeed.context.codebase_index._is_chromadb_available", return_value=True):
             with patch.object(idx, "_ensure_collection", return_value=mock_collection):
                 with patch.object(idx, "_iter_files", return_value=[test_file]):
-                    with patch("godspeed.context.codebase_index.chunk_file", side_effect=RuntimeError("chunk fail")):
+                    with patch(
+                        "godspeed.context.codebase_index.chunk_file",
+                        side_effect=RuntimeError("chunk fail"),
+                    ):
                         try:
                             idx.build_index()
                         except RuntimeError:
@@ -145,6 +156,7 @@ class TestBuildIndexBatch:
 
 # ── update_index — incremental update ───────────────────────────────────────
 
+
 class TestUpdateIndex:
     """Cover update_index and update_index_async."""
 
@@ -168,8 +180,12 @@ class TestUpdateIndex:
                     with patch.object(idx, "_iter_files", return_value=[test_file]):
                         with patch("godspeed.context.codebase_index.chunk_file") as mock_chunk:
                             mock_chunk.return_value = [
-                                Chunk(content="c1", file_path=str(test_file), start_line=1, end_line=2),
-                                Chunk(content="c2", file_path=str(test_file), start_line=3, end_line=4),
+                                Chunk(
+                                    content="c1", file_path=str(test_file), start_line=1, end_line=2
+                                ),
+                                Chunk(
+                                    content="c2", file_path=str(test_file), start_line=3, end_line=4
+                                ),
                             ]
                             result = idx.update_index()
                             assert result == 2
@@ -189,7 +205,9 @@ class TestUpdateIndex:
                     with patch.object(idx, "_iter_files", return_value=[test_file]):
                         with patch("godspeed.context.codebase_index.chunk_file") as mock_chunk:
                             mock_chunk.return_value = [
-                                Chunk(content="c", file_path=str(test_file), start_line=1, end_line=2)
+                                Chunk(
+                                    content="c", file_path=str(test_file), start_line=1, end_line=2
+                                )
                             ]
                             result = idx.update_index()
                             assert result > 0
@@ -218,7 +236,9 @@ class TestUpdateIndex:
 
         with patch("godspeed.context.codebase_index._is_chromadb_available", return_value=True):
             with patch.object(idx, "_ensure_collection", return_value=mock_collection):
-                with patch.object(idx, "_load_mtimes", return_value={str(test_file): current_mtime}):
+                with patch.object(
+                    idx, "_load_mtimes", return_value={str(test_file): current_mtime}
+                ):
                     with patch.object(idx, "_iter_files", return_value=[test_file]):
                         result = idx.update_index()
                         assert result == 0  # up to date
@@ -243,6 +263,7 @@ class TestUpdateIndex:
 
 
 # ── Search edge cases ───────────────────────────────────────────────────────
+
 
 class TestSearchEdgeCases:
     """Cover search edge branches."""
@@ -303,6 +324,7 @@ class TestSearchEdgeCases:
 
 
 # ── needs_reindex — all branches ────────────────────────────────────────────
+
 
 class TestNeedsReindex:
     """Cover all branches in needs_reindex."""
@@ -395,6 +417,7 @@ class TestNeedsReindex:
 
 # ── get_stats ───────────────────────────────────────────────────────────────
 
+
 class TestGetStats:
     """Cover get_stats all branches."""
 
@@ -417,6 +440,7 @@ class TestGetStats:
 
 
 # ── clear ───────────────────────────────────────────────────────────────────
+
 
 class TestClear:
     """Cover clear all branches."""
@@ -456,6 +480,7 @@ class TestClear:
 
 # ── build (async wrapper) ──────────────────────────────────────────────────
 
+
 class TestBuildAsync:
     """Cover build async wrapper."""
 
@@ -477,6 +502,7 @@ class TestBuildAsync:
 
 
 # ── add_file / remove_file / reindex_file with chromadb ────────────────────
+
 
 class TestFileOperations:
     """Cover add_file, remove_file, reindex_file with available chromadb."""
@@ -530,7 +556,9 @@ class TestFileOperations:
             with patch.object(idx, "_ensure_collection", return_value=mock_collection):
                 result = idx.remove_file(Path("/tmp/test/file.py"))
                 assert result is True
-                mock_collection.delete.assert_called_once_with(where={"file_path": str(Path("/tmp/test/file.py"))})
+                mock_collection.delete.assert_called_once_with(
+                    where={"file_path": str(Path("/tmp/test/file.py"))}
+                )
 
     def test_remove_file_exception(self):
         idx = CodebaseIndex(project_dir=Path("/tmp/test"))
@@ -564,6 +592,7 @@ class TestFileOperations:
 
 
 # ── _iter_files — PermissionError / OSError ────────────────────────────────
+
 
 class TestIterFilesErrors:
     """Cover PermissionError/OSError in _iter_files."""
@@ -618,6 +647,7 @@ class TestIterFilesErrors:
 
 
 # ── Ensure collection on first call ─────────────────────────────────────────
+
 
 class TestEnsureCollection:
     """Cover _ensure_collection creating chromadb client."""

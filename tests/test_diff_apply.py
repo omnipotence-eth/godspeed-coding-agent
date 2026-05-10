@@ -276,9 +276,10 @@ def test_bare_empty_line_as_context() -> None:
         "--- a/other.txt",
         "",
     ]
-    hunk, next_i = Hunk(
-        old_start=1, old_count=3, new_start=1, new_count=3
-    ), 5  # dummy for type checker
+    hunk, next_i = (
+        Hunk(old_start=1, old_count=3, new_start=1, new_count=3),
+        5,
+    )  # dummy for type checker
     # Actually use _parse_hunk internals
     from godspeed.tools.diff_apply import _parse_hunk
 
@@ -290,14 +291,7 @@ def test_bare_empty_line_as_context() -> None:
 
 def test_hunk_break_on_non_hunk_line() -> None:
     """Line 143: break when encountering non-diff line after bare empty line."""
-    diff = (
-        "--- a/file.txt\n"
-        "+++ b/file.txt\n"
-        "@@ -1,3 +1,3 @@\n"
-        " line1\n"
-        "\n"
-        "NOT_A_DIFF_LINE\n"
-    )
+    diff = "--- a/file.txt\n+++ b/file.txt\n@@ -1,3 +1,3 @@\n line1\n\nNOT_A_DIFF_LINE\n"
     result = parse_unified_diff(diff)
     assert len(result) == 1
     assert len(result[0].hunks) == 1
@@ -339,9 +333,7 @@ def test_apply_file_not_found(mock_resolve: MagicMock, tmp_path: Path) -> None:
     fd = FileDiff(
         old_path="nonexistent.txt",
         new_path="nonexistent.txt",
-        hunks=[
-            Hunk(old_start=1, old_count=1, new_start=1, new_count=1, lines=["-old", "+new"])
-        ],
+        hunks=[Hunk(old_start=1, old_count=1, new_start=1, new_count=1, lines=["-old", "+new"])],
     )
     with pytest.raises(ValueError, match="File not found"):
         apply_file_diff(fd, tmp_path)
@@ -358,10 +350,7 @@ def test_trailing_newline_preserved(tmp_path: Path) -> None:
         old_path="test.txt",
         new_path="test.txt",
         hunks=[
-            Hunk(
-                old_start=1, old_count=1, new_start=1, new_count=1,
-                lines=["-line1", "+LINE1"]
-            )
+            Hunk(old_start=1, old_count=1, new_start=1, new_count=1, lines=["-line1", "+LINE1"])
         ],
     )
     hunks, fuzzy = apply_file_diff(fd, tmp_path)
@@ -378,10 +367,7 @@ def test_no_trailing_newline_preserved(tmp_path: Path) -> None:
         old_path="test.txt",
         new_path="test.txt",
         hunks=[
-            Hunk(
-                old_start=1, old_count=1, new_start=1, new_count=1,
-                lines=["-line1", "+LINE1"]
-            )
+            Hunk(old_start=1, old_count=1, new_start=1, new_count=1, lines=["-line1", "+LINE1"])
         ],
     )
     hunks, fuzzy = apply_file_diff(fd, tmp_path)
@@ -397,12 +383,7 @@ def test_trailing_newline_empty_last_line(tmp_path: Path) -> None:
     fd = FileDiff(
         old_path="test.txt",
         new_path="test.txt",
-        hunks=[
-            Hunk(
-                old_start=2, old_count=1, new_start=2, new_count=1,
-                lines=["-beta", "+BETA"]
-            )
-        ],
+        hunks=[Hunk(old_start=2, old_count=1, new_start=2, new_count=1, lines=["-beta", "+BETA"])],
     )
     apply_file_diff(fd, tmp_path)
     result = file_path.read_text(encoding="utf-8")
@@ -460,14 +441,7 @@ async def test_execute_no_file_diffs(tmp_path: Path, tool: DiffApplyTool) -> Non
 async def test_dry_run_summary(tmp_path: Path, tool: DiffApplyTool) -> None:
     """Line 382: dry_run returns a different summary message."""
     _make_file(tmp_path, "hello.txt", "line1\nline2\n")
-    diff = (
-        "--- a/hello.txt\n"
-        "+++ b/hello.txt\n"
-        "@@ -1,2 +1,3 @@\n"
-        " line1\n"
-        " line2\n"
-        "+line3\n"
-    )
+    diff = "--- a/hello.txt\n+++ b/hello.txt\n@@ -1,2 +1,3 @@\n line1\n line2\n+line3\n"
     result = await tool.execute({"diff": diff, "dry_run": True}, _ctx(tmp_path))
     assert not result.is_error
     assert "Dry run" in result.output
@@ -487,14 +461,7 @@ async def test_diff_reviewer_accept(tmp_path: Path, tool: DiffApplyTool) -> None
     ctx.diff_reviewer = AsyncMock()
     ctx.diff_reviewer.review.return_value = "accept"
 
-    diff = (
-        "--- a/hello.txt\n"
-        "+++ b/hello.txt\n"
-        "@@ -1,2 +1,2 @@\n"
-        " line1\n"
-        "-line2\n"
-        "+LINE2\n"
-    )
+    diff = "--- a/hello.txt\n+++ b/hello.txt\n@@ -1,2 +1,2 @@\n line1\n-line2\n+LINE2\n"
     result = await tool.execute({"diff": diff}, ctx)
     assert not result.is_error
     assert "1 hunks" in result.output
@@ -509,14 +476,7 @@ async def test_diff_reviewer_reject(tmp_path: Path, tool: DiffApplyTool) -> None
     ctx.diff_reviewer = AsyncMock()
     ctx.diff_reviewer.review.return_value = "reject"
 
-    diff = (
-        "--- a/hello.txt\n"
-        "+++ b/hello.txt\n"
-        "@@ -1,2 +1,2 @@\n"
-        " line1\n"
-        "-line2\n"
-        "+LINE2\n"
-    )
+    diff = "--- a/hello.txt\n+++ b/hello.txt\n@@ -1,2 +1,2 @@\n line1\n-line2\n+LINE2\n"
     result = await tool.execute({"diff": diff}, ctx)
     assert result.is_error
     assert "rejected" in result.error.lower()
@@ -525,9 +485,7 @@ async def test_diff_reviewer_reject(tmp_path: Path, tool: DiffApplyTool) -> None
 
 
 @pytest.mark.asyncio()
-async def test_diff_reviewer_multi_file_path_summary(
-    tmp_path: Path, tool: DiffApplyTool
-) -> None:
+async def test_diff_reviewer_multi_file_path_summary(tmp_path: Path, tool: DiffApplyTool) -> None:
     """Path summary includes ... when more than 5 files."""
     _make_file(tmp_path, "a.txt", "aaa\n")
     _make_file(tmp_path, "b.txt", "bbb\n")
@@ -541,11 +499,7 @@ async def test_diff_reviewer_multi_file_path_summary(
         content = {"a": "aaa", "b": "bbb", "c": "ccc", "d": "ddd", "e": "eee", "f": "fff"}
         base = name[:-4]
         diff_parts.append(
-            f"--- a/{name}\n"
-            f"+++ b/{name}\n"
-            f"@@ -1,1 +1,2 @@\n"
-            f" {content[base]}\n"
-            f"+new_line\n"
+            f"--- a/{name}\n+++ b/{name}\n@@ -1,1 +1,2 @@\n {content[base]}\n+new_line\n"
         )
     diff = "".join(diff_parts)
 
@@ -565,10 +519,7 @@ async def test_diff_reviewer_multi_file_path_summary(
 def test_apply_hunk_exact_match() -> None:
     """Apply hunk with exact match at target position."""
     file_lines = ["alpha", "beta", "gamma"]
-    hunk = Hunk(
-        old_start=2, old_count=1, new_start=2, new_count=1,
-        lines=["-beta", "+BETA"]
-    )
+    hunk = Hunk(old_start=2, old_count=1, new_start=2, new_count=1, lines=["-beta", "+BETA"])
     new_lines, used_fuzzy = _apply_hunk_to_lines(file_lines, hunk)
     assert new_lines == ["alpha", "BETA", "gamma"]
     assert not used_fuzzy
@@ -577,10 +528,7 @@ def test_apply_hunk_exact_match() -> None:
 def test_apply_hunk_offset_below_zero() -> None:
     """Fuzzy offsets that go below zero are skipped."""
     file_lines = ["alpha", "beta"]
-    hunk = Hunk(
-        old_start=2, old_count=1, new_start=2, new_count=1,
-        lines=["-beta", "+BETA"]
-    )
+    hunk = Hunk(old_start=2, old_count=1, new_start=2, new_count=1, lines=["-beta", "+BETA"])
     # offset -3 would try pos=-1, which is < 0 — skipped
     new_lines, used_fuzzy = _apply_hunk_to_lines(file_lines, hunk, fuzzy_range=5)
     assert new_lines == ["alpha", "BETA"]
@@ -590,10 +538,7 @@ def test_apply_hunk_offset_below_zero() -> None:
 def test_apply_hunk_offset_beyond_end() -> None:
     """Fuzzy offsets beyond file length are skipped."""
     file_lines = ["alpha", "beta"]
-    hunk = Hunk(
-        old_start=2, old_count=2, new_start=2, new_count=2,
-        lines=["-beta", "+BETA"]
-    )
+    hunk = Hunk(old_start=2, old_count=2, new_start=2, new_count=2, lines=["-beta", "+BETA"])
     # old_block = ["beta"], target_line=1, offset +3 → pos=4, len=1, 4+1>2 → skipped
     new_lines, used_fuzzy = _apply_hunk_to_lines(file_lines, hunk, fuzzy_range=5)
     assert new_lines == ["alpha", "BETA"]
@@ -603,10 +548,7 @@ def test_apply_hunk_offset_beyond_end() -> None:
 def test_apply_hunk_no_match() -> None:
     """Hunk that cannot match at any offset raises ValueError."""
     file_lines = ["alpha", "beta", "gamma"]
-    hunk = Hunk(
-        old_start=1, old_count=1, new_start=1, new_count=1,
-        lines=["-nope", "+yes"]
-    )
+    hunk = Hunk(old_start=1, old_count=1, new_start=1, new_count=1, lines=["-nope", "+yes"])
     with pytest.raises(ValueError, match="failed to match"):
         _apply_hunk_to_lines(file_lines, hunk, fuzzy_range=2)
 
@@ -625,8 +567,11 @@ def test_new_file_writes_content(mock_resolve: MagicMock, tmp_path: Path) -> Non
         new_path="sub/new.py",
         hunks=[
             Hunk(
-                old_start=0, old_count=0, new_start=1, new_count=3,
-                lines=["+print('hello')", "+print('world')", " final"]
+                old_start=0,
+                old_count=0,
+                new_start=1,
+                new_count=3,
+                lines=["+print('hello')", "+print('world')", " final"],
             )
         ],
         is_new_file=True,
@@ -658,13 +603,7 @@ def test_new_file_created_in_same_dir(tmp_path: Path) -> None:
 
 def test_hunk_loop_natural_exit() -> None:
     """Line 123->145: while loop exits naturally when hunk is last in input."""
-    diff = (
-        "--- a/file.txt\n"
-        "+++ b/file.txt\n"
-        "@@ -1,2 +1,2 @@\n"
-        " line1\n"
-        " line2\n"
-    )
+    diff = "--- a/file.txt\n+++ b/file.txt\n@@ -1,2 +1,2 @@\n line1\n line2\n"
     result = parse_unified_diff(diff)
     assert len(result) == 1
     assert len(result[0].hunks) == 1

@@ -79,9 +79,7 @@ class TestGodspeedSettings:
         with pytest.raises(ValueError, match="permission_mode must be one of"):
             GodspeedSettings(project_dir=tmp_path)
 
-    def test_model_raises_on_empty(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_model_raises_on_empty(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         _patch_dirs(tmp_path, monkeypatch)
         with pytest.raises(ValueError, match="model must be a non-empty string"):
             GodspeedSettings(model="", project_dir=tmp_path)
@@ -153,7 +151,8 @@ class TestGodspeedSettings:
     # ── collection validation (hooks / mcp_servers / routing) ──
 
     def test_hooks_non_dict_entry_warns(
-        self, caplog: pytest.LogCaptureFixture,
+        self,
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
         caplog.set_level(logging.WARNING)
         s = GodspeedSettings.model_construct(
@@ -173,7 +172,8 @@ class TestGodspeedSettings:
         assert any("missing required 'command' key" in r.message for r in caplog.records)
 
     def test_mcp_servers_non_dict_entry_warns(
-        self, caplog: pytest.LogCaptureFixture,
+        self,
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
         caplog.set_level(logging.WARNING)
         s = GodspeedSettings.model_construct(
@@ -244,8 +244,7 @@ class TestGodspeedSettings:
         caplog.set_level(logging.WARNING)
         GodspeedSettings(permission_mode="yolo", sandbox="none", project_dir=tmp_path)
         assert any(
-            "sandbox='none' with permission_mode='yolo'" in r.message
-            for r in caplog.records
+            "sandbox='none' with permission_mode='yolo'" in r.message for r in caplog.records
         )
 
     def test_high_context_tokens_warns(

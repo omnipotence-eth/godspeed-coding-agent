@@ -524,9 +524,7 @@ class TestGenerateToolExamplesEdgeCases:
         with patch.object(engine, "_call_llm", new_callable=AsyncMock) as mock_llm:
             mock_llm.return_value = "- Example: test\n  Arguments: {}"
 
-            examples = await engine.generate_tool_examples(
-                "file_read", traces, max_examples=2
-            )
+            examples = await engine.generate_tool_examples("file_read", traces, max_examples=2)
 
         assert len(examples) >= 1
         call_text = mock_llm.call_args[0][0]
@@ -607,11 +605,7 @@ class TestSuggestNewSkillEdgeCases:
 
         with patch.object(engine, "_call_llm", new_callable=AsyncMock) as mock_llm:
             mock_llm.return_value = (
-                "---\n"
-                "name: my-skill\n"
-                "description: desc\n"
-                "trigger: \"\"\n"
-                "---\ncontent"
+                '---\nname: my-skill\ndescription: desc\ntrigger: ""\n---\ncontent'
             )
 
             result = await engine.suggest_new_skill(sequence, [[]])
@@ -753,8 +747,7 @@ class TestMutatePromptSectionExpanded:
     async def test_top_failures_capped_at_five(self) -> None:
         engine = EvolutionEngine()
         many_failures = tuple(
-            _make_failure(tool_name=f"tool-{i}", category="execution_error")
-            for i in range(10)
+            _make_failure(tool_name=f"tool-{i}", category="execution_error") for i in range(10)
         )
         report = _make_report(error_rate=0.5, failures=many_failures)
 
@@ -917,8 +910,11 @@ content"""
 class TestParseSkillCandidate:
     def test_exactly_three_parts_missing_frontmatter(self) -> None:
         from godspeed.evolution.trace_analyzer import ToolSequence
+
         seq = ToolSequence(
-            tools=("a", "b"), frequency=1, avg_success_rate=1.0,
+            tools=("a", "b"),
+            frequency=1,
+            avg_success_rate=1.0,
             candidate_skill_name="a_and_b",
         )
         result = EvolutionEngine._parse_skill_candidate("no frontmatter", seq)
@@ -926,23 +922,27 @@ class TestParseSkillCandidate:
 
     def test_yaml_parse_error_returns_none(self) -> None:
         from godspeed.evolution.trace_analyzer import ToolSequence
+
         seq = ToolSequence(
-            tools=("a",), frequency=1, avg_success_rate=1.0,
+            tools=("a",),
+            frequency=1,
+            avg_success_rate=1.0,
             candidate_skill_name="a",
         )
-        result = EvolutionEngine._parse_skill_candidate(
-            "---\n\tbad: [unclosed\n---\ncontent", seq
-        )
+        result = EvolutionEngine._parse_skill_candidate("---\n\tbad: [unclosed\n---\ncontent", seq)
         assert result is None
 
     def test_empty_string_fields_returns_none(self) -> None:
         from godspeed.evolution.trace_analyzer import ToolSequence
+
         seq = ToolSequence(
-            tools=("a",), frequency=1, avg_success_rate=1.0,
+            tools=("a",),
+            frequency=1,
+            avg_success_rate=1.0,
             candidate_skill_name="a",
         )
         result = EvolutionEngine._parse_skill_candidate(
-            "---\nname: \"\"\ndescription: d\ntrigger: t\n---\ncontent", seq
+            '---\nname: ""\ndescription: d\ntrigger: t\n---\ncontent', seq
         )
         assert result is None
 

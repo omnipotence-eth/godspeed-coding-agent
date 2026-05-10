@@ -854,9 +854,7 @@ class TestWriteFailureMidStream:
 
         with patch("os.fsync", side_effect=_counting_fsync):
             for i in range(15):
-                trail.record(
-                    AuditEventType.TOOL_CALL, {"tool": f"tool-{i}"}
-                )
+                trail.record(AuditEventType.TOOL_CALL, {"tool": f"tool-{i}"})
 
         assert len(fsync_calls) >= 1
 

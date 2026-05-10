@@ -79,6 +79,7 @@ class TestMCPToolDefinition:
 # Helpers for mocking the mcp SDK (stdio transport)
 # ---------------------------------------------------------------------------
 
+
 def _make_mock_stdio_session(tools_list: list[MagicMock]) -> MagicMock:
     """Return a mock ClientSession with list_tools and call_tool."""
     session = MagicMock()
@@ -124,6 +125,7 @@ def _mock_call_tool_result(content_texts: list[str]) -> MagicMock:
 # ---------------------------------------------------------------------------
 # Helper: force stdio check to False by faking an ImportError
 # ---------------------------------------------------------------------------
+
 
 def _patch_import_check(monkeypatch: pytest.MonkeyPatch, module_name: str) -> None:
     """Make `import <module_name>` raise ImportError within _check_*_available."""
@@ -187,9 +189,7 @@ class TestMCPClientAvailability:
 class TestMCPClientConnectStdio:
     """Test stdio transport connections."""
 
-    def test_connect_stdio_when_unavailable(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_connect_stdio_when_unavailable(self, monkeypatch: pytest.MonkeyPatch) -> None:
         _patch_import_check(monkeypatch, "mcp")
         client = MCPClient()
         config = MCPServerConfig(name="srv", command="echo")
@@ -201,24 +201,20 @@ class TestMCPClientConnectStdio:
         mock_session = _make_mock_stdio_session([mock_tool])
 
         mock_stdlib_client = MagicMock()
-        mock_stdlib_client.__aenter__ = AsyncMock(
-            return_value=(MagicMock(), MagicMock())
-        )
+        mock_stdlib_client.__aenter__ = AsyncMock(return_value=(MagicMock(), MagicMock()))
         mock_stdlib_client.__aexit__ = AsyncMock(return_value=None)
 
         mock_session_cls = MagicMock()
         mock_session_cls.__aenter__ = AsyncMock(return_value=mock_session)
         mock_session_cls.__aexit__ = AsyncMock(return_value=None)
 
-        with patch(
-            "mcp.client.stdio.stdio_client", return_value=mock_stdlib_client
-        ), patch("mcp.ClientSession", return_value=mock_session_cls), patch(
-            "mcp.StdioServerParameters"
-        ) as mock_params:
+        with (
+            patch("mcp.client.stdio.stdio_client", return_value=mock_stdlib_client),
+            patch("mcp.ClientSession", return_value=mock_session_cls),
+            patch("mcp.StdioServerParameters") as mock_params,
+        ):
             client = MCPClient()
-            config = MCPServerConfig(
-                name="my-server", command="python", args=["-m", "mcp_server"]
-            )
+            config = MCPServerConfig(name="my-server", command="python", args=["-m", "mcp_server"])
             result = asyncio.run(client.connect(config))
 
             assert len(result) == 1
@@ -245,10 +241,10 @@ class TestMCPClientConnectStdio:
         mock_session_cls.__aenter__ = AsyncMock(return_value=mock_session)
         mock_session_cls.__aexit__ = AsyncMock(return_value=None)
 
-        with patch(
-            "mcp.client.stdio.stdio_client", return_value=mock_stdlib_client
-        ), patch("mcp.ClientSession", return_value=mock_session_cls), patch(
-            "mcp.StdioServerParameters"
+        with (
+            patch("mcp.client.stdio.stdio_client", return_value=mock_stdlib_client),
+            patch("mcp.ClientSession", return_value=mock_session_cls),
+            patch("mcp.StdioServerParameters"),
         ):
             client = MCPClient()
             config = MCPServerConfig(name="srv", command="cmd")
@@ -269,10 +265,10 @@ class TestMCPClientConnectStdio:
         mock_session_cls.__aenter__ = AsyncMock(return_value=mock_session)
         mock_session_cls.__aexit__ = AsyncMock(return_value=None)
 
-        with patch(
-            "mcp.client.stdio.stdio_client", return_value=mock_stdlib_client
-        ), patch("mcp.ClientSession", return_value=mock_session_cls), patch(
-            "mcp.StdioServerParameters"
+        with (
+            patch("mcp.client.stdio.stdio_client", return_value=mock_stdlib_client),
+            patch("mcp.ClientSession", return_value=mock_session_cls),
+            patch("mcp.StdioServerParameters"),
         ):
             client = MCPClient()
             config = MCPServerConfig(name="srv", command="cmd")
@@ -290,11 +286,11 @@ class TestMCPClientConnectStdio:
         mock_session_cls.__aenter__ = AsyncMock(return_value=mock_session)
         mock_session_cls.__aexit__ = AsyncMock(return_value=None)
 
-        with patch(
-            "mcp.client.stdio.stdio_client", return_value=mock_stdlib_client
-        ), patch("mcp.ClientSession", return_value=mock_session_cls), patch(
-            "mcp.StdioServerParameters"
-        ) as mock_params:
+        with (
+            patch("mcp.client.stdio.stdio_client", return_value=mock_stdlib_client),
+            patch("mcp.ClientSession", return_value=mock_session_cls),
+            patch("mcp.StdioServerParameters") as mock_params,
+        ):
             client = MCPClient()
             config = MCPServerConfig(name="srv", command="cmd", env={})
             asyncio.run(client.connect(config))
@@ -332,9 +328,7 @@ class TestMCPClientConnectSSE:
         def _mock_mcp_sse_client(*a, **kw):
             return mock_sse
 
-        monkeypatch.setattr(
-            "godspeed.mcp.sse_transport.MCPSSEClient", _mock_mcp_sse_client
-        )
+        monkeypatch.setattr("godspeed.mcp.sse_transport.MCPSSEClient", _mock_mcp_sse_client)
 
         client = MCPClient()
         config = MCPServerConfig(
@@ -350,9 +344,7 @@ class TestMCPClientConnectSSE:
         assert result[0].server_name == "remote"
 
     def test_connect_sse_tool_missing_name(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        mock_sse = _make_mock_sse_client(
-            [{"description": "No name tool", "inputSchema": {}}]
-        )
+        mock_sse = _make_mock_sse_client([{"description": "No name tool", "inputSchema": {}}])
 
         monkeypatch.setattr(
             "godspeed.mcp.sse_transport.MCPSSEClient",
@@ -404,9 +396,7 @@ class TestMCPClientCallTool:
         mock_sse = _make_mock_sse_client([], call_tool_result="SSE result text")
         client._sse_clients["remote"] = mock_sse
 
-        result = asyncio.run(
-            client.call_tool("remote", "echo", {"message": "hi"})
-        )
+        result = asyncio.run(client.call_tool("remote", "echo", {"message": "hi"}))
         assert result == "SSE result text"
         mock_sse.call_tool.assert_called_once_with("echo", {"message": "hi"})
 
@@ -417,9 +407,7 @@ class TestMCPClientCallTool:
         mock_session.call_tool = AsyncMock(return_value=mock_result)
         client._connections["local"] = mock_session
 
-        result = asyncio.run(
-            client.call_tool("local", "search", {"query": "x"})
-        )
+        result = asyncio.run(client.call_tool("local", "search", {"query": "x"}))
         assert result == "stdio output"
         mock_session.call_tool.assert_called_once_with("search", {"query": "x"})
 
@@ -520,10 +508,10 @@ class TestMCPClientMultipleServers:
         mock_session_cls.__aenter__ = AsyncMock(return_value=mock_session)
         mock_session_cls.__aexit__ = AsyncMock(return_value=None)
 
-        with patch(
-            "mcp.client.stdio.stdio_client", return_value=mock_stdlib_client
-        ), patch("mcp.ClientSession", return_value=mock_session_cls), patch(
-            "mcp.StdioServerParameters"
+        with (
+            patch("mcp.client.stdio.stdio_client", return_value=mock_stdlib_client),
+            patch("mcp.ClientSession", return_value=mock_session_cls),
+            patch("mcp.StdioServerParameters"),
         ):
             client = MCPClient()
             c1 = asyncio.run(client.connect(MCPServerConfig(name="srv1", command="a")))

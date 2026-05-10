@@ -146,7 +146,10 @@ class TestDetectShell:
 
         shell_mod._shell_cache = None
         with patch("godspeed.tools.shell.platform.system", return_value="Windows"):
-            with patch("godspeed.tools.shell.shutil.which", return_value="C:\\Program Files\\Git\\bin\\bash.exe"):
+            with patch(
+                "godspeed.tools.shell.shutil.which",
+                return_value="C:\\Program Files\\Git\\bin\\bash.exe",
+            ):
                 result = _detect_shell()
         assert result[0] == "C:\\Program Files\\Git\\bin\\bash.exe"
         assert result[1] == "-c"
@@ -276,13 +279,17 @@ class TestShellTool:
         assert "exceeds maximum length" in result.error.lower()
 
     @pytest.mark.asyncio
-    async def test_command_whitespace_only(self, tool: ShellTool, tool_context: ToolContext) -> None:
+    async def test_command_whitespace_only(
+        self, tool: ShellTool, tool_context: ToolContext
+    ) -> None:
         result = await tool.execute({"command": "   \t\n  "}, tool_context)
         assert result.is_error
         assert "non-empty string" in result.error.lower()
 
     @pytest.mark.asyncio
-    async def test_timeout_float_converted(self, tool: ShellTool, tool_context: ToolContext) -> None:
+    async def test_timeout_float_converted(
+        self, tool: ShellTool, tool_context: ToolContext
+    ) -> None:
         mock_proc = _mock_popen(stdout="ok\n", stderr="", returncode=0)
         with patch("godspeed.tools.shell.subprocess.Popen", return_value=mock_proc):
             result = await tool.execute({"command": "echo ok", "timeout": 5.7}, tool_context)
@@ -309,7 +316,9 @@ class TestShellTool:
         assert "Shell not found" in result.error
 
     @pytest.mark.asyncio
-    async def test_timeout_with_partial_output(self, tool: ShellTool, tool_context: ToolContext) -> None:
+    async def test_timeout_with_partial_output(
+        self, tool: ShellTool, tool_context: ToolContext
+    ) -> None:
         mock_proc = MagicMock()
         mock_proc.communicate.side_effect = [
             subprocess.TimeoutExpired(cmd="cmd", timeout=5),
@@ -330,7 +339,9 @@ class TestShellTool:
         assert "partial stderr data" in result.error
 
     @pytest.mark.asyncio
-    async def test_timeout_drain_also_timeouts(self, tool: ShellTool, tool_context: ToolContext) -> None:
+    async def test_timeout_drain_also_timeouts(
+        self, tool: ShellTool, tool_context: ToolContext
+    ) -> None:
         mock_proc = MagicMock()
         mock_proc.communicate.side_effect = [
             subprocess.TimeoutExpired(cmd="cmd", timeout=5),
@@ -393,16 +404,16 @@ class TestShellTool:
         assert "background" in result.output.lower()
 
     @pytest.mark.asyncio
-    async def test_background_max_concurrent(self, tool: ShellTool, tool_context: ToolContext) -> None:
+    async def test_background_max_concurrent(
+        self, tool: ShellTool, tool_context: ToolContext
+    ) -> None:
         from godspeed.tools.background import MAX_CONCURRENT
 
         with patch("godspeed.tools.background.BackgroundRegistry") as mock_registry_cls:
             mock_registry = MagicMock()
             mock_registry.active_count = MAX_CONCURRENT
             mock_registry_cls.get.return_value = mock_registry
-            result = await tool.execute(
-                {"command": "npm start", "background": True}, tool_context
-            )
+            result = await tool.execute({"command": "npm start", "background": True}, tool_context)
 
         assert result.is_error
         assert "Too many background processes" in result.error
@@ -410,7 +421,9 @@ class TestShellTool:
     # --- Additional timeout / kill-process-tree coverage ---
 
     @pytest.mark.asyncio
-    async def test_timeout_with_stdout_only_tail(self, tool: ShellTool, tool_context: ToolContext) -> None:
+    async def test_timeout_with_stdout_only_tail(
+        self, tool: ShellTool, tool_context: ToolContext
+    ) -> None:
         mock_proc = MagicMock()
         stdout_data = "x" * 3000
         mock_proc.communicate.side_effect = [
@@ -431,7 +444,9 @@ class TestShellTool:
         assert "STDOUT tail" in result.error
 
     @pytest.mark.asyncio
-    async def test_timeout_with_stderr_only_tail(self, tool: ShellTool, tool_context: ToolContext) -> None:
+    async def test_timeout_with_stderr_only_tail(
+        self, tool: ShellTool, tool_context: ToolContext
+    ) -> None:
         mock_proc = MagicMock()
         stderr_data = "E" * 3000
         mock_proc.communicate.side_effect = [
@@ -452,7 +467,9 @@ class TestShellTool:
         assert "STDERR tail" in result.error
 
     @pytest.mark.asyncio
-    async def test_timeout_with_both_tails(self, tool: ShellTool, tool_context: ToolContext) -> None:
+    async def test_timeout_with_both_tails(
+        self, tool: ShellTool, tool_context: ToolContext
+    ) -> None:
         mock_proc = MagicMock()
         mock_proc.communicate.side_effect = [
             subprocess.TimeoutExpired(cmd="cmd", timeout=5),
@@ -482,7 +499,9 @@ class TestShellTool:
         assert "warning only" in result.output
 
     @pytest.mark.asyncio
-    async def test_finally_kill_proc_raises(self, tool: ShellTool, tool_context: ToolContext) -> None:
+    async def test_finally_kill_proc_raises(
+        self, tool: ShellTool, tool_context: ToolContext
+    ) -> None:
         mock_proc = MagicMock()
         mock_proc.communicate.return_value = ("out", "")
         mock_proc.returncode = None
@@ -494,14 +513,20 @@ class TestShellTool:
         mock_proc.kill.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_shell_not_found_error_message(self, tool: ShellTool, tool_context: ToolContext) -> None:
-        with patch("godspeed.tools.shell.subprocess.Popen", side_effect=FileNotFoundError("no-bash")):
+    async def test_shell_not_found_error_message(
+        self, tool: ShellTool, tool_context: ToolContext
+    ) -> None:
+        with patch(
+            "godspeed.tools.shell.subprocess.Popen", side_effect=FileNotFoundError("no-bash")
+        ):
             result = await tool.execute({"command": "echo test"}, tool_context)
         assert result.is_error
         assert "Shell not found" in result.error
 
     @pytest.mark.asyncio
-    async def test_background_output_collection_launched(self, tool: ShellTool, tool_context: ToolContext) -> None:
+    async def test_background_output_collection_launched(
+        self, tool: ShellTool, tool_context: ToolContext
+    ) -> None:
         mock_proc = MagicMock()
 
         with patch("godspeed.tools.shell.asyncio.create_subprocess_exec", return_value=mock_proc):

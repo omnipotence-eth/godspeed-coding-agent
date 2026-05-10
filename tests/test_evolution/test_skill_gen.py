@@ -71,9 +71,7 @@ class TestDetectPatterns:
             analyze_multi_tool_sequences=MagicMock(return_value=[mock_seq])
         )
         result = generator.detect_patterns(sessions, min_frequency=5)
-        generator._analyzer.analyze_multi_tool_sequences.assert_called_once_with(
-            sessions, 5
-        )
+        generator._analyzer.analyze_multi_tool_sequences.assert_called_once_with(sessions, 5)
         assert result == [mock_seq]
 
     def test_default_min_frequency(self) -> None:
@@ -85,9 +83,7 @@ class TestDetectPatterns:
             analyze_multi_tool_sequences=MagicMock(return_value=[mock_seq])
         )
         result = generator.detect_patterns(sessions)
-        generator._analyzer.analyze_multi_tool_sequences.assert_called_once_with(
-            sessions, 3
-        )
+        generator._analyzer.analyze_multi_tool_sequences.assert_called_once_with(sessions, 3)
         assert len(result) == 1
         assert result[0] is mock_seq
 
@@ -128,9 +124,7 @@ class TestGenerateSkillMarkdown:
 
     def test_with_single_tool(self) -> None:
         generator = SkillGenerator()
-        seq = _make_tool_sequence(
-            tools=("file_read",), candidate_skill_name="file_read"
-        )
+        seq = _make_tool_sequence(tools=("file_read",), candidate_skill_name="file_read")
 
         result = generator.generate_skill_markdown(seq)
         body_part = "---".join(result.split("---")[2:]).strip()
@@ -206,13 +200,7 @@ class TestValidateSkill:
     def test_valid_skill(self) -> None:
         generator = SkillGenerator()
         skill_text = (
-            "---\n"
-            "name: test-skill\n"
-            "description: A test\n"
-            "trigger: test\n"
-            "---\n"
-            "\n"
-            "1. Do something\n"
+            "---\nname: test-skill\ndescription: A test\ntrigger: test\n---\n\n1. Do something\n"
         )
         assert generator.validate_skill(skill_text) is True
 
@@ -227,13 +215,7 @@ class TestValidateSkill:
 
     def test_invalid_yaml(self) -> None:
         generator = SkillGenerator()
-        skill_text = (
-            "---\n"
-            "name: [unclosed\n"
-            "---\n"
-            "\n"
-            "Body here.\n"
-        )
+        skill_text = "---\nname: [unclosed\n---\n\nBody here.\n"
         assert generator.validate_skill(skill_text) is False
 
     def test_metadata_not_dict(self) -> None:
@@ -243,63 +225,27 @@ class TestValidateSkill:
 
     def test_missing_required_field_name(self) -> None:
         generator = SkillGenerator()
-        skill_text = (
-            "---\n"
-            "description: Missing name\n"
-            "trigger: test\n"
-            "---\n"
-            "\n"
-            "Body.\n"
-        )
+        skill_text = "---\ndescription: Missing name\ntrigger: test\n---\n\nBody.\n"
         assert generator.validate_skill(skill_text) is False
 
     def test_missing_required_field_description(self) -> None:
         generator = SkillGenerator()
-        skill_text = (
-            "---\n"
-            "name: test-skill\n"
-            "trigger: test\n"
-            "---\n"
-            "\n"
-            "Body.\n"
-        )
+        skill_text = "---\nname: test-skill\ntrigger: test\n---\n\nBody.\n"
         assert generator.validate_skill(skill_text) is False
 
     def test_missing_required_field_trigger(self) -> None:
         generator = SkillGenerator()
-        skill_text = (
-            "---\n"
-            "name: test-skill\n"
-            "description: A test\n"
-            "---\n"
-            "\n"
-            "Body.\n"
-        )
+        skill_text = "---\nname: test-skill\ndescription: A test\n---\n\nBody.\n"
         assert generator.validate_skill(skill_text) is False
 
     def test_empty_body(self) -> None:
         generator = SkillGenerator()
-        skill_text = (
-            "---\n"
-            "name: test-skill\n"
-            "description: A test\n"
-            "trigger: test\n"
-            "---\n"
-            "\n"
-            "\n"
-        )
+        skill_text = "---\nname: test-skill\ndescription: A test\ntrigger: test\n---\n\n\n"
         assert generator.validate_skill(skill_text) is False
 
     def test_body_only_whitespace(self) -> None:
         generator = SkillGenerator()
-        skill_text = (
-            "---\n"
-            "name: test-skill\n"
-            "description: A test\n"
-            "trigger: test\n"
-            "---\n"
-            "   \n"
-        )
+        skill_text = "---\nname: test-skill\ndescription: A test\ntrigger: test\n---\n   \n"
         assert generator.validate_skill(skill_text) is False
 
     def test_multiple_frontmatter_blocks(self) -> None:
@@ -352,9 +298,7 @@ class TestMakeName:
         assert result == "file-read-and-bash-and-file-read"
 
     def test_caps_at_50_chars(self) -> None:
-        tools = tuple(
-            f"very_long_tool_name_number_{i}" for i in range(10)
-        )
+        tools = tuple(f"very_long_tool_name_number_{i}" for i in range(10))
         result = SkillGenerator._make_name(tools)
         assert len(result) <= 50
 
@@ -390,9 +334,7 @@ class TestMakeDescription:
         assert result == "Auto-generated: file read then file edit"
 
     def test_deduplicates_tool_names(self) -> None:
-        result = SkillGenerator._make_description(
-            ("file_read", "file_read", "bash")
-        )
+        result = SkillGenerator._make_description(("file_read", "file_read", "bash"))
         assert result == "Auto-generated: file read then bash"
 
     def test_single_tool(self) -> None:

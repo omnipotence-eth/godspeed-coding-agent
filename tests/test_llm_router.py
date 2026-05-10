@@ -157,7 +157,10 @@ class TestClassifyTaskType:
         msg = {
             "role": "assistant",
             "content": "",
-            "tool_calls": ["not_a_dict", {"id": "x", "function": {"name": "file_read", "arguments": "{}"}}],
+            "tool_calls": [
+                "not_a_dict",
+                {"id": "x", "function": {"name": "file_read", "arguments": "{}"}},
+            ],
         }
         result = _extract_tool_names(msg)
         assert result == ["file_read"]
@@ -170,7 +173,11 @@ class TestClassifyTaskType:
             "content": "",
             "tool_calls": [
                 {"id": "a", "type": "function", "function": "not_a_dict"},
-                {"id": "b", "type": "function", "function": {"name": "file_read", "arguments": "{}"}},
+                {
+                    "id": "b",
+                    "type": "function",
+                    "function": {"name": "file_read", "arguments": "{}"},
+                },
             ],
         }
         result = _extract_tool_names(msg)

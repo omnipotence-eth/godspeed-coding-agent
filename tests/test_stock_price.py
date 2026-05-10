@@ -376,15 +376,13 @@ class TestStockPriceHistorical:
         mock_date = MagicMock()
         mock_date.strftime.return_value = "2026-05-09"
         mock_row = MagicMock()
-        mock_row.__getitem__.side_effect = (
-            lambda k: {
-                "Open": 150.0,
-                "High": 155.0,
-                "Low": 149.0,
-                "Close": 152.0,
-                "Volume": 2_500_000,
-            }[k]
-        )
+        mock_row.__getitem__.side_effect = lambda k: {
+            "Open": 150.0,
+            "High": 155.0,
+            "Low": 149.0,
+            "Close": 152.0,
+            "Volume": 2_500_000,
+        }[k]
 
         mock_hist = MagicMock()
         mock_hist.empty = False
@@ -411,15 +409,13 @@ class TestStockPriceHistorical:
         mock_row = MagicMock()
         # Volume 10,000 — the historical formatting checks >= 1_000_000, so this
         # falls through to the raw comma-formatted number path.
-        mock_row.__getitem__.side_effect = (
-            lambda k: {
-                "Open": 150.0,
-                "High": 155.0,
-                "Low": 149.0,
-                "Close": 152.0,
-                "Volume": 10_000,
-            }[k]
-        )
+        mock_row.__getitem__.side_effect = lambda k: {
+            "Open": 150.0,
+            "High": 155.0,
+            "Low": 149.0,
+            "Close": 152.0,
+            "Volume": 10_000,
+        }[k]
 
         mock_hist = MagicMock()
         mock_hist.empty = False

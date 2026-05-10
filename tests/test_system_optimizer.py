@@ -421,9 +421,7 @@ def test_gpu_summary_pynvml_wins(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_gpu_summary_nvidia_smi_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        "godspeed.tools.system_optimizer._gpu_via_pynvml", lambda: None
-    )
+    monkeypatch.setattr("godspeed.tools.system_optimizer._gpu_via_pynvml", lambda: None)
     monkeypatch.setattr(
         "godspeed.tools.system_optimizer._gpu_via_nvidia_smi",
         lambda: ["GPU 0: Fake SMI GPU", "  details"],
@@ -434,12 +432,8 @@ def test_gpu_summary_nvidia_smi_fallback(monkeypatch: pytest.MonkeyPatch) -> Non
 
 
 def test_gpu_summary_no_gpu_detected(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        "godspeed.tools.system_optimizer._gpu_via_pynvml", lambda: None
-    )
-    monkeypatch.setattr(
-        "godspeed.tools.system_optimizer._gpu_via_nvidia_smi", lambda: None
-    )
+    monkeypatch.setattr("godspeed.tools.system_optimizer._gpu_via_pynvml", lambda: None)
+    monkeypatch.setattr("godspeed.tools.system_optimizer._gpu_via_nvidia_smi", lambda: None)
     result = _gpu_summary()
     assert len(result) == 1
     assert "no NVIDIA GPU detected" in result[0]
@@ -615,7 +609,8 @@ def test_gpu_via_nvidia_smi_wrong_column_count(monkeypatch: pytest.MonkeyPatch) 
     mod = _mock_smi_module()
     monkeypatch.setattr(mod.shutil, "which", lambda x: "/usr/bin/nvidia-smi")
     proc = CompletedProcess(
-        args=[], returncode=0,
+        args=[],
+        returncode=0,
         stdout="RTX 5070 Ti, 45, 8192, 16384, 65\nShort, 30, 4096\n",
         stderr="",
     )
@@ -1036,9 +1031,7 @@ def test_check_ollama_vram_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_check_ollama_vram_oserror(monkeypatch: pytest.MonkeyPatch) -> None:
     mod = _mock_smi_module()
     monkeypatch.setattr(mod.shutil, "which", lambda x: "/usr/bin/ollama")
-    monkeypatch.setattr(
-        mod.subprocess, "run", MagicMock(side_effect=OSError("disk full"))
-    )
+    monkeypatch.setattr(mod.subprocess, "run", MagicMock(side_effect=OSError("disk full")))
     assert _check_ollama_vram() == []
 
 
@@ -1087,7 +1080,10 @@ def test_check_ollama_vram_no_models_loaded(monkeypatch: pytest.MonkeyPatch) -> 
     mod = _mock_smi_module()
     monkeypatch.setattr(mod.shutil, "which", lambda x: "/usr/bin/ollama")
     proc = CompletedProcess(
-        args=[], returncode=0, stdout="NAME           ID              SIZE      PROCESSOR    UNTIL\n", stderr=""
+        args=[],
+        returncode=0,
+        stdout="NAME           ID              SIZE      PROCESSOR    UNTIL\n",
+        stderr="",
     )
     monkeypatch.setattr(mod.subprocess, "run", lambda *a, **kw: proc)
     assert _check_ollama_vram() == []
@@ -1118,9 +1114,11 @@ def test_build_recommend_vmem_90_high() -> None:
     mock_psutil.virtual_memory.return_value.used = 30 * 1024**3
     mock_psutil.virtual_memory.return_value.total = 32 * 1024**3
 
-    with patch("godspeed.tools.system_optimizer._check_ollama_vram", return_value=[]), \
-         patch("godspeed.tools.system_optimizer._collect_outlier_processes", return_value=([], [])), \
-         patch("godspeed.tools.system_optimizer._count_zombie_python", return_value=0):
+    with (
+        patch("godspeed.tools.system_optimizer._check_ollama_vram", return_value=[]),
+        patch("godspeed.tools.system_optimizer._collect_outlier_processes", return_value=([], [])),
+        patch("godspeed.tools.system_optimizer._count_zombie_python", return_value=0),
+    ):
         result = _build_recommend(mock_psutil, top=10)
 
     assert "HIGH" in result
@@ -1132,9 +1130,11 @@ def test_build_recommend_vmem_80_medium() -> None:
     mock_psutil = _fake_build_recommend_psutil()
     mock_psutil.virtual_memory.return_value.percent = 85.0
 
-    with patch("godspeed.tools.system_optimizer._check_ollama_vram", return_value=[]), \
-         patch("godspeed.tools.system_optimizer._collect_outlier_processes", return_value=([], [])), \
-         patch("godspeed.tools.system_optimizer._count_zombie_python", return_value=0):
+    with (
+        patch("godspeed.tools.system_optimizer._check_ollama_vram", return_value=[]),
+        patch("godspeed.tools.system_optimizer._collect_outlier_processes", return_value=([], [])),
+        patch("godspeed.tools.system_optimizer._count_zombie_python", return_value=0),
+    ):
         result = _build_recommend(mock_psutil, top=10)
 
     assert "MEDIUM" in result
@@ -1145,9 +1145,11 @@ def test_build_recommend_disk_partition_exception() -> None:
     mock_psutil = _fake_build_recommend_psutil()
     mock_psutil.disk_partitions.side_effect = OSError("cannot enumerate")
 
-    with patch("godspeed.tools.system_optimizer._check_ollama_vram", return_value=[]), \
-         patch("godspeed.tools.system_optimizer._collect_outlier_processes", return_value=([], [])), \
-         patch("godspeed.tools.system_optimizer._count_zombie_python", return_value=0):
+    with (
+        patch("godspeed.tools.system_optimizer._check_ollama_vram", return_value=[]),
+        patch("godspeed.tools.system_optimizer._collect_outlier_processes", return_value=([], [])),
+        patch("godspeed.tools.system_optimizer._count_zombie_python", return_value=0),
+    ):
         result = _build_recommend(mock_psutil, top=10)
 
     assert "healthy" in result.lower() or "No cleanup" in result
@@ -1162,9 +1164,11 @@ def test_build_recommend_disk_cdrom_skipped(monkeypatch: pytest.MonkeyPatch) -> 
     cdrom.fstype = "iso9660"
     mock_psutil.disk_partitions.return_value = [cdrom]
 
-    with patch("godspeed.tools.system_optimizer._check_ollama_vram", return_value=[]), \
-         patch("godspeed.tools.system_optimizer._collect_outlier_processes", return_value=([], [])), \
-         patch("godspeed.tools.system_optimizer._count_zombie_python", return_value=0):
+    with (
+        patch("godspeed.tools.system_optimizer._check_ollama_vram", return_value=[]),
+        patch("godspeed.tools.system_optimizer._collect_outlier_processes", return_value=([], [])),
+        patch("godspeed.tools.system_optimizer._count_zombie_python", return_value=0),
+    ):
         result = _build_recommend(mock_psutil, top=10)
 
     assert "healthy" in result.lower() or "No cleanup" in result
@@ -1179,9 +1183,11 @@ def test_build_recommend_disk_win32_empty_fstype(monkeypatch: pytest.MonkeyPatch
     removable.fstype = ""
     mock_psutil.disk_partitions.return_value = [removable]
 
-    with patch("godspeed.tools.system_optimizer._check_ollama_vram", return_value=[]), \
-         patch("godspeed.tools.system_optimizer._collect_outlier_processes", return_value=([], [])), \
-         patch("godspeed.tools.system_optimizer._count_zombie_python", return_value=0):
+    with (
+        patch("godspeed.tools.system_optimizer._check_ollama_vram", return_value=[]),
+        patch("godspeed.tools.system_optimizer._collect_outlier_processes", return_value=([], [])),
+        patch("godspeed.tools.system_optimizer._count_zombie_python", return_value=0),
+    ):
         result = _build_recommend(mock_psutil, top=10)
 
     assert "healthy" in result.lower() or "No cleanup" in result
@@ -1202,9 +1208,11 @@ def test_build_recommend_disk_below_threshold_no_rec() -> None:
     mock_psutil.disk_partitions.return_value = [part]
     mock_psutil.disk_usage.return_value = usage
 
-    with patch("godspeed.tools.system_optimizer._check_ollama_vram", return_value=[]), \
-         patch("godspeed.tools.system_optimizer._collect_outlier_processes", return_value=([], [])), \
-         patch("godspeed.tools.system_optimizer._count_zombie_python", return_value=0):
+    with (
+        patch("godspeed.tools.system_optimizer._check_ollama_vram", return_value=[]),
+        patch("godspeed.tools.system_optimizer._collect_outlier_processes", return_value=([], [])),
+        patch("godspeed.tools.system_optimizer._count_zombie_python", return_value=0),
+    ):
         result = _build_recommend(mock_psutil, top=10)
 
     assert "MEDIUM" in result
@@ -1218,9 +1226,11 @@ def test_build_recommend_disk_below_threshold_no_rec() -> None:
     mock_psutil.disk_partitions.return_value = [part]
     mock_psutil.disk_usage.side_effect = PermissionError("denied")
 
-    with patch("godspeed.tools.system_optimizer._check_ollama_vram", return_value=[]), \
-         patch("godspeed.tools.system_optimizer._collect_outlier_processes", return_value=([], [])), \
-         patch("godspeed.tools.system_optimizer._count_zombie_python", return_value=0):
+    with (
+        patch("godspeed.tools.system_optimizer._check_ollama_vram", return_value=[]),
+        patch("godspeed.tools.system_optimizer._collect_outlier_processes", return_value=([], [])),
+        patch("godspeed.tools.system_optimizer._count_zombie_python", return_value=0),
+    ):
         result = _build_recommend(mock_psutil, top=10)
 
     assert "healthy" in result.lower() or "No cleanup" in result
@@ -1239,9 +1249,11 @@ def test_build_recommend_disk_90_high() -> None:
     mock_psutil.disk_partitions.return_value = [part]
     mock_psutil.disk_usage.return_value = usage
 
-    with patch("godspeed.tools.system_optimizer._check_ollama_vram", return_value=[]), \
-         patch("godspeed.tools.system_optimizer._collect_outlier_processes", return_value=([], [])), \
-         patch("godspeed.tools.system_optimizer._count_zombie_python", return_value=0):
+    with (
+        patch("godspeed.tools.system_optimizer._check_ollama_vram", return_value=[]),
+        patch("godspeed.tools.system_optimizer._collect_outlier_processes", return_value=([], [])),
+        patch("godspeed.tools.system_optimizer._count_zombie_python", return_value=0),
+    ):
         result = _build_recommend(mock_psutil, top=10)
 
     assert "HIGH" in result
@@ -1261,9 +1273,11 @@ def test_build_recommend_disk_85_medium() -> None:
     mock_psutil.disk_partitions.return_value = [part]
     mock_psutil.disk_usage.return_value = usage
 
-    with patch("godspeed.tools.system_optimizer._check_ollama_vram", return_value=[]), \
-         patch("godspeed.tools.system_optimizer._collect_outlier_processes", return_value=([], [])), \
-         patch("godspeed.tools.system_optimizer._count_zombie_python", return_value=0):
+    with (
+        patch("godspeed.tools.system_optimizer._check_ollama_vram", return_value=[]),
+        patch("godspeed.tools.system_optimizer._collect_outlier_processes", return_value=([], [])),
+        patch("godspeed.tools.system_optimizer._count_zombie_python", return_value=0),
+    ):
         result = _build_recommend(mock_psutil, top=10)
 
     assert "MEDIUM" in result
@@ -1275,9 +1289,14 @@ def test_build_recommend_big_mem_procs_flagged() -> None:
     big_mem = [(100, "chrome.exe", 5 * 1024**3)]
     high_cpu: list[Any] = []
 
-    with patch("godspeed.tools.system_optimizer._check_ollama_vram", return_value=[]), \
-         patch("godspeed.tools.system_optimizer._collect_outlier_processes", return_value=(big_mem, high_cpu)), \
-         patch("godspeed.tools.system_optimizer._count_zombie_python", return_value=0):
+    with (
+        patch("godspeed.tools.system_optimizer._check_ollama_vram", return_value=[]),
+        patch(
+            "godspeed.tools.system_optimizer._collect_outlier_processes",
+            return_value=(big_mem, high_cpu),
+        ),
+        patch("godspeed.tools.system_optimizer._count_zombie_python", return_value=0),
+    ):
         result = _build_recommend(mock_psutil, top=10)
 
     assert "chrome.exe" in result
@@ -1289,9 +1308,14 @@ def test_build_recommend_high_cpu_procs_flagged() -> None:
     mock_psutil = _fake_build_recommend_psutil()
     high_cpu = [(200, "python.exe", 300.0)]
 
-    with patch("godspeed.tools.system_optimizer._check_ollama_vram", return_value=[]), \
-         patch("godspeed.tools.system_optimizer._collect_outlier_processes", return_value=([], high_cpu)), \
-         patch("godspeed.tools.system_optimizer._count_zombie_python", return_value=0):
+    with (
+        patch("godspeed.tools.system_optimizer._check_ollama_vram", return_value=[]),
+        patch(
+            "godspeed.tools.system_optimizer._collect_outlier_processes",
+            return_value=([], high_cpu),
+        ),
+        patch("godspeed.tools.system_optimizer._count_zombie_python", return_value=0),
+    ):
         result = _build_recommend(mock_psutil, top=10)
 
     assert "python.exe" in result
@@ -1304,9 +1328,13 @@ def test_build_recommend_big_mem_system_critical_skipped(monkeypatch: pytest.Mon
     mock_psutil = _fake_build_recommend_psutil()
     big_mem = [(4, "csrss.exe", 5 * 1024**3)]
 
-    with patch("godspeed.tools.system_optimizer._check_ollama_vram", return_value=[]), \
-         patch("godspeed.tools.system_optimizer._collect_outlier_processes", return_value=(big_mem, [])), \
-         patch("godspeed.tools.system_optimizer._count_zombie_python", return_value=0):
+    with (
+        patch("godspeed.tools.system_optimizer._check_ollama_vram", return_value=[]),
+        patch(
+            "godspeed.tools.system_optimizer._collect_outlier_processes", return_value=(big_mem, [])
+        ),
+        patch("godspeed.tools.system_optimizer._count_zombie_python", return_value=0),
+    ):
         result = _build_recommend(mock_psutil, top=10)
 
     assert "kill_process:" not in result or "csrss.exe" not in result
@@ -1317,9 +1345,14 @@ def test_build_recommend_high_cpu_system_critical_skipped(monkeypatch: pytest.Mo
     mock_psutil = _fake_build_recommend_psutil()
     high_cpu = [(1, "systemd", 250.0)]
 
-    with patch("godspeed.tools.system_optimizer._check_ollama_vram", return_value=[]), \
-         patch("godspeed.tools.system_optimizer._collect_outlier_processes", return_value=([], high_cpu)), \
-         patch("godspeed.tools.system_optimizer._count_zombie_python", return_value=0):
+    with (
+        patch("godspeed.tools.system_optimizer._check_ollama_vram", return_value=[]),
+        patch(
+            "godspeed.tools.system_optimizer._collect_outlier_processes",
+            return_value=([], high_cpu),
+        ),
+        patch("godspeed.tools.system_optimizer._count_zombie_python", return_value=0),
+    ):
         result = _build_recommend(mock_psutil, top=10)
 
     assert "kill_process:" not in result or "systemd" not in result
@@ -1329,9 +1362,11 @@ def test_build_recommend_zombie_python_flagged(monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.setattr(sys, "platform", "linux")
     mock_psutil = _fake_build_recommend_psutil()
 
-    with patch("godspeed.tools.system_optimizer._check_ollama_vram", return_value=[]), \
-         patch("godspeed.tools.system_optimizer._collect_outlier_processes", return_value=([], [])), \
-         patch("godspeed.tools.system_optimizer._count_zombie_python", return_value=3):
+    with (
+        patch("godspeed.tools.system_optimizer._check_ollama_vram", return_value=[]),
+        patch("godspeed.tools.system_optimizer._collect_outlier_processes", return_value=([], [])),
+        patch("godspeed.tools.system_optimizer._count_zombie_python", return_value=3),
+    ):
         result = _build_recommend(mock_psutil, top=10)
 
     assert "zombie" in result.lower()
@@ -1342,9 +1377,11 @@ def test_build_recommend_ollama_recommendations_included(monkeypatch: pytest.Mon
     mock_psutil = _fake_build_recommend_psutil()
     ollama_rec = [("MEDIUM", "Ollama loaded", "unload it", "ollama_stop:gemma4:12b")]
 
-    with patch("godspeed.tools.system_optimizer._check_ollama_vram", return_value=ollama_rec), \
-         patch("godspeed.tools.system_optimizer._collect_outlier_processes", return_value=([], [])), \
-         patch("godspeed.tools.system_optimizer._count_zombie_python", return_value=0):
+    with (
+        patch("godspeed.tools.system_optimizer._check_ollama_vram", return_value=ollama_rec),
+        patch("godspeed.tools.system_optimizer._collect_outlier_processes", return_value=([], [])),
+        patch("godspeed.tools.system_optimizer._count_zombie_python", return_value=0),
+    ):
         result = _build_recommend(mock_psutil, top=10)
 
     assert "ollama_stop" in result
@@ -1364,9 +1401,14 @@ def test_build_recommend_severity_sorting() -> None:
     mock_psutil.disk_partitions.return_value = [part]
     mock_psutil.disk_usage.return_value = usage
 
-    with patch("godspeed.tools.system_optimizer._check_ollama_vram", return_value=[]), \
-         patch("godspeed.tools.system_optimizer._collect_outlier_processes", return_value=([], [(99, "burn", 400.0)])), \
-         patch("godspeed.tools.system_optimizer._count_zombie_python", return_value=0):
+    with (
+        patch("godspeed.tools.system_optimizer._check_ollama_vram", return_value=[]),
+        patch(
+            "godspeed.tools.system_optimizer._collect_outlier_processes",
+            return_value=([], [(99, "burn", 400.0)]),
+        ),
+        patch("godspeed.tools.system_optimizer._count_zombie_python", return_value=0),
+    ):
         result = _build_recommend(mock_psutil, top=10)
 
     high_idx = result.find("HIGH")
@@ -1378,9 +1420,11 @@ def test_build_recommend_severity_sorting() -> None:
 def test_build_recommend_no_recommendations_healthy() -> None:
     mock_psutil = _fake_build_recommend_psutil()
 
-    with patch("godspeed.tools.system_optimizer._check_ollama_vram", return_value=[]), \
-         patch("godspeed.tools.system_optimizer._collect_outlier_processes", return_value=([], [])), \
-         patch("godspeed.tools.system_optimizer._count_zombie_python", return_value=0):
+    with (
+        patch("godspeed.tools.system_optimizer._check_ollama_vram", return_value=[]),
+        patch("godspeed.tools.system_optimizer._collect_outlier_processes", return_value=([], [])),
+        patch("godspeed.tools.system_optimizer._count_zombie_python", return_value=0),
+    ):
         result = _build_recommend(mock_psutil, top=10)
 
     assert "healthy" in result.lower()
@@ -1442,9 +1486,7 @@ async def test_inspect_top_zero_treated_as_default(
 
 
 @pytest.mark.asyncio
-async def test_inspect_top_none_uses_default(
-    tool: SystemOptimizerTool, ctx: ToolContext
-) -> None:
+async def test_inspect_top_none_uses_default(tool: SystemOptimizerTool, ctx: ToolContext) -> None:
     result = await tool.execute({"mode": "inspect", "top": None}, ctx)
     assert not result.is_error
     assert f"Top {DEFAULT_TOP} processes" in result.output

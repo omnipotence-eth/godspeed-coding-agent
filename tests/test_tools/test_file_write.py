@@ -236,7 +236,9 @@ class TestFileWriteTool:
         tool = FileWriteTool()
         ctx = _ctx(tmp_path)
         with patch("godspeed.tools.file_write.os.replace", side_effect=OSError("disk full")):
-            with patch("godspeed.tools.file_write.os.unlink", side_effect=OSError("unlink also failed")):
+            with patch(
+                "godspeed.tools.file_write.os.unlink", side_effect=OSError("unlink also failed")
+            ):
                 result = await tool.execute({"file_path": "fail.txt", "content": "data"}, ctx)
         assert result.is_error
         assert "Failed to write" in result.error
@@ -270,14 +272,18 @@ class TestFileWriteTool:
     async def test_unicode_content(self, tmp_path: Path) -> None:
         tool = FileWriteTool()
         content = "Hello \u4e16\u754c \U0001f600 \u00e9\u00e8\u00fc"
-        result = await tool.execute({"file_path": "unicode.txt", "content": content}, _ctx(tmp_path))
+        result = await tool.execute(
+            {"file_path": "unicode.txt", "content": content}, _ctx(tmp_path)
+        )
         assert result.success
         assert (tmp_path / "unicode.txt").read_text(encoding="utf-8") == content
 
     @pytest.mark.asyncio
     async def test_special_path_chars(self, tmp_path: Path) -> None:
         tool = FileWriteTool()
-        result = await tool.execute({"file_path": "my-app_v2.0/config.json", "content": "{}"}, _ctx(tmp_path))
+        result = await tool.execute(
+            {"file_path": "my-app_v2.0/config.json", "content": "{}"}, _ctx(tmp_path)
+        )
         assert result.success
         assert (tmp_path / "my-app_v2.0" / "config.json").read_text() == "{}"
 
@@ -286,7 +292,9 @@ class TestFileWriteTool:
         (tmp_path / "existing.txt").write_text("old")
         tool = FileWriteTool()
         content = "new_content"
-        result = await tool.execute({"file_path": "existing.txt", "content": content}, _ctx(tmp_path))
+        result = await tool.execute(
+            {"file_path": "existing.txt", "content": content}, _ctx(tmp_path)
+        )
         assert result.success
         assert f"{len(content)} bytes" in result.output
 

@@ -769,13 +769,15 @@ class TestHeadlessRun:
             if call_count[0] == 1:
                 return ChatResponse(
                     content="",
-                    tool_calls=[{
-                        "id": "call_1",
-                        "function": {
-                            "name": "shell",
-                            "arguments": '{"command": "echo ok"}',
-                        },
-                    }],
+                    tool_calls=[
+                        {
+                            "id": "call_1",
+                            "function": {
+                                "name": "shell",
+                                "arguments": '{"command": "echo ok"}',
+                            },
+                        }
+                    ],
                     finish_reason="tool_calls",
                 )
             return ChatResponse(content="Executed.", finish_reason="stop")
@@ -809,13 +811,15 @@ class TestHeadlessRun:
             if call_count[0] == 1:
                 return ChatResponse(
                     content="",
-                    tool_calls=[{
-                        "id": "call_1",
-                        "function": {
-                            "name": "shell",
-                            "arguments": '{"command": "rm -rf /"}',
-                        },
-                    }],
+                    tool_calls=[
+                        {
+                            "id": "call_1",
+                            "function": {
+                                "name": "shell",
+                                "arguments": '{"command": "rm -rf /"}',
+                            },
+                        }
+                    ],
                     finish_reason="tool_calls",
                 )
             return ChatResponse(content="Permission denied, I understand.", finish_reason="stop")
@@ -851,13 +855,15 @@ class TestHeadlessRun:
             if call_count[0] == 1:
                 return ChatResponse(
                     content="",
-                    tool_calls=[{
-                        "id": "call_001",
-                        "function": {
-                            "name": "file_read",
-                            "arguments": '{"file_path": "test.py"}',
-                        },
-                    }],
+                    tool_calls=[
+                        {
+                            "id": "call_001",
+                            "function": {
+                                "name": "file_read",
+                                "arguments": '{"file_path": "test.py"}',
+                            },
+                        }
+                    ],
                     finish_reason="tool_calls",
                 )
             return ChatResponse(content="Done.", finish_reason="stop")
@@ -954,7 +960,9 @@ class TestCLICommandsExtended:
         from click.testing import CliRunner
         from godspeed.cli import main
 
-        with patch("godspeed.tools.ollama_manager.show_model", return_value={"name": "qwen", "size": "4B"}):
+        with patch(
+            "godspeed.tools.ollama_manager.show_model", return_value={"name": "qwen", "size": "4B"}
+        ):
             runner = CliRunner()
             result = runner.invoke(main, ["ollama", "show", "qwen3:4b"])
             assert result.exit_code == 0
@@ -990,7 +998,9 @@ class TestCLICommandsExtended:
         from click.testing import CliRunner
         from godspeed.cli import main
 
-        with patch("godspeed.evolution.hardware.format_machine_report", return_value="Machine report"):
+        with patch(
+            "godspeed.evolution.hardware.format_machine_report", return_value="Machine report"
+        ):
             runner = CliRunner()
             result = runner.invoke(main, ["scan"])
             assert result.exit_code == 0

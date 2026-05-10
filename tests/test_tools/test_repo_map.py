@@ -75,14 +75,14 @@ class TestRepoMapper:
 
     def test_parse_decorated_class(self, mapper: RepoMapper, tmp_path: Path) -> None:
         f = tmp_path / "dc.py"
-        f.write_text(
-            "@dataclass\nclass Foo:\n    x: int\n    def bar(self):\n        pass\n"
-        )
+        f.write_text("@dataclass\nclass Foo:\n    x: int\n    def bar(self):\n        pass\n")
         symbols = mapper.parse_file(f)
         assert len(symbols) == 1
         assert symbols[0].kind == "class"
 
-    def test_parse_decorated_returns_none_for_unknown(self, mapper: RepoMapper, tmp_path: Path) -> None:
+    def test_parse_decorated_returns_none_for_unknown(
+        self, mapper: RepoMapper, tmp_path: Path
+    ) -> None:
         f = tmp_path / "odd.py"
         f.write_text("@something\nx = 1\n")
         symbols = mapper.parse_file(f)
@@ -150,16 +150,14 @@ class TestRepoMapper:
 
     def test_parse_typescript(self, mapper: RepoMapper, tmp_path: Path) -> None:
         f = tmp_path / "app.ts"
-        f.write_text(
-            "function add(a: number, b: number): number {\n  return a + b;\n}\n"
-        )
+        f.write_text("function add(a: number, b: number): number {\n  return a + b;\n}\n")
         symbols = mapper.parse_file(f)
         assert len(symbols) >= 1
 
     def test_parse_go_file(self, mapper: RepoMapper, tmp_path: Path) -> None:
         f = tmp_path / "main.go"
         f.write_text(
-            "package main\n\nfunc main() {\n\tprintln(\"hello\")\n}\n\n"
+            'package main\n\nfunc main() {\n\tprintln("hello")\n}\n\n'
             "func (s *Server) Start() error {\n\treturn nil\n}\n"
         )
         symbols = mapper.parse_file(f)
@@ -223,7 +221,9 @@ class TestRepoMapper:
         result = mapper.map_directory(tmp_path)
         assert "No symbols found" in result
 
-    def test_map_directory_file_with_no_symbols_skipped(self, mapper: RepoMapper, tmp_path: Path) -> None:
+    def test_map_directory_file_with_no_symbols_skipped(
+        self, mapper: RepoMapper, tmp_path: Path
+    ) -> None:
         (tmp_path / "empty.py").write_text("")
         (tmp_path / "actual.py").write_text("def foo(): pass\n")
         result = mapper.map_directory(tmp_path)

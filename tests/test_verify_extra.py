@@ -297,9 +297,7 @@ class TestVerifyJsTsEslint:
             mock_run.assert_called_once()
 
     @patch("shutil.which", side_effect=[None, None, "/usr/bin/npx"])
-    def test_npx_eslint_no_node_modules(
-        self, mock_which: MagicMock, tmp_path: Path
-    ) -> None:
+    def test_npx_eslint_no_node_modules(self, mock_which: MagicMock, tmp_path: Path) -> None:
         test_file = tmp_path / "test.ts"
         test_file.write_text("const x = 1;\n")
         result = _verify_js_ts(test_file, "test.ts", tmp_path)
@@ -336,7 +334,7 @@ class TestVerifyRustCargo:
         test_file = tmp_path / "src" / "main.rs"
         test_file.parent.mkdir(parents=True, exist_ok=True)
         test_file.write_text("fn main() {}\n")
-        (tmp_path / "Cargo.toml").write_text("[package]\nname = \"test\"\n")
+        (tmp_path / "Cargo.toml").write_text('[package]\nname = "test"\n')
         mock_result = MagicMock()
         mock_result.returncode = 0
         mock_result.stderr = ""
@@ -351,7 +349,7 @@ class TestVerifyRustCargo:
         test_file = tmp_path / "src" / "main.rs"
         test_file.parent.mkdir(parents=True, exist_ok=True)
         test_file.write_text("fn main() {}\n")
-        (tmp_path / "Cargo.toml").write_text("[package]\nname = \"test\"\n")
+        (tmp_path / "Cargo.toml").write_text('[package]\nname = "test"\n')
         mock_result = MagicMock()
         mock_result.returncode = 1
         mock_result.stderr = "build error in main.rs"
@@ -367,7 +365,7 @@ class TestVerifyRustCargo:
         test_file = tmp_path / "src" / "main.rs"
         test_file.parent.mkdir(parents=True, exist_ok=True)
         test_file.write_text("fn main() {}\n")
-        (tmp_path / "Cargo.toml").write_text("[package]\nname = \"test\"\n")
+        (tmp_path / "Cargo.toml").write_text('[package]\nname = "test"\n')
         mock_result = MagicMock()
         mock_result.returncode = 1
         mock_result.stderr = ""
@@ -381,7 +379,7 @@ class TestVerifyRustCargo:
         test_file = tmp_path / "src" / "main.rs"
         test_file.parent.mkdir(parents=True, exist_ok=True)
         test_file.write_text("fn main() {}\n")
-        (tmp_path / "Cargo.toml").write_text("[package]\nname = \"test\"\n")
+        (tmp_path / "Cargo.toml").write_text('[package]\nname = "test"\n')
         with patch("subprocess.run", side_effect=subprocess.TimeoutExpired("cargo", 30)):
             result = _verify_rust(test_file, "src/main.rs")
             assert result.is_error
@@ -392,7 +390,7 @@ class TestVerifyRustCargo:
         test_file = tmp_path / "src" / "main.rs"
         test_file.parent.mkdir(parents=True, exist_ok=True)
         test_file.write_text("fn main() {}\n")
-        (tmp_path / "Cargo.toml").write_text("[package]\nname = \"test\"\n")
+        (tmp_path / "Cargo.toml").write_text('[package]\nname = "test"\n')
         with patch("subprocess.run", side_effect=OSError("cannot execute")):
             result = _verify_rust(test_file, "src/main.rs")
             assert result.is_error
@@ -403,7 +401,7 @@ class TestVerifyRustCargo:
         test_file = tmp_path / "deep" / "nested" / "main.rs"
         test_file.parent.mkdir(parents=True, exist_ok=True)
         test_file.write_text("fn main() {}\n")
-        (tmp_path / "Cargo.toml").write_text("[package]\nname = \"test\"\n")
+        (tmp_path / "Cargo.toml").write_text('[package]\nname = "test"\n')
         mock_result = MagicMock()
         mock_result.returncode = 0
         mock_result.stderr = ""
@@ -533,13 +531,9 @@ class TestVerifyWithRetryAdditional:
         test_file = tmp_path / "test.py"
         test_file.write_text("x = 1\n")
         with patch("godspeed.tools.verify._one_shot_verify") as mock_verify:
-            mock_verify.return_value = MagicMock(
-                is_error=False, output="Lint issues: E999"
-            )
+            mock_verify.return_value = MagicMock(is_error=False, output="Lint issues: E999")
             with patch("godspeed.tools.verify._run_fix"):
-                result = _verify_with_retry(
-                    test_file, "test.py", "python", tmp_path, max_retries=1
-                )
+                result = _verify_with_retry(test_file, "test.py", "python", tmp_path, max_retries=1)
                 assert result.is_error
                 assert "some remaining" in result.error
 
@@ -552,9 +546,7 @@ class TestVerifyWithRetryAdditional:
 
         with patch("godspeed.tools.verify._one_shot_verify", side_effect=fake_verify):
             with patch("godspeed.tools.verify._run_fix"):
-                result = _verify_with_retry(
-                    test_file, "test.py", "python", tmp_path, max_retries=2
-                )
+                result = _verify_with_retry(test_file, "test.py", "python", tmp_path, max_retries=2)
                 assert result.is_error
 
     def test_retry_exhausted_error_final_non_error_result(self, tmp_path: Path) -> None:
@@ -571,9 +563,7 @@ class TestVerifyWithRetryAdditional:
 
         with patch("godspeed.tools.verify._one_shot_verify", side_effect=fake_verify):
             with patch("godspeed.tools.verify._run_fix"):
-                result = _verify_with_retry(
-                    test_file, "test.py", "python", tmp_path, max_retries=1
-                )
+                result = _verify_with_retry(test_file, "test.py", "python", tmp_path, max_retries=1)
                 assert result.is_error
 
 

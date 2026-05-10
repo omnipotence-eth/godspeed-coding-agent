@@ -100,9 +100,7 @@ class TestExtractCaller:
         assert result == "mcp_client:Cursor"
 
     def test_client_name_prefers_snake_case(self) -> None:
-        result = _extract_caller(
-            {"_meta": {"client_name": "snake", "clientName": "camel"}}
-        )
+        result = _extract_caller({"_meta": {"client_name": "snake", "clientName": "camel"}})
         assert result == "mcp_client:snake"
 
     def test_client_name_empty_string(self) -> None:
@@ -206,9 +204,7 @@ class TestServerInit:
 
 class TestHandleToolCall:
     @pytest.mark.asyncio
-    async def test_file_read_allowed(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-    ) -> None:
+    async def test_file_read_allowed(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         server = _make_server(monkeypatch, tmp_path)
         server.permission_engine.evaluate = Mock(return_value=PermissionDecision(ALLOW, "ok"))
         server.registry.dispatch = AsyncMock(return_value=ToolResult.ok("file-content"))
@@ -227,9 +223,7 @@ class TestHandleToolCall:
         assert audit_detail["denied"] is False
 
     @pytest.mark.asyncio
-    async def test_file_read_denied(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-    ) -> None:
+    async def test_file_read_denied(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         server = _make_server(monkeypatch, tmp_path)
         server.permission_engine.evaluate = Mock(
             return_value=PermissionDecision(DENY, "blocked path")
@@ -238,9 +232,7 @@ class TestHandleToolCall:
         server.audit_trail = Mock()
         server.audit_trail.arecord = AsyncMock()
 
-        result = await server.handle_tool_call(
-            name="file_read", arguments={"file_path": ".env"}
-        )
+        result = await server.handle_tool_call(name="file_read", arguments={"file_path": ".env"})
 
         assert result.isError is True
         payload = json.loads(result.content[0].text)
@@ -262,9 +254,7 @@ class TestHandleToolCall:
         server.audit_trail = Mock()
         server.audit_trail.arecord = AsyncMock()
 
-        result = await server.handle_tool_call(
-            name="shell", arguments={"command": "rm file"}
-        )
+        result = await server.handle_tool_call(name="shell", arguments={"command": "rm file"})
 
         assert result.isError is True
         payload = json.loads(result.content[0].text)
@@ -275,25 +265,19 @@ class TestHandleToolCall:
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
         server = _make_server(monkeypatch, tmp_path)
-        server.permission_engine.evaluate = Mock(
-            return_value=PermissionDecision(DENY, "")
-        )
+        server.permission_engine.evaluate = Mock(return_value=PermissionDecision(DENY, ""))
         server.registry.dispatch = AsyncMock()
         server.audit_trail = Mock()
         server.audit_trail.arecord = AsyncMock()
 
-        result = await server.handle_tool_call(
-            name="shell", arguments={"command": "rm -rf /"}
-        )
+        result = await server.handle_tool_call(name="shell", arguments={"command": "rm -rf /"})
 
         assert result.isError is True
         payload = json.loads(result.content[0].text)
         assert payload["reason"] == "Permission denied"
 
     @pytest.mark.asyncio
-    async def test_tool_error_result(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-    ) -> None:
+    async def test_tool_error_result(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         server = _make_server(monkeypatch, tmp_path)
         server.permission_engine.evaluate = Mock(return_value=PermissionDecision(ALLOW, "ok"))
         server.registry.dispatch = AsyncMock(
@@ -302,9 +286,7 @@ class TestHandleToolCall:
         server.audit_trail = Mock()
         server.audit_trail.arecord = AsyncMock()
 
-        result = await server.handle_tool_call(
-            name="risky", arguments={"action": "test"}
-        )
+        result = await server.handle_tool_call(name="risky", arguments={"action": "test"})
 
         assert result.isError is True
         assert result.content[0].text == "something went wrong"
@@ -312,9 +294,7 @@ class TestHandleToolCall:
         assert audit_detail["is_error"] is True
 
     @pytest.mark.asyncio
-    async def test_secret_redaction(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-    ) -> None:
+    async def test_secret_redaction(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         server = _make_server(monkeypatch, tmp_path)
         server.permission_engine.evaluate = Mock(return_value=PermissionDecision(ALLOW, "ok"))
         server.registry.dispatch = AsyncMock(
@@ -423,7 +403,9 @@ class TestAuditMethod:
 
 class TestShutdown:
     @pytest.mark.asyncio
-    async def test_shutdown_with_audit(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    async def test_shutdown_with_audit(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
         server = _make_server(monkeypatch, tmp_path)
         assert server.audit_trail is not None
         await server.shutdown()
@@ -460,9 +442,12 @@ class TestRunStdio:
         mock_stdio.__aenter__ = AsyncMock(return_value=(MagicMock(), MagicMock()))
         mock_stdio.__aexit__ = AsyncMock(return_value=None)
 
-        with patch(
-            "godspeed.mcp_server.server.stdio_server", return_value=mock_stdio
-        ) as mock_stdio_server, patch("sys.stderr") as mock_stderr:
+        with (
+            patch(
+                "godspeed.mcp_server.server.stdio_server", return_value=mock_stdio
+            ) as mock_stdio_server,
+            patch("sys.stderr") as mock_stderr,
+        ):
             await server.run_stdio()
 
             mock_stderr.write.assert_called_with("Godspeed MCP server ready\n")
@@ -481,13 +466,12 @@ class TestRunStdio:
         mock_shutdown = AsyncMock()
         mock_run_stdio = AsyncMock()
 
-        with patch(
-            "godspeed.mcp_server.server.GodspeedMCPServer.shutdown", mock_shutdown
-        ), patch(
-            "godspeed.mcp_server.server.GodspeedMCPServer.run_stdio", mock_run_stdio
-        ), patch("godspeed.mcp_server.server.anyio.run") as mock_anyio, patch(
-            "sys.stderr"
-        ) as mock_stderr:
+        with (
+            patch("godspeed.mcp_server.server.GodspeedMCPServer.shutdown", mock_shutdown),
+            patch("godspeed.mcp_server.server.GodspeedMCPServer.run_stdio", mock_run_stdio),
+            patch("godspeed.mcp_server.server.anyio.run") as mock_anyio,
+            patch("sys.stderr") as mock_stderr,
+        ):
             result = run_server()
             assert result == 0
             mock_stderr.write.assert_any_call("Godspeed MCP server shutdown\n")
@@ -513,11 +497,11 @@ class TestRunStdio:
             if call_count == 1:
                 raise KeyboardInterrupt
 
-        with patch(
-            "godspeed.mcp_server.server.anyio.run", side_effect=_anyio_run
-        ), patch("signal.signal", side_effect=_capture_signal), patch(
-            "sys.stderr"
-        ) as mock_stderr:
+        with (
+            patch("godspeed.mcp_server.server.anyio.run", side_effect=_anyio_run),
+            patch("signal.signal", side_effect=_capture_signal),
+            patch("sys.stderr") as mock_stderr,
+        ):
             result = run_server()
             assert result == 0
             assert signal_handler is not None

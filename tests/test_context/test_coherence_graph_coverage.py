@@ -96,7 +96,9 @@ SAMPLE_EMPTY = "# just a comment\n"
 SAMPLE_ERROR = "def broken(\n"
 
 
-def _build_gcg(tmp_path: Path, code: str = SAMPLE_PY, filename: str = "sample.py") -> CoherenceGraph:
+def _build_gcg(
+    tmp_path: Path, code: str = SAMPLE_PY, filename: str = "sample.py"
+) -> CoherenceGraph:
     db_path = tmp_path / "gcg.db"
     src_dir = tmp_path / "src"
     src_dir.mkdir()
@@ -110,6 +112,7 @@ def _build_gcg(tmp_path: Path, code: str = SAMPLE_PY, filename: str = "sample.py
 
 
 # ── Lifecycle edge cases ────────────────────────────────────────────────────
+
 
 class TestLifecycle:
     """Cover connect/close edge cases."""
@@ -144,6 +147,7 @@ class TestLifecycle:
 
 
 # ── Build edge cases ────────────────────────────────────────────────────────
+
 
 class TestBuildEdges:
     """Cover remaining branches in build_from_repo."""
@@ -221,6 +225,7 @@ class TestBuildEdges:
 
 # ── _file_up_to_date edge cases ────────────────────────────────────────────
 
+
 class TestFileUpToDate:
     """Cover _file_up_to_date OSError path."""
 
@@ -233,6 +238,7 @@ class TestFileUpToDate:
 
 
 # ── update_file edge cases ─────────────────────────────────────────────────
+
 
 class TestUpdateFileEdges:
     """Cover remaining branches in update_file."""
@@ -263,6 +269,7 @@ class TestUpdateFileEdges:
 
 # ── _parse_python_file edge cases ──────────────────────────────────────────
 
+
 class TestParsePythonFile:
     """Cover remaining branches in _parse_python_file."""
 
@@ -283,6 +290,7 @@ class TestParsePythonFile:
 
 
 # ── _module_path edge cases ─────────────────────────────────────────────────
+
 
 class TestModulePath:
     """Cover _module_path."""
@@ -305,6 +313,7 @@ class TestModulePath:
 
 
 # ── Symbol extraction — class with methods ─────────────────────────────────
+
 
 class TestClassMethodExtraction:
     """Cover method extraction within class definitions."""
@@ -334,6 +343,7 @@ class B:
 
 # ── Dependency extraction edge cases ───────────────────────────────────────
 
+
 class TestDependencyEdges:
     """Cover remaining dependency extraction branches."""
 
@@ -355,6 +365,7 @@ class TestDependencyEdges:
     def test_resolve_call_name_attribute(self, tmp_path):
         gcg = _build_gcg(tmp_path)
         import ast
+
         node = ast.parse("obj.method(x)").body[0].value.func
         result = gcg._resolve_call_name(node)
         assert result == "obj.method"
@@ -362,6 +373,7 @@ class TestDependencyEdges:
     def test_resolve_name_attribute_chain(self, tmp_path):
         gcg = _build_gcg(tmp_path)
         import ast
+
         node = ast.Attribute(
             value=ast.Attribute(value=ast.Name(id="a", ctx=ast.Load()), attr="b", ctx=ast.Load()),
             attr="c",
@@ -372,6 +384,7 @@ class TestDependencyEdges:
 
 
 # ── get_symbol / find_symbol edge cases ─────────────────────────────────────
+
 
 class TestSymbolLookupEdges:
     """Cover remaining branches in symbol lookup."""
@@ -403,6 +416,7 @@ class TestSymbolLookupEdges:
 
 # ── Blast radius edge cases ─────────────────────────────────────────────────
 
+
 class TestBlastRadiusEdges:
     """Cover remaining branches in get_blast_radius."""
 
@@ -431,6 +445,7 @@ class TestBlastRadiusEdges:
 
 
 # ── Invariants edge cases ──────────────────────────────────────────────────
+
 
 class TestInvariantsEdges:
     """Cover remaining invariant branches."""
@@ -480,7 +495,9 @@ class TestInvariantsEdges:
         )
         gcg.add_invariant(inv)
         # Check that the invariant was actually stored (auto-generated ID in DB)
-        rows = gcg.query_sql("SELECT COUNT(*) as cnt FROM invariants WHERE description = 'Auto ID test'")
+        rows = gcg.query_sql(
+            "SELECT COUNT(*) as cnt FROM invariants WHERE description = 'Auto ID test'"
+        )
         assert rows[0]["cnt"] == 1
 
     def test_get_violations_no_scope(self, tmp_path):
@@ -490,6 +507,7 @@ class TestInvariantsEdges:
 
 
 # ── Context summary edge cases ─────────────────────────────────────────────
+
 
 class TestContextSummaryEdges:
     """Cover remaining branches in context summary round-trip."""
@@ -524,6 +542,7 @@ class TestContextSummaryEdges:
 
 # ── get_dependents edge cases ──────────────────────────────────────────────
 
+
 class TestDependents:
     """Cover get_dependents with edges."""
 
@@ -544,6 +563,7 @@ class TestDependents:
 
 
 # ── Additional symbol kind tests ───────────────────────────────────────────
+
 
 class TestSymbolKinds:
     """Test various symbol kinds extracted."""
@@ -593,6 +613,7 @@ def standalone():
 
 # ── _row_to_violation ──────────────────────────────────────────────────────
 
+
 class TestRowToViolation:
     """Cover _row_to_violation."""
 
@@ -618,12 +639,14 @@ class TestRowToViolation:
 
 # ── _get_source edge cases ─────────────────────────────────────────────────
 
+
 class TestGetSource:
     """Cover _get_source edge cases."""
 
     def test_get_source_default_end_lineno(self, tmp_path):
         gcg = _build_gcg(tmp_path)
         import ast
+
         node = ast.parse("x = 1").body[0]
         result = gcg._get_source(node, "x = 1\n")
         assert "x = 1" in result
@@ -632,6 +655,7 @@ class TestGetSource:
         gcg = _build_gcg(tmp_path)
         content = "line1\nline2\nline3\nline4\nline5\n"
         import ast
+
         tree = ast.parse(content)
         func = tree.body[0] if tree.body else None
         if func:

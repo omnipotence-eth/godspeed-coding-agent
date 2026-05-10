@@ -29,6 +29,7 @@ from godspeed.llm.client import ChatResponse, LLMClient
 
 # ── Drop verbose tool outputs — edge cases ──────────────────────────────────
 
+
 class TestDropVerboseToolOutputs:
     """Cover remaining branches in _drop_verbose_tool_outputs."""
 
@@ -45,7 +46,6 @@ class TestDropVerboseToolOutputs:
         assert len(result) == 2
         assert result[0]["content"] == "short output"  # line 137: preserved as-is
 
-
     def test_tool_content_not_string_preserved(self) -> None:
         ctx = CompactionContext(
             messages=[
@@ -60,6 +60,7 @@ class TestDropVerboseToolOutputs:
 
 
 # ── Remove low signal turns — edge cases ────────────────────────────────────
+
 
 class TestRemoveLowSignalTurns:
     """Cover remaining branches in _remove_low_signal_turns."""
@@ -76,7 +77,6 @@ class TestRemoveLowSignalTurns:
         result = _remove_low_signal_turns(ctx)
         assert len(result) == 2  # all tool messages preserved
 
-
     def test_assistant_with_keyword_fix(self) -> None:
         ctx = CompactionContext(
             messages=[
@@ -87,7 +87,6 @@ class TestRemoveLowSignalTurns:
         )
         result = _remove_low_signal_turns(ctx)
         assert len(result) == 1  # preserved because "fix" keyword
-
 
     def test_assistant_with_keyword_change(self) -> None:
         ctx = CompactionContext(
@@ -100,7 +99,6 @@ class TestRemoveLowSignalTurns:
         result = _remove_low_signal_turns(ctx)
         assert len(result) == 1
 
-
     def test_assistant_with_keyword_modify(self) -> None:
         ctx = CompactionContext(
             messages=[
@@ -111,7 +109,6 @@ class TestRemoveLowSignalTurns:
         )
         result = _remove_low_signal_turns(ctx)
         assert len(result) == 1
-
 
     def test_assistant_with_keyword_implement(self) -> None:
         ctx = CompactionContext(
@@ -124,7 +121,6 @@ class TestRemoveLowSignalTurns:
         result = _remove_low_signal_turns(ctx)
         assert len(result) == 1
 
-
     def test_assistant_with_keyword_error(self) -> None:
         ctx = CompactionContext(
             messages=[
@@ -135,7 +131,6 @@ class TestRemoveLowSignalTurns:
         )
         result = _remove_low_signal_turns(ctx)
         assert len(result) == 1
-
 
     def test_user_messages_always_preserved(self) -> None:
         ctx = CompactionContext(
@@ -152,13 +147,18 @@ class TestRemoveLowSignalTurns:
 
 # ── Collapse tool runs to GCG summaries ─────────────────────────────────────
 
+
 class TestCollapseToolRuns:
     """Cover _collapse_tool_runs_to_gcg_summaries."""
 
     def test_tool_run_above_threshold_collapsed(self) -> None:
         ctx = CompactionContext(
             messages=[
-                {"role": "assistant", "content": "doing work", "tool_calls": [{"function": {"name": "read"}}]},
+                {
+                    "role": "assistant",
+                    "content": "doing work",
+                    "tool_calls": [{"function": {"name": "read"}}],
+                },
                 {"role": "tool", "tool_call_id": "read-1", "content": "a"},
                 {"role": "tool", "tool_call_id": "read-2", "content": "b"},
                 {"role": "tool", "tool_call_id": "write-3", "content": "c"},
@@ -172,7 +172,6 @@ class TestCollapseToolRuns:
         # 4 tool results collapsed into 1 compacted + assistant + user
         assert len(result) == 3
         assert any("compacted" in m.get("content", "") for m in result)
-
 
     def test_tool_run_below_threshold_not_collapsed(self) -> None:
         ctx = CompactionContext(
@@ -189,7 +188,6 @@ class TestCollapseToolRuns:
         # Only 2 tool results — not collapsed (threshold > 3)
         assert len(result) == 4
 
-
     def test_tool_run_trailing_pending_not_collapsed(self) -> None:
         ctx = CompactionContext(
             messages=[
@@ -203,7 +201,6 @@ class TestCollapseToolRuns:
         result = _collapse_tool_runs_to_gcg_summaries(ctx)
         # trailing pending (2 < threshold) — appended as-is
         assert len(result) == 3
-
 
     def test_collapse_with_gcg_refs(self) -> None:
         fake_gcg = MagicMock()
@@ -228,6 +225,7 @@ class TestCollapseToolRuns:
 
 # ── Keep metadata only — edge cases ─────────────────────────────────────────
 
+
 class TestKeepMetadataOnly:
     """Cover remaining branches in _keep_metadata_only."""
 
@@ -244,7 +242,6 @@ class TestKeepMetadataOnly:
         # Content > 200 chars should be truncated
         assert len(result[0]["content"]) <= 203  # 200 + "..."
 
-
     def test_user_message_under_200_unchanged(self) -> None:
         ctx = CompactionContext(
             messages=[
@@ -255,7 +252,6 @@ class TestKeepMetadataOnly:
         )
         result = _keep_metadata_only(ctx)
         assert result[0]["content"] == "short message"
-
 
     def test_assistant_with_tool_calls(self) -> None:
         ctx = CompactionContext(
@@ -278,7 +274,6 @@ class TestKeepMetadataOnly:
         assert "file_edit" in result[0]["content"]
         assert "shell" in result[0]["content"]
 
-
     def test_assistant_without_tool_calls_no_truncation(self) -> None:
         ctx = CompactionContext(
             messages=[
@@ -289,7 +284,6 @@ class TestKeepMetadataOnly:
         )
         result = _keep_metadata_only(ctx)
         assert result[0]["content"] == "short"
-
 
     def test_assistant_without_tool_calls_with_truncation(self) -> None:
         ctx = CompactionContext(
@@ -302,7 +296,6 @@ class TestKeepMetadataOnly:
         result = _keep_metadata_only(ctx)
         assert len(result[0]["content"]) <= 203
 
-
     def test_tool_message_truncation(self) -> None:
         ctx = CompactionContext(
             messages=[
@@ -313,7 +306,6 @@ class TestKeepMetadataOnly:
         )
         result = _keep_metadata_only(ctx)
         assert len(result[0]["content"]) <= 203
-
 
     def test_gcg_symbol_ids_appended(self) -> None:
         ctx = CompactionContext(
@@ -329,7 +321,6 @@ class TestKeepMetadataOnly:
         assert "GCG references preserved" in result[1]["content"]
         assert "2 symbols" in result[1]["content"]
 
-
     def test_no_gcg_symbol_ids_no_gcg_message(self) -> None:
         ctx = CompactionContext(  # covers lines 239-245 branch
             messages=[{"role": "user", "content": "hi"}],
@@ -342,6 +333,7 @@ class TestKeepMetadataOnly:
 
 
 # ── LLM emergency summarize ─────────────────────────────────────────────────
+
 
 class TestLLMEmergencySummarize:
     """Cover _llm_emergency_summarize."""
@@ -365,7 +357,6 @@ class TestLLMEmergencySummarize:
         assert result[0]["role"] == "user"
         assert "Summary text" in result[0]["content"]
 
-
     @pytest.mark.asyncio
     async def test_emergency_summarize_with_tool_calls(self) -> None:
         client = LLMClient(model="test")
@@ -378,7 +369,9 @@ class TestLLMEmergencySummarize:
                 {
                     "role": "assistant",
                     "content": "",
-                    "tool_calls": [{"function": {"name": "file_edit", "arguments": '{"path":"x"}'}}],
+                    "tool_calls": [
+                        {"function": {"name": "file_edit", "arguments": '{"path":"x"}'}}
+                    ],
                 },
                 {"role": "tool", "tool_call_id": "1", "content": "done"},
             ],
@@ -391,6 +384,7 @@ class TestLLMEmergencySummarize:
 
 
 # ── Messages to text ────────────────────────────────────────────────────────
+
 
 class TestMessagesToText:
     """Cover _messages_to_text."""
@@ -406,21 +400,17 @@ class TestMessagesToText:
         assert "[assistant]: hi there" in text
         assert "[tool]: result" in text
 
-
     def test_message_with_tool_calls_included(self) -> None:
         messages = [
             {
                 "role": "assistant",
                 "content": "",
-                "tool_calls": [
-                    {"function": {"name": "file_read", "arguments": '{"file":"a.py"}'}}
-                ],
+                "tool_calls": [{"function": {"name": "file_read", "arguments": '{"file":"a.py"}'}}],
             },
         ]
         text = _messages_to_text(messages)
         assert "[tool_call]: file_read" in text
         assert '{"file":"a.py"}' in text
-
 
     def test_empty_content_messages_skipped(self) -> None:
         messages = [
@@ -429,14 +419,12 @@ class TestMessagesToText:
         text = _messages_to_text(messages)
         assert text == ""  # no content and no tool_calls
 
-
     def test_unknown_role_default(self) -> None:
         messages = [
             {"role": "unknown", "content": "some msg"},
         ]
         text = _messages_to_text(messages)
         assert "[unknown]: some msg" in text
-
 
     def test_multiple_tool_calls_in_one_message(self) -> None:
         messages = [
@@ -456,32 +444,25 @@ class TestMessagesToText:
 
 # ── Build GCG summary ───────────────────────────────────────────────────────
 
+
 class TestBuildGCGSummary:
     """Cover _build_gcg_summary."""
 
     def test_no_gcg_returns_empty(self) -> None:
-        ctx = CompactionContext(
-            messages=[], token_count=0, max_tokens=100_000, gcg=None
-        )
+        ctx = CompactionContext(messages=[], token_count=0, max_tokens=100_000, gcg=None)
         result = _build_gcg_summary(ctx, [])
         assert result == ""
 
-
     def test_no_file_paths_returns_empty(self) -> None:
         fake_gcg = MagicMock()
-        ctx = CompactionContext(
-            messages=[], token_count=0, max_tokens=100_000, gcg=fake_gcg
-        )
+        ctx = CompactionContext(messages=[], token_count=0, max_tokens=100_000, gcg=fake_gcg)
         results = [{"content": "no file paths here\njust text"}]
         result = _build_gcg_summary(ctx, results)
         assert result == ""
 
-
     def test_extracts_file_paths(self) -> None:
         fake_gcg = MagicMock()
-        ctx = CompactionContext(
-            messages=[], token_count=0, max_tokens=100_000, gcg=fake_gcg
-        )
+        ctx = CompactionContext(messages=[], token_count=0, max_tokens=100_000, gcg=fake_gcg)
         results = [
             {"content": "file: /app/main.py\n/usr/lib/util.py"},
             {"content": "noise"},
@@ -490,28 +471,23 @@ class TestBuildGCGSummary:
         assert "GCG refs:" in result
         assert "/app/main.py" in result or "/usr/lib/util.py" in result
 
-
     def test_non_string_content_skipped(self) -> None:
         fake_gcg = MagicMock()
-        ctx = CompactionContext(
-            messages=[], token_count=0, max_tokens=100_000, gcg=fake_gcg
-        )
+        ctx = CompactionContext(messages=[], token_count=0, max_tokens=100_000, gcg=fake_gcg)
         results = [{"content": ["not a string"]}]
         result = _build_gcg_summary(ctx, results)
         assert result == ""
 
-
     def test_many_paths_truncated_to_10(self) -> None:
         fake_gcg = MagicMock()
-        ctx = CompactionContext(
-            messages=[], token_count=0, max_tokens=100_000, gcg=fake_gcg
-        )
+        ctx = CompactionContext(messages=[], token_count=0, max_tokens=100_000, gcg=fake_gcg)
         results = [{"content": "\n".join(f"file: /path/p{i}.py" for i in range(20))}]
         result = _build_gcg_summary(ctx, results)
         assert result.count("/path/") <= 10
 
 
 # ── Graduated compactor — exception and emergency paths ─────────────────────
+
 
 class TestGraduatedCompactorExceptions:
     """Cover exception handler in apply_stages and emergency_compact."""
@@ -530,7 +506,6 @@ class TestGraduatedCompactorExceptions:
 
         assert "failed" in caplog.text.lower()
 
-
     @pytest.mark.asyncio
     async def test_emergency_compact(self) -> None:
         compactor = GraduatedCompactor()
@@ -541,7 +516,9 @@ class TestGraduatedCompactorExceptions:
 
         client = LLMClient(model="test")
         client.chat = AsyncMock(
-            return_value=ChatResponse(content="Emergency summary", tool_calls=[], finish_reason="stop")
+            return_value=ChatResponse(
+                content="Emergency summary", tool_calls=[], finish_reason="stop"
+            )
         )
 
         before = len(conv._messages)
@@ -554,7 +531,6 @@ class TestGraduatedCompactorExceptions:
         assert result.messages_before == before
         assert result.messages_after == after
         assert after < before
-
 
     @pytest.mark.asyncio
     async def test_emergency_compact_sets_last_stage(self) -> None:
@@ -575,9 +551,11 @@ class TestGraduatedCompactorExceptions:
 
 # ── Get compaction prompt — medium path with logging ────────────────────────
 
+
 @pytest.fixture(autouse=True)
 def _reset_logging() -> None:
     import logging
+
     logging.getLogger("godspeed.context.compaction").handlers.clear()
     logging.getLogger("godspeed.context.compaction").propagate = True
     yield
@@ -590,11 +568,9 @@ class TestCompactionPromptMedium:
         prompt = get_compaction_prompt("gpt-4o-2024-05-13")
         assert prompt == COMPACTION_PROMPT_LARGE  # 128K > 100K threshold
 
-
     def test_small_prompt_logging(self) -> None:
         prompt = get_compaction_prompt("gpt-4-0613")
         assert prompt == COMPACTION_PROMPT_SMALL
-
 
     def test_medium_prompt_fallback_logging(self) -> None:
         # Need a model between 32K and 100K. Default unknown is 32K (≤ threshold, small)
@@ -606,6 +582,7 @@ class TestCompactionPromptMedium:
 
 
 # ── compact_if_needed — exception and edge paths ────────────────────────────
+
 
 class TestCompactIfNeededEdgeCases:
     """Cover exception handler and branch edges in compact_if_needed."""
@@ -623,7 +600,6 @@ class TestCompactIfNeededEdgeCases:
         result = await compact_if_needed(conv, client, model="claude-sonnet-4")
         assert result is False
 
-
     @pytest.mark.asyncio
     async def test_compaction_not_near_limit_no_op(self) -> None:
         conv = Conversation("System", max_tokens=1_000_000)
@@ -632,7 +608,6 @@ class TestCompactIfNeededEdgeCases:
         client = LLMClient(model="test")
         result = await compact_if_needed(conv, client, model="test")
         assert result is False
-
 
     @pytest.mark.asyncio
     async def test_compaction_model_from_client_fallback(self) -> None:
@@ -653,6 +628,7 @@ class TestCompactIfNeededEdgeCases:
 
 # ── Additional graduated compactor edge cases ───────────────────────────────
 
+
 class TestGraduatedCompactorEdges:
     """Cover edge cases in GraduatedCompactor."""
 
@@ -662,12 +638,10 @@ class TestGraduatedCompactorEdges:
         assert idx == -1
         assert compactor.context_pct == 0.0
 
-
     def test_custom_stages(self) -> None:
         custom_stages = COMPACTION_STAGES[:2]  # only first 2
         compactor = GraduatedCompactor(stages=custom_stages)
         assert len(compactor._stages) == 2
-
 
     def test_apply_stages_multiple_rounds(self) -> None:
         compactor = GraduatedCompactor()
@@ -696,20 +670,22 @@ class TestGraduatedCompactorEdges:
         if applied2:
             assert any(r.stage_name in ("budget_reduction", "snip") for r in applied2)
 
-
     def test_apply_stages_empty_messages(self) -> None:
         compactor = GraduatedCompactor()
         conv = Conversation("System", max_tokens=100_000)
         results = compactor.apply_stages(conv, 80_000, 100_000)
         assert isinstance(results, list)
 
-
     def test_stage3_collapse_preserves_system_and_user(self) -> None:
         ctx = CompactionContext(
             messages=[
                 {"role": "system", "content": "system prompt"},
                 {"role": "user", "content": "do something"},
-                {"role": "assistant", "content": "working", "tool_calls": [{"function": {"name": "edit"}}]},
+                {
+                    "role": "assistant",
+                    "content": "working",
+                    "tool_calls": [{"function": {"name": "edit"}}],
+                },
                 {"role": "tool", "tool_call_id": "a-1", "content": "x"},
                 {"role": "tool", "tool_call_id": "a-2", "content": "y"},
                 {"role": "tool", "tool_call_id": "a-3", "content": "z"},
@@ -722,16 +698,23 @@ class TestGraduatedCompactorEdges:
         result = _collapse_tool_runs_to_gcg_summaries(ctx)
         assert len(result) == 5  # system + user + assistant + compacted tool + done user
 
-
     def test_stage3_preserves_short_tool_runs(self) -> None:
         ctx = CompactionContext(
             messages=[
                 {"role": "user", "content": "hi"},
-                {"role": "assistant", "content": "ok", "tool_calls": [{"function": {"name": "read"}}]},
+                {
+                    "role": "assistant",
+                    "content": "ok",
+                    "tool_calls": [{"function": {"name": "read"}}],
+                },
                 {"role": "tool", "tool_call_id": "r-1", "content": "a"},
                 {"role": "assistant", "content": "done"},
                 {"role": "user", "content": "next"},
-                {"role": "assistant", "content": "ok2", "tool_calls": [{"function": {"name": "edit"}}]},
+                {
+                    "role": "assistant",
+                    "content": "ok2",
+                    "tool_calls": [{"function": {"name": "edit"}}],
+                },
                 {"role": "tool", "tool_call_id": "e-1", "content": "b"},
             ],
             token_count=200,
@@ -740,13 +723,11 @@ class TestGraduatedCompactorEdges:
         result = _collapse_tool_runs_to_gcg_summaries(ctx)
         assert len(result) > 0
 
-
     def test_context_pct_property(self) -> None:
         compactor = GraduatedCompactor()
         assert compactor.context_pct == 0.0
         compactor.get_stage_for_context(80_000, 100_000)
         assert compactor.context_pct == 0.8
-
 
     def test_get_stage_edge_between0_and1(self) -> None:
         compactor = GraduatedCompactor()
@@ -756,7 +737,6 @@ class TestGraduatedCompactorEdges:
         # Slightly above
         idx = compactor.get_stage_for_context(75_001, 100_000)  # > 75%
         assert idx == 0
-
 
     def test_apply_stages_already_at_stage(self) -> None:
         compactor = GraduatedCompactor()
@@ -771,7 +751,6 @@ class TestGraduatedCompactorEdges:
         # Same usage again — should be no-op
         results = compactor.apply_stages(conv, 80_000, 100_000)
         assert len(results) == 0
-
 
     def test_apply_stages_progresses_through_stages(self) -> None:
         compactor = GraduatedCompactor()
@@ -797,7 +776,6 @@ class TestGraduatedCompactorEdges:
         # Should have applied stages 0, 1, 2
         assert "budget_reduction" in applied
 
-
     def test_no_stage_needed_returns_empty(self) -> None:
         compactor = GraduatedCompactor()
         conv = Conversation("System", max_tokens=100_000)
@@ -808,6 +786,7 @@ class TestGraduatedCompactorEdges:
 
 # ── get_compaction_prompt coverage ──────────────────────────────────────────
 
+
 class TestGetCompactionPromptCoverage:
     """Cover all branches of get_compaction_prompt."""
 
@@ -817,12 +796,10 @@ class TestGetCompactionPromptCoverage:
         # gpt-4o-mini = 128000 → large
         assert prompt == COMPACTION_PROMPT_LARGE
 
-
     def test_large_context_threshold_boundary(self) -> None:
         # Model with context > 100000 → large prompt
         prompt = get_compaction_prompt("claude-opus-4-20250514")
         assert prompt == COMPACTION_PROMPT_LARGE
-
 
     def test_between_thresholds_logs_medium(self) -> None:
         prompt = get_compaction_prompt("gemini-2-flash")

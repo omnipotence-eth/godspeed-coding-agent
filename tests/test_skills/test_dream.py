@@ -215,7 +215,9 @@ class TestDreamRun:
         skill_dir = skills_dir / "clean-skill"
         skill_dir.mkdir(parents=True)
         skill_md = skill_dir / "SKILL.md"
-        original = "---\nname: clean-skill\ndescription: C\ntrigger: cs\n---\n\nNo relative dates here."
+        original = (
+            "---\nname: clean-skill\ndescription: C\ntrigger: cs\n---\n\nNo relative dates here."
+        )
         skill_md.write_text(original)
 
         stats = dream.run(skills_dir)

@@ -90,7 +90,9 @@ class TestGitTool:
         assert "modified content" in result.output
 
     @pytest.mark.asyncio
-    async def test_diff_includes_staged_changes(self, tool: GitTool, git_context: ToolContext) -> None:
+    async def test_diff_includes_staged_changes(
+        self, tool: GitTool, git_context: ToolContext
+    ) -> None:
         _make_initial_commit(git_context.cwd)
         (git_context.cwd / "init.txt").write_text("modified content\n")
         repo = Repo(str(git_context.cwd))
@@ -100,7 +102,9 @@ class TestGitTool:
         assert "Staged Changes" in result.output
 
     @pytest.mark.asyncio
-    async def test_diff_with_staged_and_unstaged(self, tool: GitTool, git_context: ToolContext) -> None:
+    async def test_diff_with_staged_and_unstaged(
+        self, tool: GitTool, git_context: ToolContext
+    ) -> None:
         _make_initial_commit(git_context.cwd)
         repo = Repo(str(git_context.cwd))
         (git_context.cwd / "init.txt").write_text("staged\n")
@@ -317,7 +321,9 @@ class TestGitTool:
             assert "git stash failed" in result.error
 
     @pytest.mark.asyncio
-    async def test_stash_pop_git_command_error(self, tool: GitTool, git_context: ToolContext) -> None:
+    async def test_stash_pop_git_command_error(
+        self, tool: GitTool, git_context: ToolContext
+    ) -> None:
         _make_initial_commit(git_context.cwd)
         (git_context.cwd / "init.txt").write_text("dirty\n")
         await tool.execute({"action": "stash"}, git_context)
@@ -362,7 +368,13 @@ class TestGitTool:
 
         original_valid = git_mod.VALID_ACTIONS
         try:
-            object.__setattr__(git_mod, "VALID_ACTIONS", frozenset({"status", "diff", "commit", "log", "undo", "stash", "stash_pop", "new_action"}))
+            object.__setattr__(
+                git_mod,
+                "VALID_ACTIONS",
+                frozenset(
+                    {"status", "diff", "commit", "log", "undo", "stash", "stash_pop", "new_action"}
+                ),
+            )
             with patch.object(git_mod, "Repo", autospec=True) as mock_repo_cls:
                 mock_repo = MagicMock()
                 mock_repo_cls.return_value = mock_repo

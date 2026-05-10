@@ -376,9 +376,7 @@ class TestReadabilityExtraction:
         with patch.object(self._readability_mock, "Document") as MockDoc:
             mock_doc = MockDoc.return_value
             mock_doc.title.return_value = ""
-            mock_doc.summary.return_value = (
-                "<p>This is a sufficiently long paragraph that should exceed fifty characters easily.</p>"
-            )
+            mock_doc.summary.return_value = "<p>This is a sufficiently long paragraph that should exceed fifty characters easily.</p>"
             result = _extract_content(html_content, "https://example.com")
             assert "Title:" not in result
 
@@ -396,7 +394,9 @@ class TestReadabilityExtraction:
         html_content = (
             "<html><body><p>Exception fallback test content for coverage.</p></body></html>"
         )
-        with patch.object(self._readability_mock, "Document", side_effect=RuntimeError("parse error")):
+        with patch.object(
+            self._readability_mock, "Document", side_effect=RuntimeError("parse error")
+        ):
             result = _extract_content(html_content, "https://example.com")
             assert "Exception fallback test content" in result
 
@@ -456,13 +456,14 @@ class TestWebFetchExecuteEdgeCases:
     async def test_charset_detection_from_content_type(self, ctx: ToolContext) -> None:
         tool = WebFetchTool()
         mock_resp = MagicMock()
-        mock_resp.headers = {"Content-Type": 'text/html; charset=iso-8859-1'}
+        mock_resp.headers = {"Content-Type": "text/html; charset=iso-8859-1"}
         mock_resp.read.return_value = b"<html><body><p>Valid paragraph with enough text to exceed fifty character threshold for readability fallback.</p></body></html>"
         mock_resp.__enter__ = MagicMock(return_value=mock_resp)
         mock_resp.__exit__ = MagicMock(return_value=False)
-        with patch(
-            "godspeed.tools.web_fetch.urllib.request.urlopen", return_value=mock_resp
-        ), patch("godspeed.tools.web_fetch.urllib.request.Request"):
+        with (
+            patch("godspeed.tools.web_fetch.urllib.request.urlopen", return_value=mock_resp),
+            patch("godspeed.tools.web_fetch.urllib.request.Request"),
+        ):
             result = await tool.execute({"url": "https://example.com"}, ctx)
         assert not result.is_error
 
@@ -474,9 +475,10 @@ class TestWebFetchExecuteEdgeCases:
         mock_resp.read.return_value = b"<html><body><p>This is valid content that falls back to utf-8 decoding after invalid charset lookup.</p></body></html>"
         mock_resp.__enter__ = MagicMock(return_value=mock_resp)
         mock_resp.__exit__ = MagicMock(return_value=False)
-        with patch(
-            "godspeed.tools.web_fetch.urllib.request.urlopen", return_value=mock_resp
-        ), patch("godspeed.tools.web_fetch.urllib.request.Request"):
+        with (
+            patch("godspeed.tools.web_fetch.urllib.request.urlopen", return_value=mock_resp),
+            patch("godspeed.tools.web_fetch.urllib.request.Request"),
+        ):
             result = await tool.execute({"url": "https://example.com"}, ctx)
         assert not result.is_error
 
@@ -489,9 +491,10 @@ class TestWebFetchExecuteEdgeCases:
         mock_resp.read.return_value = b'{"key": "value"}'
         mock_resp.__enter__ = MagicMock(return_value=mock_resp)
         mock_resp.__exit__ = MagicMock(return_value=False)
-        with patch(
-            "godspeed.tools.web_fetch.urllib.request.urlopen", return_value=mock_resp
-        ), patch("godspeed.tools.web_fetch.urllib.request.Request"):
+        with (
+            patch("godspeed.tools.web_fetch.urllib.request.urlopen", return_value=mock_resp),
+            patch("godspeed.tools.web_fetch.urllib.request.Request"),
+        ):
             result = await tool.execute({"url": "https://example.com"}, ctx)
         assert not result.is_error
         assert '{"key": "value"}' in result.output
@@ -506,9 +509,10 @@ class TestWebFetchExecuteEdgeCases:
         mock_resp.read.return_value = large_text.encode("utf-8")
         mock_resp.__enter__ = MagicMock(return_value=mock_resp)
         mock_resp.__exit__ = MagicMock(return_value=False)
-        with patch(
-            "godspeed.tools.web_fetch.urllib.request.urlopen", return_value=mock_resp
-        ), patch("godspeed.tools.web_fetch.urllib.request.Request"):
+        with (
+            patch("godspeed.tools.web_fetch.urllib.request.urlopen", return_value=mock_resp),
+            patch("godspeed.tools.web_fetch.urllib.request.Request"),
+        ):
             result = await tool.execute({"url": "https://example.com"}, ctx)
         assert "(truncated" in result.output.lower()
 
@@ -521,9 +525,10 @@ class TestWebFetchExecuteEdgeCases:
         mock_resp.read.return_value = b"   \n  \t  "
         mock_resp.__enter__ = MagicMock(return_value=mock_resp)
         mock_resp.__exit__ = MagicMock(return_value=False)
-        with patch(
-            "godspeed.tools.web_fetch.urllib.request.urlopen", return_value=mock_resp
-        ), patch("godspeed.tools.web_fetch.urllib.request.Request"):
+        with (
+            patch("godspeed.tools.web_fetch.urllib.request.urlopen", return_value=mock_resp),
+            patch("godspeed.tools.web_fetch.urllib.request.Request"),
+        ):
             result = await tool.execute({"url": "https://example.com"}, ctx)
         assert "no readable text" in result.output.lower()
 
@@ -533,14 +538,13 @@ class TestWebFetchExecuteEdgeCases:
         tool = WebFetchTool()
         mock_resp = MagicMock()
         mock_resp.headers = {"Content-Type": "text/html"}
-        mock_resp.read.return_value = (
-            b"<html><body><p>Cacheable content here for testing the cache write path after a successful live fetch request.</p></body></html>"
-        )
+        mock_resp.read.return_value = b"<html><body><p>Cacheable content here for testing the cache write path after a successful live fetch request.</p></body></html>"
         mock_resp.__enter__ = MagicMock(return_value=mock_resp)
         mock_resp.__exit__ = MagicMock(return_value=False)
-        with patch(
-            "godspeed.tools.web_fetch.urllib.request.urlopen", return_value=mock_resp
-        ), patch("godspeed.tools.web_fetch.urllib.request.Request"):
+        with (
+            patch("godspeed.tools.web_fetch.urllib.request.urlopen", return_value=mock_resp),
+            patch("godspeed.tools.web_fetch.urllib.request.Request"),
+        ):
             result = await tool.execute({"url": "https://example.com/cachable"}, ctx)
         assert not result.is_error
         cached = _cache_read("https://example.com/cachable")

@@ -332,7 +332,7 @@ class TestParseVerdictEdgeCases:
 
     def test_nested_json_correctly_found(self) -> None:
         text = (
-            'Here is my verdict:\n'
+            "Here is my verdict:\n"
             '{"a_correctness":7,"a_procedure":6,'
             '"a_conciseness":8,"b_correctness":7,"b_procedure":6,'
             '"b_conciseness":8,"winner":"a"}'
@@ -370,7 +370,7 @@ class TestParseVerdictEdgeCases:
 
     def test_code_block_json_prefix_not_json_content(self) -> None:
         text = (
-            '```json\njust some text, no braces\n```\n'
+            "```json\njust some text, no braces\n```\n"
             '{"a_correctness":8,"a_procedure":7,'
             '"a_conciseness":6,"b_correctness":9,"b_procedure":8,'
             '"b_conciseness":7,"winner":"b"}'
@@ -469,7 +469,10 @@ class TestEvaluateExceptionHandling:
         candidate = _make_candidate()
 
         with patch.object(
-            evaluator, "_judge", new_callable=AsyncMock, side_effect=RuntimeError("crash before try")
+            evaluator,
+            "_judge",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("crash before try"),
         ):
             score = await evaluator.evaluate(candidate, test_cases=["T1", "T2"])
             assert score.overall == 0.0
@@ -484,8 +487,12 @@ class TestEvaluateExceptionHandling:
 class TestAggregateVerdicts:
     def test_single_verdict(self) -> None:
         v = JudgeVerdict(
-            a_correctness=5, a_procedure=5, a_conciseness=5,
-            b_correctness=9, b_procedure=8, b_conciseness=7,
+            a_correctness=5,
+            a_procedure=5,
+            a_conciseness=5,
+            b_correctness=9,
+            b_procedure=8,
+            b_conciseness=7,
             winner="b",
         )
         candidate = _make_candidate(original="short", mutated="improved version")
@@ -497,8 +504,12 @@ class TestAggregateVerdicts:
 
     def test_max_score_verdict(self) -> None:
         v = JudgeVerdict(
-            a_correctness=5, a_procedure=5, a_conciseness=5,
-            b_correctness=10, b_procedure=10, b_conciseness=10,
+            a_correctness=5,
+            a_procedure=5,
+            a_conciseness=5,
+            b_correctness=10,
+            b_procedure=10,
+            b_conciseness=10,
             winner="b",
         )
         candidate = _make_candidate()
@@ -509,8 +520,12 @@ class TestAggregateVerdicts:
 
     def test_length_penalty_capped_at_one(self) -> None:
         v = JudgeVerdict(
-            a_correctness=5, a_procedure=5, a_conciseness=5,
-            b_correctness=9, b_procedure=8, b_conciseness=7,
+            a_correctness=5,
+            a_procedure=5,
+            a_conciseness=5,
+            b_correctness=9,
+            b_procedure=8,
+            b_conciseness=7,
             winner="b",
         )
         candidate = _make_candidate(original="x", mutated="x" * 1000)
@@ -519,8 +534,12 @@ class TestAggregateVerdicts:
 
     def test_zero_original_length(self) -> None:
         v = JudgeVerdict(
-            a_correctness=5, a_procedure=5, a_conciseness=5,
-            b_correctness=9, b_procedure=8, b_conciseness=7,
+            a_correctness=5,
+            a_procedure=5,
+            a_conciseness=5,
+            b_correctness=9,
+            b_procedure=8,
+            b_conciseness=7,
             winner="b",
         )
         candidate = _make_candidate(original="", mutated="content")
@@ -530,8 +549,12 @@ class TestAggregateVerdicts:
 
     def test_overall_not_below_zero(self) -> None:
         v = JudgeVerdict(
-            a_correctness=0, a_procedure=0, a_conciseness=0,
-            b_correctness=0, b_procedure=0, b_conciseness=0,
+            a_correctness=0,
+            a_procedure=0,
+            a_conciseness=0,
+            b_correctness=0,
+            b_procedure=0,
+            b_conciseness=0,
             winner="tie",
         )
         candidate = _make_candidate(original="x", mutated="x" * 1000)
@@ -540,8 +563,12 @@ class TestAggregateVerdicts:
 
     def test_overall_not_above_one(self) -> None:
         v = JudgeVerdict(
-            a_correctness=0, a_procedure=0, a_conciseness=0,
-            b_correctness=10, b_procedure=10, b_conciseness=10,
+            a_correctness=0,
+            a_procedure=0,
+            a_conciseness=0,
+            b_correctness=10,
+            b_procedure=10,
+            b_conciseness=10,
             winner="b",
         )
         candidate = _make_candidate()
@@ -654,13 +681,21 @@ class TestParseVerdictMultipleCodeBlocks:
 class TestAggregateVerdictsExpanded:
     def test_multiple_verdicts_average_correctly(self) -> None:
         v1 = JudgeVerdict(
-            a_correctness=5, a_procedure=5, a_conciseness=5,
-            b_correctness=8, b_procedure=8, b_conciseness=8,
+            a_correctness=5,
+            a_procedure=5,
+            a_conciseness=5,
+            b_correctness=8,
+            b_procedure=8,
+            b_conciseness=8,
             winner="b",
         )
         v2 = JudgeVerdict(
-            a_correctness=6, a_procedure=6, a_conciseness=6,
-            b_correctness=10, b_procedure=10, b_conciseness=10,
+            a_correctness=6,
+            a_procedure=6,
+            a_conciseness=6,
+            b_correctness=10,
+            b_procedure=10,
+            b_conciseness=10,
             winner="b",
         )
         candidate = _make_candidate(original="test", mutated="test mutation")
@@ -672,13 +707,21 @@ class TestAggregateVerdictsExpanded:
 
     def test_winner_a_does_not_affect_b_score(self) -> None:
         v1 = JudgeVerdict(
-            a_correctness=10, a_procedure=10, a_conciseness=10,
-            b_correctness=2, b_procedure=2, b_conciseness=2,
+            a_correctness=10,
+            a_procedure=10,
+            a_conciseness=10,
+            b_correctness=2,
+            b_procedure=2,
+            b_conciseness=2,
             winner="a",
         )
         v2 = JudgeVerdict(
-            a_correctness=3, a_procedure=3, a_conciseness=3,
-            b_correctness=8, b_procedure=8, b_conciseness=8,
+            a_correctness=3,
+            a_procedure=3,
+            a_conciseness=3,
+            b_correctness=8,
+            b_procedure=8,
+            b_conciseness=8,
             winner="b",
         )
         candidate = _make_candidate()
@@ -688,8 +731,12 @@ class TestAggregateVerdictsExpanded:
 
     def test_tie_verdict_does_not_penalize(self) -> None:
         v = JudgeVerdict(
-            a_correctness=7, a_procedure=7, a_conciseness=7,
-            b_correctness=7, b_procedure=7, b_conciseness=7,
+            a_correctness=7,
+            a_procedure=7,
+            a_conciseness=7,
+            b_correctness=7,
+            b_procedure=7,
+            b_conciseness=7,
             winner="tie",
         )
         candidate = _make_candidate()
@@ -699,8 +746,12 @@ class TestAggregateVerdictsExpanded:
 
     def test_overall_with_full_length_penalty(self) -> None:
         v = JudgeVerdict(
-            a_correctness=0, a_procedure=0, a_conciseness=0,
-            b_correctness=10, b_procedure=10, b_conciseness=10,
+            a_correctness=0,
+            a_procedure=0,
+            a_conciseness=0,
+            b_correctness=10,
+            b_procedure=10,
+            b_conciseness=10,
             winner="b",
         )
         candidate = _make_candidate(original="x", mutated="x" * 1000)
@@ -746,8 +797,12 @@ class TestEvaluateMixedResults:
             if call_count == 2:
                 return None
             return JudgeVerdict(
-                a_correctness=5, a_procedure=5, a_conciseness=5,
-                b_correctness=9, b_procedure=8, b_conciseness=7,
+                a_correctness=5,
+                a_procedure=5,
+                a_conciseness=5,
+                b_correctness=9,
+                b_procedure=8,
+                b_conciseness=7,
                 winner="b",
             )
 

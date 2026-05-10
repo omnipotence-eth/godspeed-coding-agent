@@ -44,15 +44,10 @@ class SessionListScreen(Screen):
             self.query_one("#sessions-list", ListView).focus()
 
     def _build_header(self: Any) -> str:
-        return (
-            f"\n  {styled('Past Sessions', BOLD_PRIMARY)}\n"
-            f"  {styled('─' * 40, NEUTRAL)}\n"
-        )
+        return f"\n  {styled('Past Sessions', BOLD_PRIMARY)}\n  {styled('─' * 40, NEUTRAL)}\n"
 
     def _build_footer(self: Any) -> str:
-        return (
-            f"\n  {styled('Enter/r = resume | Escape/q = close', DIM)}"
-        )
+        return f"\n  {styled('Enter/r = resume | Escape/q = close', DIM)}"
 
     def _populate_list(self: Any) -> None:
         sessions_dir = self._project_dir / ".godspeed" / "sessions"

@@ -50,7 +50,7 @@ class DiffReviewDialog(Screen[str]):
         lines.append("")
         lines.append(f"    {styled(self._tool_name, BOLD_PRIMARY)}  {self._path}")
 
-        is_raw_diff = (not self._before and self._after.startswith("diff --git"))
+        is_raw_diff = not self._before and self._after.startswith("diff --git")
         if is_raw_diff or self._after.startswith("---"):
             diff_text = self._after
         else:

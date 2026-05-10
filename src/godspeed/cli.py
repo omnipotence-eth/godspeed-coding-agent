@@ -535,17 +535,12 @@ def serve(config: Path | None) -> None:
 
 
 @main.command("web")
+@click.option("--host", default="127.0.0.1", help="Bind address (default: 127.0.0.1).")
+@click.option("--port", default=8000, type=int, help="Port to listen on (default: 8000).")
+@click.option("--model", "-m", default="", help="Model override.")
 @click.option(
-    "--host", default="127.0.0.1", help="Bind address (default: 127.0.0.1)."
-)
-@click.option(
-    "--port", default=8000, type=int, help="Port to listen on (default: 8000)."
-)
-@click.option(
-    "--model", "-m", default="", help="Model override."
-)
-@click.option(
-    "--project-dir", "-d",
+    "--project-dir",
+    "-d",
     type=click.Path(exists=True, file_okay=False, path_type=Path),
     default=Path("."),
     help="Project directory.",
@@ -1322,7 +1317,8 @@ def swebench() -> None:
 
 @swebench.command("run")
 @click.option(
-    "--model", "-m",
+    "--model",
+    "-m",
     required=True,
     help="Model to evaluate (e.g. deepseek/deepseek-v4-pro).",
 )
@@ -1332,13 +1328,15 @@ def swebench() -> None:
     help="Identifier for this run (auto-generated if empty).",
 )
 @click.option(
-    "--max-instances", "-n",
+    "--max-instances",
+    "-n",
     type=int,
     default=300,
     help="Max number of instances to evaluate (default: 300 — full SWE-bench Lite).",
 )
 @click.option(
-    "--max-workers", "-w",
+    "--max-workers",
+    "-w",
     type=int,
     default=4,
     help="Max concurrent agent runs (default: 4).",
@@ -1480,8 +1478,7 @@ def swebench_run(
         from godspeed.tui.theme import WARNING
 
         RichConsole().print(
-            f"[{WARNING}]Evaluation interrupted. "
-            f"Predictions saved up to this point.[/{WARNING}]"
+            f"[{WARNING}]Evaluation interrupted. Predictions saved up to this point.[/{WARNING}]"
         )
         sys.exit(130)
     except ImportError as exc:
@@ -1496,7 +1493,8 @@ def swebench_run(
 
 @swebench.command("list-instances")
 @click.option(
-    "--max", "-n",
+    "--max",
+    "-n",
     "max_count",
     type=int,
     default=20,
@@ -1529,8 +1527,7 @@ def swebench_list_instances(max_count: int, repo: str | None) -> None:
     instances = instances[:max_count]
 
     c.print(
-        f"\n  [{BOLD_PRIMARY}]SWE-bench Lite Instances[/{BOLD_PRIMARY}]"
-        f" ({len(instances)} shown)\n"
+        f"\n  [{BOLD_PRIMARY}]SWE-bench Lite Instances[/{BOLD_PRIMARY}] ({len(instances)} shown)\n"
     )
 
     table = Table(border_style=TABLE_BORDER, expand=False)
@@ -1549,7 +1546,8 @@ def swebench_list_instances(max_count: int, repo: str | None) -> None:
 @swebench.command("eval")
 @click.argument("predictions_file", type=click.Path(exists=True, dir_okay=False, path_type=Path))
 @click.option(
-    "--max-workers", "-w",
+    "--max-workers",
+    "-w",
     type=int,
     default=2,
     help="Max concurrent evaluation containers (default: 2).",
@@ -1600,9 +1598,7 @@ def swebench_eval(
 
     # Load instances for repo/base_commit info
     all_instances = load_swebench_lite()
-    instance_map: dict[str, SWEBenchInstance] = {
-        i.instance_id: i for i in all_instances
-    }
+    instance_map: dict[str, SWEBenchInstance] = {i.instance_id: i for i in all_instances}
 
     async def _eval_predictions_async() -> None:
         from godspeed.evaluation.swebench_harness import _run_tests_in_docker
@@ -1618,8 +1614,7 @@ def swebench_eval(
                 inst = instance_map.get(pred.instance_id)
                 if inst is None:
                     c.print(
-                        f"  [{WARNING}]Instance {pred.instance_id}"
-                        f" not found in dataset[/{WARNING}]"
+                        f"  [{WARNING}]Instance {pred.instance_id} not found in dataset[/{WARNING}]"
                     )
                     return False
 
@@ -1629,15 +1624,12 @@ def swebench_eval(
                         inst, pred.model_patch, work_dir, timeout=timeout
                     )
                     status = (
-                        f"[{SUCCESS}]RESOLVED[/{SUCCESS}]"
-                        if is_resolved
-                        else "[red]FAILED[/red]"
+                        f"[{SUCCESS}]RESOLVED[/{SUCCESS}]" if is_resolved else "[red]FAILED[/red]"
                     )
                     c.print(f"  [{total}/{len(predictions)}] {pred.instance_id}: {status}")
                     if report.get("total"):
                         c.print(
-                            f"    Tests: {report.get('passed', 0)}"
-                            f"/{report.get('total', 0)} passed"
+                            f"    Tests: {report.get('passed', 0)}/{report.get('total', 0)} passed"
                         )
                     return is_resolved
 

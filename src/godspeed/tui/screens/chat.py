@@ -136,9 +136,7 @@ class ChatScreen(Screen):
             f"  {styled(PROMPT_ICON, BOLD_PRIMARY)} {styled('godspeed', BOLD_PRIMARY)}"
             f"  {styled(f'v{__version__}', DIM)}"
         )
-        chat_log.write(
-            f"  {styled(model_short, NEUTRAL)}  {styled(mode, DIM)}"
-        )
+        chat_log.write(f"  {styled(model_short, NEUTRAL)}  {styled(mode, DIM)}")
         chat_log.write()
         chat_log.write(f"  [{DIM}]{verse_text}[/{DIM}]")
         chat_log.write(f"  [{DIM}]— {verse_ref}[/{DIM}]")
@@ -170,13 +168,9 @@ class ChatScreen(Screen):
             self._commands.dispatch(f"/restore {session_name}")
             chat_log = self.query_one("#chat-log", ChatView)
             chat_log.write()
-            chat_log.write(
-                f"  [{DIM}]Resumed session: {session_name}[/{DIM}]"
-            )
+            chat_log.write(f"  [{DIM}]Resumed session: {session_name}[/{DIM}]")
 
-        self.app.push_screen(
-            SessionListScreen(self._tool_context.cwd, on_resume=_resume)
-        )
+        self.app.push_screen(SessionListScreen(self._tool_context.cwd, on_resume=_resume))
 
     def action_shell(self: Any) -> None:
         from godspeed.tui.screens.shell_screen import ShellScreen
@@ -192,9 +186,7 @@ class ChatScreen(Screen):
             tree.display = True
             tree.focus()
 
-    def on_directory_tree_file_selected(
-        self: Any, event: DirectoryTree.FileSelected
-    ) -> None:
+    def on_directory_tree_file_selected(self: Any, event: DirectoryTree.FileSelected) -> None:
         tree = self.query_one("#file-tree", DirectoryTree)
         tree.display = False
         inp = self.query_one("#prompt-input", Input)
@@ -358,9 +350,7 @@ class ChatScreen(Screen):
             chat_log.write(f"  [{ERR_COLOR}]Agent error: {exc}[/{ERR_COLOR}]")
         finally:
             self._running = False
-            chat_log.write(
-                f"  [{DIM}]{self._get_status_text()}[/{DIM}]"
-            )
+            chat_log.write(f"  [{DIM}]{self._get_status_text()}[/{DIM}]")
             self.query_one("#prompt-input", Input).focus()
 
     def _show_session_summary(self: Any) -> None:
@@ -382,9 +372,5 @@ class ChatScreen(Screen):
                 parts.append(f"{self._tool_errors} x")
             if self._tool_denied > 0:
                 parts.append(f"{self._tool_denied} denied")
-            chat_log.write(
-                f"  [{DIM}]{self._tool_calls} calls ({' | '.join(parts)})[/{DIM}]"
-            )
-        chat_log.write(
-            f"  {styled(PROMPT_ICON, BOLD_PRIMARY)} {styled('Godspeed', BOLD_PRIMARY)}"
-        )
+            chat_log.write(f"  [{DIM}]{self._tool_calls} calls ({' | '.join(parts)})[/{DIM}]")
+        chat_log.write(f"  {styled(PROMPT_ICON, BOLD_PRIMARY)} {styled('Godspeed', BOLD_PRIMARY)}")

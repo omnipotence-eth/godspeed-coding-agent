@@ -37,7 +37,7 @@ class TestFilePickerScan:
         picker = FilePicker(project_tree)
         picker._scan_files()
         files = picker._all_files
-        py_files = [f for f in files if f.endswith('.py')]
+        py_files = [f for f in files if f.endswith(".py")]
         assert len(py_files) >= 3
         assert "README.md" in files
 

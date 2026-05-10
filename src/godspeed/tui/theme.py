@@ -166,12 +166,12 @@ def icon_prompt(
         # Model short name
         if model:
             short = model.split("/", 1)[-1] if "/" in model else model
-            extras.append(f"<span color=\"{ANSI_NEUTRAL}\">{short}</span>")
+            extras.append(f'<span color="{ANSI_NEUTRAL}">{short}</span>')
 
         # Cost
         if cost > 0:
             cost_str = f"${cost:.4f}" if cost >= 0.01 else f"${cost:.6f}"
-            extras.append(f"<span color=\"{ANSI_NEUTRAL}\">{cost_str}</span>")
+            extras.append(f'<span color="{ANSI_NEUTRAL}">{cost_str}</span>')
 
         # Turn + context
         extras.append(f"turn {turn}")

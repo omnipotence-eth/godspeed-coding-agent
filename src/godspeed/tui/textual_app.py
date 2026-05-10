@@ -288,6 +288,7 @@ class GodspeedTextualApp(App):
             conversation_logger = None
             if settings.log_conversations:
                 from godspeed.training.conversation_logger import ConversationLogger
+
                 training_dir = settings.global_dir / "training"
                 conversation_logger = ConversationLogger(
                     session_id=session_id, output_dir=training_dir
@@ -302,6 +303,7 @@ class GodspeedTextualApp(App):
                 from godspeed.memory.corrections import CorrectionTracker
                 from godspeed.memory.session import SessionMemory
                 from godspeed.memory.user_memory import UserMemory
+
                 db_path = settings.global_dir / "memory.db"
                 user_memory = UserMemory(db_path=db_path)
                 correction_tracker = CorrectionTracker(user_memory)
@@ -339,6 +341,7 @@ class GodspeedTextualApp(App):
             _status("Connecting LLM client...")
             await asyncio.sleep(0)
             from godspeed.llm.client import ModelRouter
+
             router = ModelRouter(routing=settings.routing) if settings.routing else None
             llm_client = LLMClient(
                 model=effective_model,
@@ -369,6 +372,7 @@ class GodspeedTextualApp(App):
             self._conversation = conversation
 
             from godspeed.tui.commands import CommandResult, Commands
+
             self._commands = Commands(
                 conversation=conversation,
                 llm_client=llm_client,
@@ -383,18 +387,23 @@ class GodspeedTextualApp(App):
             def _cmd_theme(_args):
                 self.action_toggle_theme()
                 return CommandResult(handled=True)
+
             self._commands.register("theme", _cmd_theme)
 
             if permission_engine is not None:
                 from godspeed.security.approval_tracker import ApprovalTracker
+
                 self._approval_tracker = ApprovalTracker()
                 tool_context.permissions = _InteractivePermissionProxy(
-                    permission_engine, self, approval_tracker=self._approval_tracker,
+                    permission_engine,
+                    self,
+                    approval_tracker=self._approval_tracker,
                 )
             self._diff_reviewer = _InteractiveDiffReviewer(self)
             tool_context.diff_reviewer = self._diff_reviewer
 
             from godspeed.tui.screens.chat import ChatScreen
+
             self._chat_screen = ChatScreen(
                 llm_client=llm_client,
                 tool_registry=self._tools,
@@ -414,8 +423,11 @@ class GodspeedTextualApp(App):
             # Background: start inference server, connect tools, load skills
             self._bg_task = asyncio.create_task(
                 self._init_background(
-                    effective_model, settings, effective_project_dir,
-                    conversation, llm_client,
+                    effective_model,
+                    settings,
+                    effective_project_dir,
+                    conversation,
+                    llm_client,
                 )
             )
 
@@ -424,9 +436,7 @@ class GodspeedTextualApp(App):
             _status(f"Error: {exc}")
 
     def action_toggle_theme(self: Any) -> None:
-        self.theme = (
-            "godspeed-light" if self.theme == "godspeed-dark" else "godspeed-dark"
-        )
+        self.theme = "godspeed-light" if self.theme == "godspeed-dark" else "godspeed-dark"
 
     async def _init_background(
         self,
@@ -439,18 +449,22 @@ class GodspeedTextualApp(App):
         """Lazy init: inference server, MCP, skills, code index."""
         try:
             from godspeed.context.auto_index import maybe_start_auto_index
+
             maybe_start_auto_index(effective_project_dir, settings.auto_index)
 
             if effective_model.lower().startswith("ollama"):
                 from godspeed.cli import _ensure_ollama
+
                 await asyncio.to_thread(_ensure_ollama)
             elif effective_model.lower().startswith(("llamacpp/", "openai/")):
                 from godspeed.cli import _ensure_llamacpp
+
                 await asyncio.to_thread(_ensure_llamacpp)
 
             if settings.mcp_servers:
                 from godspeed.mcp.client import MCPClient, MCPServerConfig
                 from godspeed.mcp.tool_adapter import adapt_mcp_tools
+
                 mcp_client = MCPClient()
                 if mcp_client.available:
                     for server_cfg in settings.mcp_servers:
@@ -476,9 +490,11 @@ class GodspeedTextualApp(App):
                             logger.warning("MCP server %s failed: %s", config.name, exc)
 
             from godspeed.context.codebase_index import CodebaseIndex
+
             idx = CodebaseIndex(project_dir=effective_project_dir)
             if idx.is_available:
                 from godspeed.tools.code_search import CodeSearchTool
+
                 code_search_tool = CodeSearchTool(idx)
                 self._tools.register(code_search_tool)
                 self._risk_levels[code_search_tool.name] = code_search_tool.risk_level
@@ -488,6 +504,7 @@ class GodspeedTextualApp(App):
             from godspeed.skills.dream import SkillDream
             from godspeed.skills.evolution import SkillEvolution
             from godspeed.skills.loader import SkillHub, discover_skills
+
             skill_dirs = [
                 settings.global_dir / "skills",
                 effective_project_dir / ".godspeed" / "skills",
@@ -500,9 +517,11 @@ class GodspeedTextualApp(App):
             if settings.hooks:
                 from godspeed.hooks.config import HookDefinition
                 from godspeed.hooks.executor import HookExecutor
+
                 hook_defs = [HookDefinition(**h) for h in settings.hooks]
                 hook_executor = HookExecutor(
-                    hooks=hook_defs, cwd=effective_project_dir,
+                    hooks=hook_defs,
+                    cwd=effective_project_dir,
                     session_id=self._session_id,
                 )
                 hook_executor.run_pre_session()
@@ -512,14 +531,20 @@ class GodspeedTextualApp(App):
 
             if skills:
                 from godspeed.skills.commands import register_skill_commands
+
                 register_skill_commands(
-                    self._commands, conversation, skills,
-                    evolution=SkillEvolution(), hub=SkillHub(),
-                    dream=self._skill_dream, skills_dir=skills_dir,
+                    self._commands,
+                    conversation,
+                    skills,
+                    evolution=SkillEvolution(),
+                    hub=SkillHub(),
+                    dream=self._skill_dream,
+                    skills_dir=skills_dir,
                     llm_client=llm_client,
                 )
 
             from godspeed.tui.app import _schedule_dream
+
             _schedule_dream(self._skill_dream)
 
         except Exception as exc:
@@ -542,9 +567,7 @@ class GodspeedTextualApp(App):
             self._session_memory.end_session(
                 self._session_id,
                 summary=(
-                    f"turns={self._turn_count}"
-                    f" tools={self._tool_calls}"
-                    f" errors={self._tool_errors}"
+                    f"turns={self._turn_count} tools={self._tool_calls} errors={self._tool_errors}"
                 ),
             )
         if self._audit_trail is not None:
@@ -595,16 +618,12 @@ class _InteractivePermissionProxy:
 
         if answer in ("a", "always"):
             pattern = tool_call.format_for_permission
-            risk = self._engine._tool_risk_levels.get(
-                tool_call.tool_name, RiskLevel.HIGH
-            )
+            risk = self._engine._tool_risk_levels.get(tool_call.tool_name, RiskLevel.HIGH)
             if risk == RiskLevel.LOW:
                 self._engine.grant_tool_session_permission(tool_call.tool_name)
                 if self._tracker is not None:
                     self._tracker.record_approval(f"{tool_call.tool_name}(*)")
-                return PermissionDecision(
-                    ALLOW, f"session grant: {tool_call.tool_name}(*)"
-                )
+                return PermissionDecision(ALLOW, f"session grant: {tool_call.tool_name}(*)")
             self._engine.grant_session_permission(pattern)
             return PermissionDecision(ALLOW, f"session grant: {pattern}")
 

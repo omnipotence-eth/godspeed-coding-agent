@@ -68,6 +68,7 @@ class FilePicker(ListView):
 
     class Selected(ListView.Selected):
         """Posted when the user selects a file."""
+
         def __init__(self, item: str) -> None:
             super().__init__(ListView())
             self.item = item

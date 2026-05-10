@@ -643,8 +643,7 @@ class Commands:
             )
         else:
             format_success(
-                f"Whisper mode [{BOLD_PRIMARY}]OFF[/{BOLD_PRIMARY}]"
-                " — tool output visible"
+                f"Whisper mode [{BOLD_PRIMARY}]OFF[/{BOLD_PRIMARY}] — tool output visible"
             )
         return CommandResult(handled=True)
 

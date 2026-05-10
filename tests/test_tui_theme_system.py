@@ -81,6 +81,7 @@ class TestThemeColors:
 
     def test_dark_bg_darker_than_light_bg(self):
         """Dark background should be perceptually darker."""
+
         def hex_to_luminance(h):
             r, g, b = int(h[1:3], 16), int(h[3:5], 16), int(h[5:7], 16)
             return 0.299 * r + 0.587 * g + 0.114 * b
@@ -89,6 +90,7 @@ class TestThemeColors:
 
     def test_dark_text_lighter_than_light_text(self):
         """Dark mode text should be lighter than light mode text."""
+
         def hex_to_luminance(h):
             r, g, b = int(h[1:3], 16), int(h[3:5], 16), int(h[5:7], 16)
             return 0.299 * r + 0.587 * g + 0.114 * b
@@ -97,6 +99,7 @@ class TestThemeColors:
 
     def test_contrast_ratio_dark(self):
         """Dark mode should have adequate contrast ratio."""
+
         def hex_to_rgb(h):
             return int(h[1:3], 16) / 255, int(h[3:5], 16) / 255, int(h[5:7], 16) / 255
 
@@ -118,6 +121,7 @@ class TestThemeColors:
 
     def test_contrast_ratio_light(self):
         """Light mode should have adequate contrast ratio."""
+
         def hex_to_rgb(h):
             return int(h[1:3], 16) / 255, int(h[3:5], 16) / 255, int(h[5:7], 16) / 255
 
@@ -139,8 +143,18 @@ class TestThemeColors:
 
     def test_all_themes_are_valid_hex(self):
         for theme in (_DARK, _LIGHT):
-            for attr in ("primary", "secondary", "warning", "error", "success",
-                         "accent", "foreground", "background", "surface", "panel"):
+            for attr in (
+                "primary",
+                "secondary",
+                "warning",
+                "error",
+                "success",
+                "accent",
+                "foreground",
+                "background",
+                "surface",
+                "panel",
+            ):
                 val = getattr(theme, attr)
                 assert val.startswith("#"), f"{theme.name}.{attr} should start with #"
                 assert len(val) == 7, f"{theme.name}.{attr} should be 7 chars"
@@ -172,12 +186,10 @@ class TestThemeDefaults:
         app = Mock()
         app.theme = "godspeed-dark"
         result = []
-        app.theme = 'godspeed-dark'
+        app.theme = "godspeed-dark"
 
         def simulate_toggle():
-            app.theme = (
-                "godspeed-light" if app.theme == "godspeed-dark" else "godspeed-dark"
-            )
+            app.theme = "godspeed-light" if app.theme == "godspeed-dark" else "godspeed-dark"
             return app.theme
 
         assert simulate_toggle() == "godspeed-light"
@@ -186,4 +198,5 @@ class TestThemeDefaults:
 
 class Mock:
     """Minimal mock object for theme tests."""
+
     pass

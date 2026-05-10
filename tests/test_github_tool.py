@@ -462,3 +462,166 @@ async def test_timeout(
     result = await tool.execute({"action": "list_prs"}, ctx)
     assert result.is_error
     assert "timed out" in (result.error or "")
+
+
+# ------------------------------------------------------------------
+# Failure return codes for each operation
+# ------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@patch("godspeed.tools.github.shutil.which", return_value="/usr/bin/gh")
+@patch("godspeed.tools.github.asyncio.create_subprocess_exec")
+async def test_create_pr_failure(
+    mock_exec: AsyncMock,
+    _mock_which: MagicMock,
+    tool: GithubTool,
+    ctx: ToolContext,
+) -> None:
+    mock_exec.return_value = _make_process(returncode=1, stderr="no permission")
+    result = await tool.execute(
+        {"action": "create_pr", "title": "feat: x"},
+        ctx,
+    )
+    assert result.is_error
+    assert "no permission" in (result.error or "")
+
+
+@pytest.mark.asyncio
+@patch("godspeed.tools.github.shutil.which", return_value="/usr/bin/gh")
+@patch("godspeed.tools.github.asyncio.create_subprocess_exec")
+async def test_get_pr_failure(
+    mock_exec: AsyncMock,
+    _mock_which: MagicMock,
+    tool: GithubTool,
+    ctx: ToolContext,
+) -> None:
+    mock_exec.return_value = _make_process(returncode=1, stderr="not found")
+    result = await tool.execute(
+        {"action": "get_pr", "number": 999},
+        ctx,
+    )
+    assert result.is_error
+    assert "not found" in (result.error or "")
+
+
+@pytest.mark.asyncio
+@patch("godspeed.tools.github.shutil.which", return_value="/usr/bin/gh")
+@patch("godspeed.tools.github.asyncio.create_subprocess_exec")
+async def test_list_issues_failure(
+    mock_exec: AsyncMock,
+    _mock_which: MagicMock,
+    tool: GithubTool,
+    ctx: ToolContext,
+) -> None:
+    mock_exec.return_value = _make_process(returncode=1, stderr="not a repo")
+    result = await tool.execute(
+        {"action": "list_issues"},
+        ctx,
+    )
+    assert result.is_error
+    assert "not a repo" in (result.error or "")
+
+
+@pytest.mark.asyncio
+@patch("godspeed.tools.github.shutil.which", return_value="/usr/bin/gh")
+@patch("godspeed.tools.github.asyncio.create_subprocess_exec")
+async def test_get_issue_failure(
+    mock_exec: AsyncMock,
+    _mock_which: MagicMock,
+    tool: GithubTool,
+    ctx: ToolContext,
+) -> None:
+    mock_exec.return_value = _make_process(returncode=1, stderr="not found")
+    result = await tool.execute(
+        {"action": "get_issue", "number": 999},
+        ctx,
+    )
+    assert result.is_error
+    assert "not found" in (result.error or "")
+
+
+@pytest.mark.asyncio
+@patch("godspeed.tools.github.shutil.which", return_value="/usr/bin/gh")
+@patch("godspeed.tools.github.asyncio.create_subprocess_exec")
+async def test_create_issue_failure(
+    mock_exec: AsyncMock,
+    _mock_which: MagicMock,
+    tool: GithubTool,
+    ctx: ToolContext,
+) -> None:
+    mock_exec.return_value = _make_process(returncode=1, stderr="no repo")
+    result = await tool.execute(
+        {"action": "create_issue", "title": "bug"},
+        ctx,
+    )
+    assert result.is_error
+    assert "no repo" in (result.error or "")
+
+
+@pytest.mark.asyncio
+@patch("godspeed.tools.github.shutil.which", return_value="/usr/bin/gh")
+@patch("godspeed.tools.github.asyncio.create_subprocess_exec")
+async def test_comment_issue_failure(
+    mock_exec: AsyncMock,
+    _mock_which: MagicMock,
+    tool: GithubTool,
+    ctx: ToolContext,
+) -> None:
+    mock_exec.return_value = _make_process(returncode=1, stderr="not a repo")
+    result = await tool.execute(
+        {"action": "comment_issue", "number": 1, "body": "hi"},
+        ctx,
+    )
+    assert result.is_error
+    assert "not a repo" in (result.error or "")
+
+
+@pytest.mark.asyncio
+@patch("godspeed.tools.github.shutil.which", return_value="/usr/bin/gh")
+@patch("godspeed.tools.github.asyncio.create_subprocess_exec")
+async def test_comment_pr_failure(
+    mock_exec: AsyncMock,
+    _mock_which: MagicMock,
+    tool: GithubTool,
+    ctx: ToolContext,
+) -> None:
+    mock_exec.return_value = _make_process(returncode=1, stderr="not found")
+    result = await tool.execute(
+        {"action": "comment_pr", "number": 1, "body": "hi"},
+        ctx,
+    )
+    assert result.is_error
+    assert "not found" in (result.error or "")
+
+
+@pytest.mark.asyncio
+@patch("godspeed.tools.github.shutil.which", return_value="/usr/bin/gh")
+@patch("godspeed.tools.github.asyncio.create_subprocess_exec")
+async def test_comment_pr_missing_body(
+    mock_exec: AsyncMock,
+    _mock_which: MagicMock,
+    tool: GithubTool,
+    ctx: ToolContext,
+) -> None:
+    result = await tool.execute({"action": "comment_pr", "number": 1}, ctx)
+    assert result.is_error
+    assert "body is required" in (result.error or "")
+
+
+# ------------------------------------------------------------------
+# Format JSON edge cases
+# ------------------------------------------------------------------
+
+
+def test_format_json_invalid_json(tool: GithubTool) -> None:
+    result = tool._format_json("not valid json")
+    assert not result.is_error
+    assert "not valid json" in result.output
+
+
+def test_format_json_valid_json(tool: GithubTool) -> None:
+    result = tool._format_json('{"a": 1}')
+    assert not result.is_error
+    parsed = json.loads(result.output)
+    assert parsed["a"] == 1

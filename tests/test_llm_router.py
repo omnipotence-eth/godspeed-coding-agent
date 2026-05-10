@@ -145,6 +145,95 @@ class TestClassifyTaskType:
         # No usable tool names → treated as text-only assistant turn → plan.
         assert classify_task_type(msgs) == TASK_PLAN
 
+    def test_non_assistant_message_returns_empty_list(self) -> None:
+        from godspeed.llm.router import _extract_tool_names
+
+        result = _extract_tool_names({"role": "user", "content": "hello"})
+        assert result == []
+
+    def test_non_dict_tool_calls_ignored(self) -> None:
+        from godspeed.llm.router import _extract_tool_names
+
+        msg = {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": ["not_a_dict", {"id": "x", "function": {"name": "file_read", "arguments": "{}"}}],
+        }
+        result = _extract_tool_names(msg)
+        assert result == ["file_read"]
+
+    def test_function_not_a_dict(self) -> None:
+        from godspeed.llm.router import _extract_tool_names
+
+        msg = {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [
+                {"id": "a", "type": "function", "function": "not_a_dict"},
+                {"id": "b", "type": "function", "function": {"name": "file_read", "arguments": "{}"}},
+            ],
+        }
+        result = _extract_tool_names(msg)
+        assert result == ["file_read"]
+
+    def test_function_name_not_a_string(self) -> None:
+        from godspeed.llm.router import _extract_tool_names
+
+        msg = {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [
+                {"id": "a", "function": {"name": 123, "arguments": "{}"}},
+                {"id": "b", "function": {"name": "good_tool", "arguments": "{}"}},
+            ],
+        }
+        result = _extract_tool_names(msg)
+        assert result == ["good_tool"]
+
+    def test_tool_call_with_empty_name(self) -> None:
+        from godspeed.llm.router import _extract_tool_names
+
+        msg = {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [
+                {"id": "a", "function": {"name": "", "arguments": "{}"}},
+                {"id": "b", "function": {"name": "valid_tool", "arguments": "{}"}},
+            ],
+        }
+        result = _extract_tool_names(msg)
+        assert result == ["valid_tool"]
+
+    def test_message_with_no_tool_calls(self) -> None:
+        from godspeed.llm.router import _extract_tool_names
+
+        result = _extract_tool_names({"role": "assistant", "content": "just text"})
+        assert result == []
+
+    def test_notebook_edit_triggers_edit(self) -> None:
+        msgs = [_user(), _assistant("notebook_edit"), _tool_result()]
+        assert classify_task_type(msgs) == TASK_EDIT
+
+    def test_generate_tests_triggers_edit(self) -> None:
+        msgs = [_user(), _assistant("generate_tests"), _tool_result()]
+        assert classify_task_type(msgs) == TASK_EDIT
+
+    def test_git_triggers_shell(self) -> None:
+        msgs = [_user(), _assistant("git"), _tool_result()]
+        assert classify_task_type(msgs) == TASK_SHELL
+
+    def test_github_triggers_shell(self) -> None:
+        msgs = [_user(), _assistant("github"), _tool_result()]
+        assert classify_task_type(msgs) == TASK_SHELL
+
+    def test_web_search_is_read(self) -> None:
+        msgs = [_user(), _assistant("web_search"), _tool_result()]
+        assert classify_task_type(msgs) == TASK_READ
+
+    def test_no_assistant_turn_is_plan(self) -> None:
+        msgs = [_user("first"), _tool_result(), _user("second")]
+        assert classify_task_type(msgs) == TASK_PLAN
+
     def test_canonical_task_types_constant(self) -> None:
         # The TASK_TYPES tuple is the canonical surface area exposed
         # to settings YAML / docs — pin it so accidental drift fails

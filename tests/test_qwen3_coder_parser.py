@@ -116,3 +116,133 @@ class TestExtractQwen3CoderToolCalls:
         )
         calls = extract_qwen3_coder_tool_calls(content)
         assert calls[0]["id"] != calls[1]["id"]
+
+
+class TestExtractQwen3EdgeCases:
+    def test_empty_function_name_skipped(self) -> None:
+        content = "<function=>\n<parameter=key>\nvalue\n</parameter>\n</function>"
+        calls = extract_qwen3_coder_tool_calls(content)
+        assert calls == []
+
+    def test_whitespace_only_function_name_skipped(self) -> None:
+        content = "<function=   >\n<parameter=key>\nvalue\n</parameter>\n</function>"
+        calls = extract_qwen3_coder_tool_calls(content)
+        assert calls == []
+
+    def test_empty_parameter_key_skipped(self) -> None:
+        content = "<function=tool>\n<parameter=>\nvalue\n</parameter>\n</function>"
+        calls = extract_qwen3_coder_tool_calls(content)
+        assert len(calls) == 1
+        args = json.loads(calls[0]["function"]["arguments"])
+        assert args == {}
+
+    def test_whitespace_only_parameter_key_skipped(self) -> None:
+        content = "<function=tool>\n<parameter=   >\nvalue\n</parameter>\n</function>"
+        calls = extract_qwen3_coder_tool_calls(content)
+        assert len(calls) == 1
+        args = json.loads(calls[0]["function"]["arguments"])
+        assert args == {}
+
+    def test_valid_and_invalid_params_mixed(self) -> None:
+        content = (
+            "<function=search>\n"
+            "<parameter=>\nignored\n</parameter>\n"
+            "<parameter=query>\ntest\n</parameter>\n"
+            "<parameter=   >\nalso ignored\n</parameter>\n"
+            "</function>"
+        )
+        calls = extract_qwen3_coder_tool_calls(content)
+        assert len(calls) == 1
+        args = json.loads(calls[0]["function"]["arguments"])
+        assert args == {"query": "test"}
+
+    def test_text_interleaved_with_tool_calls(self) -> None:
+        content = (
+            "Let me think about this...\n"
+            "<function=file_read>\n<parameter=file_path>\nconfig.yaml\n</parameter>\n</function>\n"
+            "Now let me check another file...\n"
+            "<function=file_read>\n<parameter=file_path>\nsettings.json\n</parameter>\n</function>"
+        )
+        calls = extract_qwen3_coder_tool_calls(content)
+        assert len(calls) == 2
+        assert json.loads(calls[0]["function"]["arguments"])["file_path"] == "config.yaml"
+        assert json.loads(calls[1]["function"]["arguments"])["file_path"] == "settings.json"
+
+    def test_no_function_tags_returns_empty(self) -> None:
+        content = "Just a plain text response with no tool calls whatsoever."
+        assert extract_qwen3_coder_tool_calls(content) == []
+
+    def test_malformed_function_with_valid_mixed(self) -> None:
+        content = (
+            "<function=bad>\n"
+            "missing close tag...\n"
+            "<function=file_read>\n<parameter=file_path>\ngood.py\n</parameter>\n</function>"
+        )
+        calls = extract_qwen3_coder_tool_calls(content)
+        assert len(calls) == 1
+        assert calls[0]["function"]["name"] == "bad"
+        args = json.loads(calls[0]["function"]["arguments"])
+        assert args == {"file_path": "good.py"}
+
+    def test_function_name_with_special_chars(self) -> None:
+        content = "<function=my_tool_123>\n<parameter=arg>\nvalue\n</parameter>\n</function>"
+        calls = extract_qwen3_coder_tool_calls(content)
+        assert len(calls) == 1
+        assert calls[0]["function"]["name"] == "my_tool_123"
+
+    def test_parameter_value_with_whitespace_only(self) -> None:
+        content = "<function=test>\n<parameter=key>\n   \n</parameter>\n</function>"
+        calls = extract_qwen3_coder_tool_calls(content)
+        assert len(calls) == 1
+        args = json.loads(calls[0]["function"]["arguments"])
+        assert args == {"key": ""}
+
+
+class TestCoerceParameterValueEdgeCases:
+    def test_empty_value_returns_empty_string(self) -> None:
+        assert _coerce_parameter_value("") == ""
+        assert _coerce_parameter_value("   ") == ""
+        assert _coerce_parameter_value("\n\t") == ""
+
+    def test_json_string_value(self) -> None:
+        assert _coerce_parameter_value('"hello world"') == "hello world"
+
+    def test_json_string_value_malformed(self) -> None:
+        result = _coerce_parameter_value('"unclosed')
+        assert result == '"unclosed'
+
+    def test_number_with_exponent(self) -> None:
+        assert _coerce_parameter_value("1e10") == 1e10
+        assert _coerce_parameter_value("-2.5E-3") == -2.5e-3
+
+    def test_number_parsing_fallthrough(self) -> None:
+        result = _coerce_parameter_value("99999999999999999999999999999999999999")
+        assert isinstance(result, (int, str))
+
+    def test_integer_overflow_string_fallback(self) -> None:
+        result = _coerce_parameter_value("99999999999999999999999x")
+        assert result == "99999999999999999999999x"
+
+    def test_null_case_insensitive(self) -> None:
+        assert _coerce_parameter_value("NULL") is None
+        assert _coerce_parameter_value("Null") is None
+
+    def test_boolean_case_insensitive_variants(self) -> None:
+        assert _coerce_parameter_value("TRUE") is True
+        assert _coerce_parameter_value("False") is False
+
+    def test_number_like_but_not_full_number(self) -> None:
+        result = _coerce_parameter_value("123abc")
+        assert result == "123abc"
+
+    def test_array_with_nested_content(self) -> None:
+        result = _coerce_parameter_value('[1, "two", {"three": 3}]')
+        assert result == [1, "two", {"three": 3}]
+
+    def test_nested_json_object(self) -> None:
+        result = _coerce_parameter_value('{"outer": {"inner": [1, 2, 3]}}')
+        assert result == {"outer": {"inner": [1, 2, 3]}}
+
+    def test_partial_number_parse_fallback(self) -> None:
+        result = _coerce_parameter_value("-")
+        assert result == "-"

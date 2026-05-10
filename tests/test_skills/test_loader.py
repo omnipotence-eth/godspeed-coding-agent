@@ -3,17 +3,26 @@
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
 from godspeed.skills.loader import (
+    DEFAULT_SKILL_DIRS,
+    PROJECT_SKILL_DIRS,
     SKILL_NAME_RE,
     Skill,
     SkillError,
     SkillHub,
+    SkillSecurityError,
+    _check_skill_path,
     _compute_hash,
+    _find_project_root,
     _load_skill_directory,
     _parse_frontmatter,
+    _skill_dirs,
+    _stat_ctime,
+    _stat_mtime,
     discover_skills,
 )
 
@@ -320,3 +329,280 @@ class TestSkillHub:
 
         with pytest.raises(SkillError):
             hub.remove("does-not-exist")
+
+
+# -- Additional coverage tests -----------------------------------------------
+
+
+class TestFindProjectRoot:
+    """Test _find_project_root()."""
+
+    def test_found_with_git_dir(self, tmp_path: Path) -> None:
+        (tmp_path / ".git").mkdir()
+        with patch("pathlib.Path.cwd", return_value=tmp_path):
+            result = _find_project_root()
+        assert result == tmp_path
+
+    def test_not_found_no_git(self, tmp_path: Path) -> None:
+        with patch("pathlib.Path.cwd", return_value=tmp_path):
+            result = _find_project_root()
+        assert result is None
+
+    def test_found_in_parent(self, tmp_path: Path) -> None:
+        (tmp_path / ".git").mkdir()
+        child = tmp_path / "a" / "b" / "c"
+        child.mkdir(parents=True)
+        with patch("pathlib.Path.cwd", return_value=child):
+            result = _find_project_root()
+        assert result == tmp_path
+
+    def test_stops_at_non_git_parent(self, tmp_path: Path) -> None:
+        child = tmp_path / "a" / "b"
+        child.mkdir(parents=True)
+        with patch("pathlib.Path.cwd", return_value=child):
+            result = _find_project_root()
+        assert result is None
+
+
+class TestSkillDirs:
+    """Test _skill_dirs()."""
+
+    def test_without_project_root(self, tmp_path: Path) -> None:
+        with patch("godspeed.skills.loader._find_project_root", return_value=None):
+            dirs = _skill_dirs()
+        assert len(dirs) == len(DEFAULT_SKILL_DIRS)
+
+    def test_with_project_root(self, tmp_path: Path) -> None:
+        with patch("godspeed.skills.loader._find_project_root", return_value=tmp_path):
+            dirs = _skill_dirs()
+        assert len(dirs) == len(DEFAULT_SKILL_DIRS) + len(PROJECT_SKILL_DIRS)
+
+
+class TestCheckSkillPath:
+    """Test _check_skill_path()."""
+
+    def test_valid_skill_path(self, tmp_path: Path) -> None:
+        p = tmp_path / "my-skill" / "SKILL.md"
+        assert _check_skill_path(p) is True
+
+    def test_not_skill_md(self) -> None:
+        p = Path("/x/README.md")
+        assert _check_skill_path(p) is False
+
+    def test_root_skill_md(self) -> None:
+        p = Path("/SKILL.md")
+        assert _check_skill_path(p) is False
+
+
+class TestLoadSkillDirectoryAdvanced:
+    """Edge cases for _load_skill_directory()."""
+
+    def test_oserror_reading_skill_md(self, tmp_path: Path) -> None:
+        d = tmp_path / "bad-read"
+        d.mkdir()
+        skill_md = d / "SKILL.md"
+        skill_md.write_text("---\nname: test\ndescription: test\ntrigger: t\n---\nBody")
+        with patch.object(Path, "read_text", side_effect=OSError("disk error")):
+            result = _load_skill_directory(d)
+        assert result is None
+
+    def test_missing_required_fields(self, tmp_path: Path) -> None:
+        d = tmp_path / "missing-fields"
+        d.mkdir()
+        (d / "SKILL.md").write_text("---\n---\nBody")
+        assert _load_skill_directory(d) is None
+
+    def test_with_metadata_in_frontmatter(self, tmp_path: Path) -> None:
+        d = _make_skill_dir(
+            tmp_path,
+            "meta-skill",
+            "name: meta-skill\ndescription: Has metadata\ntrigger: ms\nversion: '1.2'\nlicense: MIT\ncompatibility: python>=3.11\nmetadata:\n  author: test\n  tags: [a, b]",
+            "Body with metadata.",
+        )
+        skill = _load_skill_directory(d)
+        assert skill is not None
+        assert skill.version == "1.2"
+        assert skill.license == "MIT"
+        assert skill.compatibility == "python>=3.11"
+        assert skill.metadata == {"author": "test", "tags": ["a", "b"]}
+
+    def test_dir_name_differs_from_frontmatter_name(self, tmp_path: Path) -> None:
+        d = _make_skill_dir(
+            tmp_path,
+            "dir-name",
+            "name: frontmatter-name\ndescription: Desc\ntrigger: dn",
+            "Body.",
+        )
+        skill = _load_skill_directory(d)
+        assert skill is not None
+        assert skill.name == "frontmatter-name"
+
+
+class TestStatHelpers:
+    """Test _stat_ctime and _stat_mtime."""
+
+    def test_stat_ctime_success(self, tmp_path: Path) -> None:
+        f = tmp_path / "test.txt"
+        f.write_text("hello")
+        result = _stat_ctime(f)
+        assert result is not None
+
+    def test_stat_ctime_oserror(self, tmp_path: Path) -> None:
+        with patch.object(Path, "stat", side_effect=OSError("no stat")):
+            result = _stat_ctime(Path("/nonexistent"))
+        assert result is None
+
+    def test_stat_mtime_success(self, tmp_path: Path) -> None:
+        f = tmp_path / "test.txt"
+        f.write_text("hello")
+        result = _stat_mtime(f)
+        assert result is not None
+
+    def test_stat_mtime_oserror(self, tmp_path: Path) -> None:
+        with patch.object(Path, "stat", side_effect=OSError("no stat")):
+            result = _stat_mtime(Path("/nonexistent"))
+        assert result is None
+
+
+class TestParseFrontmatterAdvanced:
+    """Additional frontmatter parsing edge cases."""
+
+    def test_frontmatter_with_trailing_spaces(self) -> None:
+        text = "---   \nname: test\ndescription: desc\ntrigger: t\n---   \n\nBody."
+        result = _parse_frontmatter(text)
+        assert result is not None
+        fm, body = result
+        assert fm["name"] == "test"
+
+    def test_frontmatter_with_windows_line_endings(self) -> None:
+        text = "---\r\nname: test\r\ndescription: desc\r\ntrigger: t\r\n---\r\n\r\nBody."
+        result = _parse_frontmatter(text)
+        assert result is not None
+        fm, body = result
+        assert fm["name"] == "test"
+
+    def test_only_frontmatter_delimiter(self) -> None:
+        assert _parse_frontmatter("---") is None
+
+    def test_empty_string(self) -> None:
+        assert _parse_frontmatter("") is None
+
+    def test_frontmatter_with_special_yaml_types(self) -> None:
+        text = "---\nname: test\ndescription: desc\ntrigger: t\nversion: '1.0'\ncount: 42\nenabled: true\n---\n\nBody."
+        result = _parse_frontmatter(text)
+        assert result is not None
+        fm, body = result
+        assert fm["count"] == 42
+        assert fm["enabled"] is True
+
+
+class TestSkillHubAdvanced:
+    """Additional SkillHub edge cases."""
+
+    def test_verify_integrity_no_lock_entry(self, tmp_path: Path) -> None:
+        hub = SkillHub(base_dir=tmp_path / "hub")
+        src = tmp_path / "src"
+        _make_skill_dir(src, "unlocked", "name: unlocked\ndescription: U\ntrigger: u", "Body.")
+        hub.install("unlocked", src / "unlocked")
+        hub._lock["skills"].pop("unlocked", None)
+        assert not hub.verify_integrity("unlocked")
+
+    def test_verify_integrity_skill_not_found(self, tmp_path: Path) -> None:
+        hub = SkillHub(base_dir=tmp_path / "hub")
+        assert not hub.verify_integrity("nonexistent")
+
+    def test_install_invalid_skill(self, tmp_path: Path) -> None:
+        hub = SkillHub(base_dir=tmp_path / "hub")
+        invalid = tmp_path / "invalid"
+        invalid.mkdir()
+        with pytest.raises(SkillError, match="Invalid skill"):
+            hub.install("bad", invalid)
+
+    def test_install_security_scan_fails_with_many_issues(self, tmp_path: Path) -> None:
+        hub = SkillHub(base_dir=tmp_path / "hub")
+        src = tmp_path / "src"
+        _make_skill_dir(src, "dangerous", "name: dangerous\ndescription: D\ntrigger: d", "Bad stuff.")
+        issues = ["issue 1", "issue 2", "issue 3", "issue 4", "issue 5", "issue 6", "issue 7"]
+        with patch("godspeed.skills.security.scan_skill", return_value=issues):
+            with pytest.raises(SkillSecurityError, match="failed security scan"):
+                hub.install("dangerous", src / "dangerous")
+
+    def test_install_security_scan_fails_with_few_issues(self, tmp_path: Path) -> None:
+        hub = SkillHub(base_dir=tmp_path / "hub")
+        src = tmp_path / "src"
+        _make_skill_dir(src, "risky", "name: risky\ndescription: R\ntrigger: r", "Bad stuff.")
+        issues = ["one issue", "two issues"]
+        with patch("godspeed.skills.security.scan_skill", return_value=issues):
+            with pytest.raises(SkillSecurityError, match="failed security scan"):
+                hub.install("risky", src / "risky")
+
+    def test_install_security_scan_passes(self, tmp_path: Path) -> None:
+        hub = SkillHub(base_dir=tmp_path / "hub")
+        src = tmp_path / "src"
+        _make_skill_dir(src, "safe-one", "name: safe-one\ndescription: S\ntrigger: so", "Safe.")
+        with patch("godspeed.skills.security.scan_skill", return_value=[]):
+            skill = hub.install("safe-one", src / "safe-one")
+        assert skill.name == "safe-one"
+
+    def test_quarantine_nonexistent(self, tmp_path: Path) -> None:
+        hub = SkillHub(base_dir=tmp_path / "hub")
+        hub.quarantine("does-not-exist")
+
+    def test_list_installed_empty(self, tmp_path: Path) -> None:
+        hub = SkillHub(base_dir=tmp_path / "hub")
+        assert hub.list_installed() == []
+
+    def test_remove_updates_lock(self, tmp_path: Path) -> None:
+        hub = SkillHub(base_dir=tmp_path / "hub")
+        src = tmp_path / "src"
+        _make_skill_dir(src, "to-remove", "name: to-remove\ndescription: TR\ntrigger: tr", "Body.")
+        hub.install("to-remove", src / "to-remove")
+        assert "to-remove" in hub._lock["skills"]
+        hub.remove("to-remove")
+        assert "to-remove" not in hub._lock["skills"]
+
+
+class TestDiscoverSkillsAdvanced:
+    """Additional discover_skills edge cases."""
+
+    @pytest.fixture(autouse=True)
+    def _no_standard_dirs(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr("godspeed.skills.loader.DEFAULT_SKILL_DIRS", [])
+        monkeypatch.setattr("godspeed.skills.loader.PROJECT_SKILL_DIRS", [])
+
+    def test_extra_dirs_none(self, tmp_path: Path) -> None:
+        skills = discover_skills(None)
+        assert skills == []
+
+    def test_extra_dirs_empty(self, tmp_path: Path) -> None:
+        skills = discover_skills([])
+        assert skills == []
+
+    def test_base_dir_does_not_exist(self, tmp_path: Path) -> None:
+        nonexistent = tmp_path / "nope"
+        skills = discover_skills([nonexistent])
+        assert skills == []
+
+    def test_directory_with_no_subdirs(self, tmp_path: Path) -> None:
+        empty = tmp_path / "empty-base"
+        empty.mkdir()
+        skills = discover_skills([empty])
+        assert skills == []
+
+    def test_directory_with_files_not_dirs(self, tmp_path: Path) -> None:
+        base = tmp_path / "base-with-files"
+        base.mkdir()
+        (base / "NOT_A_SKILL.md").write_text("---\nname: nope\n---\nBody")
+        skills = discover_skills([base])
+        assert len(skills) == 0
+
+    def test_multiple_directories_no_overlap(self, tmp_path: Path) -> None:
+        a = tmp_path / "a"
+        b = tmp_path / "b"
+        a.mkdir()
+        b.mkdir()
+        _make_skill_dir(a, "skill-a", "name: skill-a\ndescription: A\ntrigger: a", "A.")
+        _make_skill_dir(b, "skill-b", "name: skill-b\ndescription: B\ntrigger: b", "B.")
+        skills = discover_skills([a, b])
+        triggers = {s.trigger for s in skills}
+        assert triggers == {"a", "b"}

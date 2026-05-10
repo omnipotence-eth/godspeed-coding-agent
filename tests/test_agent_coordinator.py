@@ -219,6 +219,12 @@ class TestSpawnAgentTool:
         assert "task" in schema["properties"]
         assert schema["required"] == ["task"]
 
+    def test_description(self) -> None:
+        coordinator = AsyncMock()
+        tool = SpawnAgentTool(coordinator)
+        assert isinstance(tool.description, str)
+        assert "sub-agent" in tool.description.lower() or "sub-task" in tool.description.lower()
+
     @pytest.mark.asyncio
     async def test_execute_delegates_to_coordinator(self, tool_context: ToolContext) -> None:
         registry = ToolRegistry()
@@ -247,3 +253,186 @@ class TestSpawnAgentTool:
     @pytest.mark.asyncio
     async def test_default_max_depth(self) -> None:
         assert MAX_SUB_AGENT_DEPTH == 3
+
+
+class TestSpawnRetrieval:
+    """Test spawn_retrieval for the retrieval sub-agent."""
+
+    @pytest.mark.asyncio
+    async def test_spawn_retrieval_returns_result(self, tool_context: ToolContext) -> None:
+        registry = ToolRegistry()
+        client = LLMClient(model="test")
+        client.chat = AsyncMock(
+            return_value=_make_text_response("file:src/main.py:10-20 -- Processor class")
+        )
+
+        coordinator = AgentCoordinator(
+            llm_client=client,
+            tool_registry=registry,
+            tool_context=tool_context,
+        )
+
+        result = await coordinator.spawn_retrieval("Find Processor")
+        assert "Processor" in result
+
+    @pytest.mark.asyncio
+    async def test_spawn_retrieval_failure(self, tool_context: ToolContext) -> None:
+        registry = ToolRegistry()
+        client = LLMClient(model="test")
+        client.chat = AsyncMock(side_effect=RuntimeError("Retrieval failed"))
+
+        coordinator = AgentCoordinator(
+            llm_client=client,
+            tool_registry=registry,
+            tool_context=tool_context,
+        )
+
+        result = await coordinator.spawn_retrieval("Find stuff")
+        assert "error" in result.lower() or "Error" in result
+
+    @pytest.mark.asyncio
+    async def test_spawn_retrieval_max_iterations(self, tool_context: ToolContext) -> None:
+        registry = ToolRegistry()
+        registry.register(MockTool(name="grep_search", result=ToolResult.success("hit")))
+
+        client = LLMClient(model="test")
+        client.chat = AsyncMock(
+            return_value=_make_tool_response("grep_search", {"pattern": "TODO"})
+        )
+
+        coordinator = AgentCoordinator(
+            llm_client=client,
+            tool_registry=registry,
+            tool_context=tool_context,
+            iteration_limit=2,
+        )
+
+        result = await coordinator.spawn_retrieval("Search")
+        assert "maximum" in result.lower() or "iterations" in result.lower()
+
+
+class TestRetrievalSubAgentTool:
+    """Test the RetrievalSubAgentTool from retrieval_agent.py."""
+
+    @pytest.mark.asyncio
+    async def test_execute_delegates_to_spawn_retrieval(self, tool_context: ToolContext) -> None:
+        from godspeed.agent.retrieval_agent import RetrievalSubAgentTool
+
+        registry = ToolRegistry()
+        client = LLMClient(model="test")
+        client.chat = AsyncMock(
+            return_value=_make_text_response("file:src/auth.py:145-167 -- AuthManager")
+        )
+
+        coordinator = AgentCoordinator(
+            llm_client=client,
+            tool_registry=registry,
+            tool_context=tool_context,
+        )
+        tool = RetrievalSubAgentTool(coordinator)
+
+        result = await tool.execute({"query": "find auth"}, tool_context)
+        assert not result.is_error
+        assert "AuthManager" in result.output
+
+    @pytest.mark.asyncio
+    async def test_execute_no_query(self, tool_context: ToolContext) -> None:
+        from godspeed.agent.retrieval_agent import RetrievalSubAgentTool
+
+        coordinator = AgentCoordinator(
+            llm_client=LLMClient(model="test"),
+            tool_registry=ToolRegistry(),
+            tool_context=tool_context,
+        )
+        tool = RetrievalSubAgentTool(coordinator)
+
+        result = await tool.execute({}, tool_context)
+        assert result.is_error
+        assert "required" in result.error.lower()
+
+    @pytest.mark.asyncio
+    async def test_execute_empty_query(self, tool_context: ToolContext) -> None:
+        from godspeed.agent.retrieval_agent import RetrievalSubAgentTool
+
+        coordinator = AgentCoordinator(
+            llm_client=LLMClient(model="test"),
+            tool_registry=ToolRegistry(),
+            tool_context=tool_context,
+        )
+        tool = RetrievalSubAgentTool(coordinator)
+
+        result = await tool.execute({"query": ""}, tool_context)
+        assert result.is_error
+        assert "required" in result.error.lower()
+
+    def test_metadata(self) -> None:
+        from godspeed.agent.retrieval_agent import RetrievalSubAgentTool
+
+        coordinator = AsyncMock()
+        tool = RetrievalSubAgentTool(coordinator)
+        assert tool.name == "retrieval"
+        assert tool.risk_level == "read_only"
+        schema = tool.get_schema()
+        assert "query" in schema["properties"]
+        assert schema["required"] == ["query"]
+
+    def test_description(self) -> None:
+        from godspeed.agent.retrieval_agent import RetrievalSubAgentTool
+
+        coordinator = AsyncMock()
+        tool = RetrievalSubAgentTool(coordinator)
+        assert isinstance(tool.description, str)
+        assert "retrieval" in tool.description.lower()
+
+
+class TestSpawnWithTimeout:
+    """Test sub-agent delegation with timeout."""
+
+    @pytest.mark.asyncio
+    async def test_spawn_error_propagates(self, tool_context: ToolContext) -> None:
+        registry = ToolRegistry()
+        client = LLMClient(model="test")
+        client.chat = AsyncMock(side_effect=TimeoutError("timed out"))
+
+        coordinator = AgentCoordinator(
+            llm_client=client,
+            tool_registry=registry,
+            tool_context=tool_context,
+        )
+
+        result = await coordinator.spawn("timeout task")
+        assert "error" in result.lower() or "Time" in result
+
+    @pytest.mark.asyncio
+    async def test_spawn_value_error_propagates(self, tool_context: ToolContext) -> None:
+        registry = ToolRegistry()
+        client = LLMClient(model="test")
+        client.chat = AsyncMock(side_effect=ValueError("bad input"))
+
+        coordinator = AgentCoordinator(
+            llm_client=client,
+            tool_registry=registry,
+            tool_context=tool_context,
+        )
+
+        result = await coordinator.spawn("bad task")
+        assert "error" in result.lower()
+
+
+class TestSpawnRetrievalFailureTypes:
+    """Test spawn_retrieval with various exception types."""
+
+    @pytest.mark.asyncio
+    async def test_retrieval_value_error(self, tool_context: ToolContext) -> None:
+        registry = ToolRegistry()
+        client = LLMClient(model="test")
+        client.chat = AsyncMock(side_effect=ValueError("bad retrieval input"))
+
+        coordinator = AgentCoordinator(
+            llm_client=client,
+            tool_registry=registry,
+            tool_context=tool_context,
+        )
+
+        result = await coordinator.spawn_retrieval("bad query")
+        assert "error" in result.lower()

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -9,6 +10,15 @@ import pytest
 
 from godspeed.config import GodspeedSettings
 from godspeed.tools.base import RiskLevel, Tool, ToolContext, ToolResult
+
+
+@pytest.fixture(autouse=True)
+def _ensure_logging_enabled() -> None:
+    """Re-enable logging in case a prior test disabled it."""
+    logging.disable(logging.NOTSET)
+    if not logging.root.handlers:
+        logging.root.addHandler(logging.StreamHandler())
+    logging.root.setLevel(logging.NOTSET)
 
 
 class MockTool(Tool):

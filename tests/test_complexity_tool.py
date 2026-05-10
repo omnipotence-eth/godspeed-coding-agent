@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 from subprocess import CompletedProcess
 from unittest.mock import patch
@@ -9,7 +10,12 @@ from unittest.mock import patch
 import pytest
 
 from godspeed.tools.base import ToolContext
-from godspeed.tools.complexity import ComplexityTool, _cc_to_radon_grade
+from godspeed.tools.complexity import (
+    COMPLEXITY_TIMEOUT,
+    ComplexityTool,
+    _cc_to_radon_grade,
+    _detect_target,
+)
 
 
 class TestCcToRadonGrade:
@@ -32,6 +38,17 @@ class TestCcToRadonGrade:
     )
     def test_grade_boundaries(self, cc: int, expected: str) -> None:
         assert _cc_to_radon_grade(cc) == expected
+
+
+class TestDetectTarget:
+    def test_returns_src_when_present(self, tmp_path: Path) -> None:
+        (tmp_path / "src").mkdir()
+        ctx = ToolContext(cwd=tmp_path, session_id="t")
+        assert _detect_target(ctx) == "src"
+
+    def test_returns_dot_when_no_src(self, tmp_path: Path) -> None:
+        ctx = ToolContext(cwd=tmp_path, session_id="t")
+        assert _detect_target(ctx) == "."
 
 
 class TestComplexityTool:
@@ -96,7 +113,6 @@ class TestComplexityTool:
     async def test_lizard_nonzero_exit_is_breach(self, tmp_path: Path) -> None:
         ctx = ToolContext(cwd=tmp_path, session_id="t")
         tool = ComplexityTool()
-        # lizard exits non-zero when functions exceed the threshold
         breach = CompletedProcess(
             args=[], returncode=1, stdout="src/a.py:12: complex_func CCN=15", stderr=""
         )
@@ -109,3 +125,67 @@ class TestComplexityTool:
         ):
             result = await tool.execute({"target": "src"}, ctx)
         assert result.is_error
+
+    @pytest.mark.asyncio
+    async def test_radon_timeout_expired(self, tmp_path: Path) -> None:
+        ctx = ToolContext(cwd=tmp_path, session_id="t")
+        tool = ComplexityTool()
+        with (
+            patch(
+                "godspeed.tools.complexity.shutil.which",
+                side_effect=lambda name: "/usr/bin/radon" if name == "radon" else None,
+            ),
+            patch(
+                "godspeed.tools.complexity.subprocess.run",
+                side_effect=subprocess.TimeoutExpired(cmd=["radon", "cc"], timeout=COMPLEXITY_TIMEOUT),
+            ),
+        ):
+            result = await tool.execute({"target": "src"}, ctx)
+        assert result.is_error
+        assert "timed out" in (result.error or "")
+
+    @pytest.mark.asyncio
+    async def test_lizard_timeout_expired(self, tmp_path: Path) -> None:
+        ctx = ToolContext(cwd=tmp_path, session_id="t")
+        tool = ComplexityTool()
+        with (
+            patch(
+                "godspeed.tools.complexity.shutil.which",
+                side_effect=lambda name: "/usr/bin/lizard" if name == "lizard" else None,
+            ),
+            patch(
+                "godspeed.tools.complexity.subprocess.run",
+                side_effect=subprocess.TimeoutExpired(cmd=["lizard"], timeout=COMPLEXITY_TIMEOUT),
+            ),
+        ):
+            result = await tool.execute({"target": "src"}, ctx)
+        assert result.is_error
+        assert "timed out" in (result.error or "")
+
+    @pytest.mark.asyncio
+    async def test_lizard_clean_with_empty_output(self, tmp_path: Path) -> None:
+        ctx = ToolContext(cwd=tmp_path, session_id="t")
+        tool = ComplexityTool()
+        clean = CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+        with (
+            patch(
+                "godspeed.tools.complexity.shutil.which",
+                side_effect=lambda name: "/usr/bin/lizard" if name == "lizard" else None,
+            ),
+            patch("godspeed.tools.complexity.subprocess.run", return_value=clean),
+        ):
+            result = await tool.execute({"target": "src", "max_cc": 10}, ctx)
+        assert not result.is_error
+        assert "lizard" in result.output
+        assert "All functions within CC <= 10" in result.output
+
+    @pytest.mark.asyncio
+    async def test_detect_target_no_src(self, tmp_path: Path) -> None:
+        ctx = ToolContext(cwd=tmp_path, session_id="t")
+        tool = ComplexityTool()
+        with patch("godspeed.tools.complexity.shutil.which", return_value="/usr/bin/radon"):
+            with patch("godspeed.tools.complexity.subprocess.run") as mock_run:
+                mock_run.return_value = CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+                result = await tool.execute({}, ctx)
+        assert not result.is_error
+        assert "Complexity scan of ." in result.output

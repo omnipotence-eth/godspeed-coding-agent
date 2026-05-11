@@ -17,6 +17,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+import godspeed.tools.shell as shell_mod
 from godspeed.tools.base import ToolContext
 from godspeed.tools.shell import (
     ShellTool,
@@ -99,22 +100,16 @@ class TestDetectShell:
     """Unit tests for _detect_shell."""
 
     def teardown_method(self) -> None:
-        import godspeed.tools.shell as shell_mod
-
         shell_mod._shell_cache = None
 
     @patch("godspeed.tools.shell._shell_cache", new=None)
     def test_detect_shell_caching(self) -> None:
-        import godspeed.tools.shell as shell_mod
-
         shell_mod._shell_cache = None
         result1 = _detect_shell()
         result2 = _detect_shell()
         assert result1 == result2
 
     def test_detect_shell_returns_cached(self) -> None:
-        import godspeed.tools.shell as shell_mod
-
         shell_mod._shell_cache = None
         result = _detect_shell()
         assert result == shell_mod._shell_cache
@@ -122,7 +117,6 @@ class TestDetectShell:
         assert result2 is result  # Same list object (cached)
 
     def test_detect_shell_double_checked_lock(self) -> None:
-        import godspeed.tools.shell as shell_mod
         import threading
 
         shell_mod._shell_cache = None
@@ -142,8 +136,6 @@ class TestDetectShell:
         assert shell_mod._shell_cache == pre_set_shell
 
     def test_detect_shell_on_windows(self) -> None:
-        import godspeed.tools.shell as shell_mod
-
         shell_mod._shell_cache = None
         with patch("godspeed.tools.shell.platform.system", return_value="Windows"):
             with patch(
@@ -155,8 +147,6 @@ class TestDetectShell:
         assert result[1] == "-c"
 
     def test_detect_shell_windows_no_bash(self) -> None:
-        import godspeed.tools.shell as shell_mod
-
         shell_mod._shell_cache = None
         with patch("godspeed.tools.shell.platform.system", return_value="Windows"):
             with patch("godspeed.tools.shell.shutil.which", return_value=None):
@@ -164,8 +154,6 @@ class TestDetectShell:
         assert result == ["cmd.exe", "/c"]
 
     def test_detect_shell_unix(self) -> None:
-        import godspeed.tools.shell as shell_mod
-
         shell_mod._shell_cache = None
         with patch("godspeed.tools.shell.platform.system", return_value="Linux"):
             result = _detect_shell()

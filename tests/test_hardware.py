@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+import godspeed.evolution.hardware as hw_module
 from godspeed.evolution.hardware import (
     CANDIDATES_BY_VRAM,
     FALLBACK_MODEL,
@@ -479,8 +480,6 @@ class TestDetectGpuNameEdgeCases:
 
 class TestGetCachedVramThreadSafety:
     def test_double_check_locking(self):
-        import godspeed.evolution.hardware as hw_module
-
         old_vram = hw_module._cached_vram
         old_checked = hw_module._cached_vram_checked
         try:
@@ -498,8 +497,6 @@ class TestGetCachedVramThreadSafety:
             hw_module._cached_vram_checked = old_checked
 
     def test_cache_returns_without_redetection(self):
-        import godspeed.evolution.hardware as hw_module
-
         old_vram = hw_module._cached_vram
         old_checked = hw_module._cached_vram_checked
         try:

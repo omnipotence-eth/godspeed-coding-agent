@@ -304,7 +304,7 @@ class TestVerifyJsTsEslint:
         assert "No JS/TS linter found" in result.output
 
 
-class TestVerifyGo:
+class TestVerifyGoVet:
     """Cover line 205: go vet with go binary found."""
 
     @patch("shutil.which", return_value="/usr/bin/go")
@@ -410,7 +410,7 @@ class TestVerifyRustCargo:
             assert not result.is_error
 
 
-class TestVerifyCCpp:
+class TestVerifyCCppLint:
     """Cover line 256: clang-tidy found and used."""
 
     @patch("shutil.which", return_value="/usr/bin/clang-tidy")

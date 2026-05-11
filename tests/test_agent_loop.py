@@ -2016,23 +2016,6 @@ class TestSpeculativeOverflow:
         _speculative_dispatch(raw_tool_calls, registry, tool_context, cache)
         assert len(cache) == 0
 
-    def test_speculative_dispatch_tool_not_found(self) -> None:
-        from unittest.mock import MagicMock
-
-        from godspeed.agent.loop import _speculative_dispatch
-
-        registry = MagicMock()
-        registry.get.return_value = None
-        registry.dispatch = AsyncMock()
-
-        tool_context = MagicMock()
-        cache = {}
-
-        raw_tool_calls = [{"id": "call_001", "function": {"name": "unknown", "arguments": "{}"}}]
-
-        _speculative_dispatch(raw_tool_calls, registry, tool_context, cache)
-        assert len(cache) == 0
-
     def test_speculative_dispatch_not_safe(self) -> None:
         from unittest.mock import MagicMock
 

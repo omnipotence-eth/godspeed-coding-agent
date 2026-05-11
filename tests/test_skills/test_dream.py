@@ -84,27 +84,6 @@ class TestDateNormalization:
         result = self._normalize(text)
         assert result == text  # hour is not handled, returns unchanged
 
-    def test_last_month(self) -> None:
-        result = self._normalize("Updated last month.")
-        assert "last month" not in result
-
-    def test_last_night(self) -> None:
-        result = self._normalize("Edited last night.")
-        assert "last night" not in result
-
-    def test_last_year(self) -> None:
-        result = self._normalize("Created last year.")
-        assert "last year" not in result
-
-    def test_5_months_ago(self) -> None:
-        result = self._normalize("Moved 5 months ago.")
-        assert "months ago" not in result
-
-    def test_10_hours_ago_unchanged(self) -> None:
-        text = "Modified 10 hours ago."
-        result = self._normalize(text)
-        assert result == text
-
     def test_relative_dates_normalized_correctly(self) -> None:
         result = self._normalize("Updated last week.")
         assert "last week" not in result

@@ -129,7 +129,7 @@ class TestBuildIndexBatch:
                         try:
                             idx.build_index()
                         except RuntimeError:
-                            pass
+                            pass  # expected: chunk_file fails
                         assert idx.is_building is False
 
     def test_build_index_building_flag(self, tmp_path):
@@ -250,7 +250,7 @@ class TestUpdateIndex:
                 try:
                     idx.update_index()
                 except RuntimeError:
-                    pass
+                    pass  # expected: _ensure_collection fails
                 assert idx.is_building is False
 
     @pytest.mark.asyncio

@@ -18,6 +18,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+import godspeed.tools.system_optimizer as sysopt_mod
 from godspeed.tools.base import RiskLevel, ToolContext
 from godspeed.tools.system_optimizer import (
     DEFAULT_TOP,
@@ -566,9 +567,7 @@ def test_gpu_via_pynvml_shutdown_suppresses_exception(monkeypatch: pytest.Monkey
 
 
 def _mock_smi_module() -> Any:
-    import godspeed.tools.system_optimizer as mod
-
-    return mod
+    return sysopt_mod
 
 
 def test_gpu_via_nvidia_smi_not_found(monkeypatch: pytest.MonkeyPatch) -> None:

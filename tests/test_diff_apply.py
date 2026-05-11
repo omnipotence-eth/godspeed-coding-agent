@@ -276,7 +276,7 @@ def test_bare_empty_line_as_context() -> None:
         "--- a/other.txt",
         "",
     ]
-    hunk, next_i = (
+    _dummy_hunk, _dummy_next_i = (
         Hunk(old_start=1, old_count=3, new_start=1, new_count=3),
         5,
     )  # dummy for type checker

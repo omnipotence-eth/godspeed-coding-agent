@@ -13,9 +13,11 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from godspeed.tools.base import ToolContext
+import godspeed.tools.web_fetch as wf
 from godspeed.tools.web_fetch import (
     CACHE_TTL_SECONDS,
     WebFetchTool,
+    _cache_evict_if_needed,
     _cache_path_for,
     _cache_read,
     _cache_write,
@@ -265,8 +267,6 @@ class TestWebFetchCache:
 
     def test_cache_evict_when_over_budget(self) -> None:
         """Oldest cache files are evicted when total exceeds _MAX_CACHE_BYTES."""
-        import godspeed.tools.web_fetch as wf
-
         with patch("godspeed.tools.web_fetch._MAX_CACHE_BYTES", 100):
             for i in range(5):
                 _cache_write(f"https://example.com/evict{i}", "x" * 80)
@@ -276,8 +276,6 @@ class TestWebFetchCache:
 
     def test_cache_evict_break_when_under_budget(self) -> None:
         """Eviction stops early (break) when total drops below threshold mid-loop."""
-        import godspeed.tools.web_fetch as wf
-
         cache_dir = wf._cache_dir()
         for existing in cache_dir.glob("*.json"):
             existing.unlink(missing_ok=True)
@@ -287,8 +285,6 @@ class TestWebFetchCache:
         _cache_write("https://example.com/small", "sm")
         # Budget of 200 bytes: large (~620) + small (~150) = ~770 > 200
         # After evicting large (~620), total ~150 <= 200 -> break.
-        from godspeed.tools.web_fetch import _cache_evict_if_needed
-
         with patch("godspeed.tools.web_fetch._MAX_CACHE_BYTES", 200):
             _cache_evict_if_needed()
         remaining_paths = [p.name for p in cache_dir.glob("*.json")]
@@ -297,16 +293,12 @@ class TestWebFetchCache:
 
     def test_cache_evict_handles_stat_oserror(self) -> None:
         """If stat() fails on a cache file, that file is skipped in eviction."""
-        import godspeed.tools.web_fetch as wf
-
         # Write a valid entry first
         _cache_write("https://example.com/good", "good data")
         cache_dir = wf._cache_dir()
         # Create a bogus file that will cause stat to fail (we'll mock it)
         bogus = cache_dir / "bogus.json"
         bogus.write_text("{}", encoding="utf-8")
-
-        from godspeed.tools.web_fetch import _cache_evict_if_needed
 
         with patch("godspeed.tools.web_fetch._MAX_CACHE_BYTES", 10):
             # Mock Path.stat to fail for the bogus file

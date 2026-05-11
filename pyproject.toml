@@ -55,6 +55,8 @@ dependencies = [
     # pins aiohttp <= 3.13.4, so we set the floor to 3.13.4 as the best match.
     # Bump when litellm relaxes its aiohttp bound.
     "aiohttp>=3.13.4",
+    # urllib3 decompression-bomb CVE in streaming API. Bump past affected versions.
+    "urllib3>=2.6.4",
     # python-dotenv CVE-2026-28684 is known (fix in 1.2.2) but litellm pins
     # python-dotenv==1.0.1 strictly, making a pin-up unsatisfiable. CI's
     # pip-audit call suppresses this one CVE via --ignore-vuln below. We'll

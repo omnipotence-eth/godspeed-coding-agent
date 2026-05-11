@@ -782,13 +782,13 @@ class TestContextManagerExpanded:
         trail.record(AuditEventType.SESSION_START)
         fh = trail._file
         assert fh is not None
-        trail = None  # bypass explicit delete
+        trail.close()
         assert trail._file is None
         assert fh.closed
 
     def test_del_when_already_closed(self, audit_dir: Path) -> None:
         trail = AuditTrail(log_dir=audit_dir, session_id="gc-test")
-        trail = None  # bypass explicit delete
+        trail.close()
 
     def test_del_suppresses_errors(self, audit_dir: Path) -> None:
         trail = AuditTrail(log_dir=audit_dir, session_id="gc-test")

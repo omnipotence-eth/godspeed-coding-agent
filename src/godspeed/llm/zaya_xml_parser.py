@@ -113,9 +113,7 @@ def strip_tool_calls_from_content(content: str) -> str:
     if not content:
         return ""
 
-    stripped = _ZAYA_TOOL_CALL_RE.sub("", content)
-    stripped = re.sub(r"\n{3,}", "\n\n", stripped).strip()
-    return stripped
+    return re.sub(r"\n{3,}", "\n\n", _ZAYA_TOOL_CALL_RE.sub("", content)).strip()
 
 
 def extract_thinking(content: str) -> str:

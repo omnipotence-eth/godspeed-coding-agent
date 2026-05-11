@@ -425,7 +425,7 @@ class TestRunApp:
         self,
         tmp_path: Path,
     ) -> None:
-        import asyncio
+        # import asyncio
 
         from godspeed.cli import _run_app
 

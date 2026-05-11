@@ -185,7 +185,7 @@ class TestThemeDefaults:
 
         app = Mock()
         app.theme = "godspeed-dark"
-        result = []
+        _discard = []
         app.theme = "godspeed-dark"
 
         def simulate_toggle():

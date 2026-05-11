@@ -746,7 +746,7 @@ class TestExportAllAdvanced:
         assert not output.exists() or output.read_text(encoding="utf-8") == ""
 
     def test_export_all_default_filters(self, tmp_path: Path) -> None:
-        session_file = _make_session_file(tmp_path, "sess-1", SAMPLE_MESSAGES)
+        _discard = _make_session_file(tmp_path, "sess-1", SAMPLE_MESSAGES)
         no_tools = [
             {"role": "user", "content": "hi"},
             {"role": "assistant", "content": "hi"},

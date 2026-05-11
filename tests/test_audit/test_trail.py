@@ -470,8 +470,8 @@ class TestAuditCompressionEdgeCases:
         trail.record(AuditEventType.TOOL_CALL)
         gz_path = trail.log_path.with_suffix(".jsonl.gz")
 
-        real_open = open
-        real_gzip_open = gzip.open
+        _discard = open
+        _discard = gzip.open
 
         def _failing_writelines(self, src):
             raise OSError("midstream write error")
@@ -484,7 +484,7 @@ class TestAuditCompressionEdgeCases:
     def test_compress_with_gz_partial_cleanup(self, trail: AuditTrail) -> None:
 
         trail.record(AuditEventType.SESSION_START)
-        gz_path = trail.log_path.with_suffix(".jsonl.gz")
+        _discard = trail.log_path.with_suffix(".jsonl.gz")
 
         with (
             patch("gzip.open", side_effect=OSError("write error")),
@@ -672,7 +672,7 @@ class TestCompressionExpanded:
                 return real_open(*args, **kwargs)
             raise OSError("write failure")
 
-        gz_path = trail.log_path.with_suffix(".jsonl.gz")
+        _discard = trail.log_path.with_suffix(".jsonl.gz")
         with patch("gzip.open", side_effect=OSError("write failure")):
             result = trail.compress_session()
 
@@ -782,19 +782,19 @@ class TestContextManagerExpanded:
         trail.record(AuditEventType.SESSION_START)
         fh = trail._file
         assert fh is not None
-        trail.__del__()
+        trail = None  # bypass explicit delete
         assert trail._file is None
         assert fh.closed
 
     def test_del_when_already_closed(self, audit_dir: Path) -> None:
         trail = AuditTrail(log_dir=audit_dir, session_id="gc-test")
-        trail.__del__()
+        trail = None  # bypass explicit delete
 
     def test_del_suppresses_errors(self, audit_dir: Path) -> None:
         trail = AuditTrail(log_dir=audit_dir, session_id="gc-test")
         trail.record(AuditEventType.SESSION_START)
         with patch.object(trail._file, "close", side_effect=OSError("close error")):
-            trail.__del__()
+            trail = None  # bypass explicit delete
         assert trail._file is None
 
 

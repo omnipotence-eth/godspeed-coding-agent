@@ -1312,7 +1312,7 @@ class TestParseSessionMoreEdgeCases:
             sessions = analyzer.load_sessions(tmp_path)
             assert len(sessions) == 0
         finally:
-            os.chmod(str(bad_path), 0o644)
+            os.chmod(str(bad_path), 0o600)
 
     def test_permission_event_without_tool_name_defaults(self, tmp_path: Path) -> None:
         records = [

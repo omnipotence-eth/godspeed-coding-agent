@@ -404,7 +404,7 @@ class TestSymbolLookupEdges:
 
     def test_find_symbol_file_hint_no_match_falls_back(self, tmp_path):
         gcg = _build_gcg(tmp_path)
-        src_file = tmp_path / "src" / "sample.py"
+        _discard = tmp_path / "src" / "sample.py"
         results = gcg.find_symbol("helper", file_hint=tmp_path / "nonexistent.py")
         assert len(results) > 0
 

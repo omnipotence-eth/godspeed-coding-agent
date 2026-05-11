@@ -130,7 +130,7 @@ async def test_shell_background_max_concurrent(tmp_path):
 
 def test_background_process_returncode():
     """Line 36: returncode property delegates to process.returncode."""
-    mock_proc = asyncio.subprocess.Process
+    _discard = asyncio.subprocess.Process
     # Use a real BackgroundProcess with a mock process
     import time
     from unittest.mock import MagicMock

@@ -217,9 +217,7 @@ class GodspeedTextualApp(App):
         self._start_time = time.monotonic()
 
     def on_mount(self: Any) -> None:
-        import asyncio
-
-        from godspeed.tui.screens.splash import SplashScreen
+        from godspeed.tui.screens.splash # # import SplashScreen
 
         splash = SplashScreen()
         self.push_screen(splash)

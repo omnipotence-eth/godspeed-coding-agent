@@ -368,7 +368,7 @@ class TestShellTool:
         mock_proc.pid = 55555
 
         with patch("godspeed.tools.shell.subprocess.Popen", return_value=mock_proc):
-            result = await tool.execute({"command": "echo hi"}, tool_context)
+            _discard = await tool.execute({"command": "echo hi"}, tool_context)
 
         mock_proc.kill.assert_called_once()
 
@@ -509,7 +509,7 @@ class TestShellTool:
         mock_proc.kill.side_effect = OSError("already dead")
 
         with patch("godspeed.tools.shell.subprocess.Popen", return_value=mock_proc):
-            result = await tool.execute({"command": "echo hi"}, tool_context)
+            _discard = await tool.execute({"command": "echo hi"}, tool_context)
         mock_proc.kill.assert_called_once()
 
     @pytest.mark.asyncio

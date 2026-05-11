@@ -324,7 +324,7 @@ class ChatScreen(Screen):
                 if not self._commands.whisper_mode:
                     chat_log.write_thinking(text)
 
-            _final_text = await agent_loop(
+            await agent_loop(
                 user_input=user_input,
                 conversation=self._conversation,
                 llm_client=self._llm_client,

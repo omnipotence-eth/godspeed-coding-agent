@@ -25,7 +25,10 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-_SHELL = os.environ.get("COMSPEC", "cmd.exe")
+if sys.platform == "win32":
+    _SHELL = os.environ.get("COMSPEC", "cmd.exe")
+else:
+    _SHELL = os.environ.get("SHELL", "/bin/bash")
 
 
 class ShellWidget(RichLog):

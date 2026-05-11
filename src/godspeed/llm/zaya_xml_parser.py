@@ -129,7 +129,7 @@ def extract_thinking(content: str) -> str:
     parts: list[str] = []
     for match in _THINK_BLOCK_RE.finditer(content):
         thinking = match.group(0)
-        inner = thinking[len("<think>"): -len("</think>")]
+        inner = thinking[len("<think>") : -len("</think>")]
         parts.append(inner.strip())
 
     return "\n".join(parts)

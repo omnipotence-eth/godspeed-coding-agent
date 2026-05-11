@@ -295,9 +295,7 @@ def _to_zaya_chatml(
                     if isinstance(args_raw, str):
                         with contextlib.suppress(json.JSONDecodeError):
                             args_raw = json.loads(args_raw)
-                    tc_json = json.dumps(
-                        {"name": name, "arguments": args_raw}, ensure_ascii=False
-                    )
+                    tc_json = json.dumps({"name": name, "arguments": args_raw}, ensure_ascii=False)
                     tc_lines.append(f"<zyphra_tool_call>{tc_json}</zyphra_tool_call>")
                 tc_body = "\n".join(tc_lines)
                 body = f"{body}\n{tc_body}" if body else tc_body

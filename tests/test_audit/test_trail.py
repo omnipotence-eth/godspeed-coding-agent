@@ -794,7 +794,7 @@ class TestContextManagerExpanded:
         trail = AuditTrail(log_dir=audit_dir, session_id="gc-test")
         trail.record(AuditEventType.SESSION_START)
         with patch.object(trail._file, "close", side_effect=OSError("close error")):
-            trail = None  # bypass explicit delete
+            trail.close()
         assert trail._file is None
 
 

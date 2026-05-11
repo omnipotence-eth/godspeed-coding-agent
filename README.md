@@ -5,8 +5,9 @@
 **Trusted open-source coding agent for production code.**
 
 [![CI](https://github.com/t-timms/godspeed-coding-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/t-timms/godspeed-coding-agent/actions/workflows/ci.yml)
-[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue?style=flat-square)](https://www.python.org/downloads/)
-[![LiteLLM](https://img.shields.io/badge/LLM-LiteLLM-orange?style=flat-square)](https://github.com/BerriAI/litellm)
+[![CodeQL](https://github.com/t-timms/godspeed-coding-agent/actions/workflows/codeql.yml/badge.svg)](https://github.com/t-timms/godspeed-coding-agent/actions/workflows/codeql.yml)
+[![Python 3.11–3.14](https://img.shields.io/badge/python-3.11–3.14-blue?style=flat-square)](https://www.python.org/downloads/)
+[![Powered by LiteLLM](https://img.shields.io/badge/LLM-LiteLLM-orange?style=flat-square)](https://github.com/BerriAI/litellm)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json&style=flat-square)](https://github.com/astral-sh/ruff)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 [![Discussions](https://img.shields.io/badge/chat-Discussions-2f80ed?style=flat-square)](https://github.com/t-timms/godspeed-coding-agent/discussions)

@@ -36,7 +36,7 @@ from typing import Literal
 
 logger = logging.getLogger(__name__)
 
-ProfileName = Literal["default", "thinking", "minimal"]
+ProfileName = Literal["default", "thinking", "minimal", "swebench"]
 
 _CATALOG_PATH = Path(__file__).resolve().parent.parent / "llm" / "driver_catalog.yaml"
 
@@ -59,6 +59,11 @@ PROFILE_PREAMBLES: dict[ProfileName, str] = {
         "Read the failing test, edit the source file, run the test to verify. "
         "Stop when the test passes."
     ),
+    "swebench": (
+        "Solve this SWE-bench instance: read the problem statement, locate the "
+        "relevant files, make the minimal fix, verify with tests. Stop after "
+        "resolving. Submit a partial fix over no fix. Do not over-edit."
+    ),
 }
 
 
@@ -70,6 +75,11 @@ PROFILE_PLAN_STYLE: dict[ProfileName, str] = {
     ),
     "thinking": "",  # reasoning models plan internally; explicit plan adds noise
     "minimal": "",  # tiny models lose focus if asked to plan
+    "swebench": (
+        "Before editing, state: (1) which file(s) need changes, "
+        "(2) the exact function/class, (3) the minimal code change required. "
+        "Then make the edit immediately."
+    ),
 }
 
 

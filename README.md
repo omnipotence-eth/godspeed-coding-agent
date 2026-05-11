@@ -63,8 +63,8 @@ Use it standalone as a CLI coding agent, or plug it into your existing agent sta
 
 - **Schema-validated tool calls** — every tool argument is validated against its JSON Schema before execution. Missing required fields, wrong types, and invalid values are caught with clear error messages — no silent failures.
 - **Automatic retry on transient failures** — network timeouts, connection resets, and rate limits trigger automatic retries with exponential backoff. Logic errors and permission denials fail immediately.
-- **3-tier permission modes** — `strict` (deny most, ask for everything), `normal` (deny-first with allow rules), `yolo` (no permission checks, maximum speed). Configure via CLI (`--permission-mode`) or settings.yaml.
-- **4-tier permission engine** -- deny-first evaluation with pattern matching, dangerous command detection (100 patterns), and fail-closed defaults. No tool call executes without explicit permission in strict/normal mode.
+- **3-tier permission modes** — user-facing operating modes: `strict` (deny most, ask for everything), `normal` (deny-first with allow rules), `yolo` (no permission checks, maximum speed). Configure via CLI (`--permission-mode`) or settings.yaml. These govern *when* the engine prompts you and *what* the default answer is.
+- **4-tier permission engine** -- internal risk evaluation: each tool is assigned a risk level (READ_ONLY, LOW, MEDIUM, HIGH) that determines the default behavior when no explicit rule matches. Deny-first evaluation with pattern matching, dangerous command detection (100 patterns), and fail-closed defaults ensure no tool call executes without explicit permission in strict/normal mode. The 4-tier design is the *engine's internal classification*; the 3-tier modes are the *user-facing policy*.
 - **Hash-chained audit trail** -- SHA-256 JSONL log where each entry chains to the previous. Tamper-evident, compressible, and verifiable with `godspeed audit verify`. Writes fail closed: any I/O error raises `AuditWriteError` and the chain state does not advance.
 - **Secret protection** -- 4 layers of defense: file deny-listing, context cleaning, output filtering, and audit redaction. Regex patterns plus Shannon entropy analysis catch API keys, tokens, and credentials before they leak.
 - **Post-edit syntax gate** -- `.py` / `.pyi` / `.json` edits that break parse are rejected before write. Lint-fix retry loop up to 3 rounds auto-corrects common issues.
@@ -72,8 +72,8 @@ Use it standalone as a CLI coding agent, or plug it into your existing agent sta
 
 ### Capability
 
-- **200+ LLM providers** -- Claude, GPT, Gemini, Ollama, and everything else LiteLLM supports. Configure fallback chains so work never stops.
-- **30+ built-in tools** -- `file_read` (images, PDFs, notebooks), `file_write`, `file_edit` (fuzzy matching), `notebook_edit`, `file_move`, `image_read`, `pdf_read`, `shell` (foreground + background), `glob`, `grep`, `git`, `github` (PR/issue workflow via `gh`), `diff_apply` (unified diffs), `verify` (6 languages), `test_runner` (5 frameworks), `web_search`, `web_fetch`, `repo_map`, `code_search`, `tasks`, `background_check`, `coverage`, `complexity`, `dep_audit`, `security_scan`, `generate_tests`, `traceback_analyzer`, `system_optimizer`, `stock_price`, `db_query`, and `ollama_manager`.
+- **200+ LLM providers via LiteLLM** — Claude, GPT, Gemini, Ollama, and everything else LiteLLM supports. Godspeed wraps LiteLLM's unified interface with fallback chains, model routing, cost tracking, and retry logic. Configure fallback chains so work never stops. ([LiteLLM attribution](#inspiration--attribution))
+- **30+ built-in tools** — Core (29): `file_read` (images, PDFs, notebooks), `file_write`, `file_edit` (fuzzy matching), `notebook_edit`, `file_move`, `image_read`, `pdf_read`, `shell` (foreground + background), `glob`, `grep`, `git`, `github` (PR/issue via `gh`), `diff_apply` (unified diffs), `verify` (6 languages), `test_runner` (5 frameworks), `web_search`, `web_fetch`, `repo_map`, `code_search`, `tasks`, `background_check`, `coverage`, `complexity`, `dep_audit`, `security_scan`, `generate_tests`, `traceback_analyzer`, `system_optimizer`, `db_query`. Infrastructure (3): `ollama_manager`, `llamacpp_manager`, `stock_price` (API connectivity test utility). Full schema reference in [`GODSPEED_ARCHITECTURE.md`](GODSPEED_ARCHITECTURE.md).
 - **Parallel tool execution** -- when the LLM returns multiple tool calls, they execute concurrently via `asyncio.gather()`. 3-phase dispatch: parse → permission check (sequential) → execute (parallel). READ_ONLY tools always parallel, write tools always serial.
 - **Speculative tool dispatch** -- during streaming, READ_ONLY tool calls are dispatched as background `asyncio.Task`s before the full response completes. The main loop awaits cached results instead of re-dispatching, eliminating dispatch latency for reads.
 - **Extended thinking** -- pass `thinking` parameter to Anthropic/Claude models with configurable token budget. `/think [budget]` slash command. Thinking blocks displayed in collapsed dim panel.
@@ -110,29 +110,37 @@ Use it standalone as a CLI coding agent, or plug it into your existing agent sta
 
 ## Benchmarks
 
-### SWE-Bench Lite — single-run results (dev-23, free-tier)
+### SWE-Bench Lite — dev-23 results (free-tier)
 
-Same 23-instance dev subset across rows. All free-tier (NVIDIA NIM R&D), $0 API spend. Numbers are from sb-cli; report JSONs live in [`experiments/swebench_lite/reports/`](experiments/swebench_lite/reports/).
+All free-tier (NVIDIA NIM R&D), $0 API spend. Numbers from sb-cli; report JSONs in [`experiments/swebench_lite/reports/`](experiments/swebench_lite/reports/).
 
-| Godspeed | Method | Resolved | Rate |
-|---|---|---:|---:|
-| v0.2.11 | Qwen3.5-397B single-shot | 6 / 23 | 26.1% |
-| v0.2.12 | Kimi K2.5 single-shot *(driver swap)* | 8 / 23 | 34.8% |
-| v0.3.1 | Kimi K2.5 + agent-in-loop (single seed) | 7 / 23 | 30.4% |
+> **Version note:** Public releases use `v0.x.y` (PyPI/GitHub). Internal build labels and sb-cli run_ids use a different scheme (e.g. `v3.1.0` internal ≈ `v0.3.1` public, `v2.11.0` internal ≈ `v0.2.11` public). The table below maps both. See [`experiments/swebench_lite/findings_2026_04_21.md`](experiments/swebench_lite/findings_2026_04_21.md) for full methodology.
 
-**Single-run performance** is what you get when you run Godspeed once against a task. The agent-in-loop result (30.4%) underperformed the single-shot baseline (34.8%) in this early experiment — we publish this null result honestly rather than hiding it.
+#### Single-run performance (no ensemble)
 
-For context: published SOTA on full SWE-Bench Lite (April 2026) is 62.7%; top open-source agents with paid frontier drivers sit in the 40–50% band on the same benchmark.
+| Public Release | Internal Label | Method | Resolved | Rate |
+|---|---|---|---:|---:|
+| v0.2.11 | v2.11.0 | Qwen3.5-397B single-shot | 6 / 23 | 26.1% |
+| v0.2.12 | v2.12.0 | Kimi K2.5 single-shot *(driver swap)* | 8 / 23 | **34.8%** |
+| v0.3.1 | v3.1.0 | Kimi K2.5 + agent-in-loop (single seed) | 7 / 23 | 30.4% |
 
-#### Ensemble / research results
+**This is the honest single-run number: 34.8%.**
 
-We also ran an `oracle_best_of_5` ensemble (published ensemble methodology) combining five constituent runs. This is **not** what you get in a single run — it is a research ceiling showing what is possible with model diversity and post-hoc selection:
+The agent-in-loop result (30.4%) is a published null result — the mechanism underperformed the single-shot baseline. The architecture enables iteration but the driver (Kimi K2.5) couldn't use the feedback productively.
 
-| Method | Resolved | Rate |
-|---|---|---:|
-| Oracle-selector best-of-5 (free-tier ensemble) | 12 / 23 | 52.2% |
+For context: published SOTA on full SWE-Bench Lite (April 2026) is **62.7%**; top open-source agents with paid frontier drivers are in the 40–50% band.
 
-Constituent runs: Kimi K2.5 single-shot, GPT-OSS-120B, Qwen3.5-397B iter1, Qwen3.5-397B seed3, Kimi K2.5 + agent-in-loop. `oracle_merge.py` picks per instance the patch from whichever run resolved, preferring shortest among resolvers. The agent-in-loop run contributed one unique resolve (marshmallow-code__marshmallow-1359) that no single-shot run landed.
+#### Ensemble / research ceiling (not a single-run claim)
+
+We also published an `oracle_best_of_5` ensemble as a research ceiling. An oracle selector picks the best patch per instance across 5 runs with ground-truth knowledge of which resolved. This is **not** a capability you get in one run — it shows what model diversity + ideal post-hoc selection can achieve:
+
+| Method | Resolved | Rate | Type |
+|---|---:|---:|---|
+| Best single-run (Kimi K2.5) | 8 / 23 | 34.8% | deployable |
+| LLM-judge best@5 (leaderboard-eligible) | 10 / 23 | 43.5% | deployable |
+| Oracle-selector best-of-5 (research ceiling) | 12 / 23 | 52.2% | upper bound |
+
+Of the 12 oracle resolves: 11 instances fall back to a non-resolving patch — meaning even with oracle selection, those remain unsolved. The 52.2% is a ceiling, not a deployed result. The LLM-judge at 43.5% is the current honest best@k number.
 
 **Full methodology, per-instance resolution map, constituent-run numbers, null-result discussion, and limitations:** [`experiments/swebench_lite/findings_2026_04_21.md`](experiments/swebench_lite/findings_2026_04_21.md).
 

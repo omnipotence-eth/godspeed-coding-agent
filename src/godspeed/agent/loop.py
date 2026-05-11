@@ -114,6 +114,8 @@ class _LoopState:
     recent_error_hashes: list[str] = field(default_factory=list)
     speculative_cache: dict[str, asyncio.Task[ToolResult]] = field(default_factory=dict)
     pending_background_tasks: list[asyncio.Task] = field(default_factory=list)
+    verify_failure_count: int = 0
+    budget_prompt_injected: bool = False
 
     # --- Loop config (set once at loop start) ---
     auto_fix_retries: int = 3
@@ -126,6 +128,7 @@ class _LoopState:
     competition_mode: bool = False
     llm_max_retries: int = 3
     llm_retry_delay: float = 2.0
+    budget_verify_cap: int = 3
 
 
 async def agent_loop(
@@ -163,6 +166,7 @@ async def agent_loop(
     competition_mode: bool = False,
     llm_max_retries: int = 3,
     llm_retry_delay: float = 2.0,
+    budget_verify_cap: int = 3,
 ) -> str:
     """Run the agent loop until the model stops calling tools.
 
@@ -234,6 +238,7 @@ async def agent_loop(
         competition_mode=competition_mode,
         llm_max_retries=llm_max_retries,
         llm_retry_delay=llm_retry_delay,
+        budget_verify_cap=budget_verify_cap,
     )
 
     loop_metrics = metrics.loop if metrics is not None else LoopMetrics()
@@ -907,6 +912,29 @@ async def _post_process_results(
         desc = f"{tc.tool_name} {tc.arguments.get('file_path', '?')}"
         state.recent_change_descriptions.append(desc)
 
+    # Budget prompt: inject after N write operations to prevent over-editing.
+    # Addresses the agent-in-loop regression where verify feedback causes the
+    # agent to produce increasingly larger patches that break previously-passing
+    # tests. The budget prompt forces timely submission.
+    if (
+        batch_writes > 0
+        and state.consecutive_writes >= state.budget_verify_cap
+        and not state.budget_prompt_injected
+    ):
+        state.budget_prompt_injected = True
+        logger.info(
+            "Budget prompt injected after %d writes (cap=%d)",
+            state.consecutive_writes,
+            state.budget_verify_cap,
+        )
+        conversation.add_user_message(
+            f"You have made {state.consecutive_writes} edits. "
+            "If the fix is correct, STOP NOW and submit. "
+            "If verify/tests still fail after 2 more attempts, submit your "
+            "best effort — a partial fix is better than none at all. "
+            "Do not over-edit or make unnecessary changes."
+        )
+
     if state.auto_commit and state.consecutive_successful_edits >= state.auto_commit_threshold:
         committed = await _try_auto_commit(
             list(state.recent_change_descriptions),
@@ -982,6 +1010,20 @@ async def _post_process_single_result(
         state.consecutive_successful_edits += 1
         desc = f"{tool_call.tool_name} {tool_call.arguments.get('file_path', '?')}"
         state.recent_change_descriptions.append(desc)
+        # Budget prompt injection for sequential dispatch path
+        if state.consecutive_writes >= state.budget_verify_cap and not state.budget_prompt_injected:
+            state.budget_prompt_injected = True
+            logger.info(
+                "Budget prompt injected after %d writes (cap=%d, seq)",
+                state.consecutive_writes,
+                state.budget_verify_cap,
+            )
+            conversation.add_user_message(
+                f"You have made {state.consecutive_writes} edits. "
+                "If the fix is correct, STOP NOW and submit. "
+                "If verify/tests still fail after 2 more attempts, submit your "
+                "best effort — a partial fix is better than none at all."
+            )
         if state.auto_commit and state.consecutive_successful_edits >= state.auto_commit_threshold:
             committed = await _try_auto_commit(
                 list(state.recent_change_descriptions),
@@ -1143,6 +1185,24 @@ async def _drain_background_tasks(
             metrics,
             state.must_fix_cap,
         )
+        # Track verify failures for budget prompt injection
+        if result.must_fix_increment:
+            state.verify_failure_count += 1
+            if (
+                state.verify_failure_count >= state.budget_verify_cap
+                and not state.budget_prompt_injected
+            ):
+                state.budget_prompt_injected = True
+                logger.info(
+                    "Verify-failure budget prompt injected after %d failures",
+                    state.verify_failure_count,
+                )
+                conversation.add_user_message(
+                    f"Verify has failed {state.verify_failure_count} times. "
+                    "Submit your best effort now — a partial fix that addresses "
+                    "the core problem is better than endless iteration. "
+                    "STOP editing and declare done."
+                )
     state.pending_background_tasks = still_pending
 
 

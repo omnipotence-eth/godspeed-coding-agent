@@ -732,7 +732,11 @@ Parses audit trail JSONL into actionable insights:
 
 Streaming line-by-line reads (not `readlines()`) for low-memory devices like Jetson Orin.
 
-### Evolution Engine (GEPA Mutations)
+### Evolution Engine (GEPA-style Mutations)
+
+GEPA (Generalized Evolutionary Prompt Augmentation) is a technique for improving agent prompts through LLM-guided mutation + fitness evaluation. The approach draws conceptual lineage from the self-evolution pattern demonstrated in [NousResearch/hermes-agent-self-evolution](https://github.com/NousResearch/hermes-agent-self-evolution), adapted here with hardware-aware model selection, multi-dimensional fitness scoring, and a safety gate that blocks regressions.
+
+**Note on the name:** "GEPA" is an informal naming convention used in this codebase, not a widely published academic standard. The core mechanism — LLM-guided mutation, LLM-as-judge fitness scoring, safety gates — is a well-established pattern in self-improving agents. The specific implementation (mutation candidates, fitness weights, hardware-aware routing) is original to Godspeed.
 
 Generates improved candidates for tool descriptions, system prompt sections, and compaction prompts using LLM-guided mutations. Produces 1–5 candidates per mutation based on available VRAM.
 

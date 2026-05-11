@@ -65,6 +65,57 @@ file.
 """
 
 
+SWEBENCH_TASK_PROMPT = """\
+
+## SWE-Bench Task Instructions
+
+You are solving a SWE-bench instance: a bug fix or feature implementation
+from a real open-source project. Follow these rules:
+
+### Problem Solving Protocol
+1. **Understand the problem** — read the problem statement carefully. Identify
+   the specific behavior that needs to change.
+2. **Find the relevant files** — use grep_search and file_read to locate the
+   source files that need modification. Focus on the minimum set of files.
+3. **Read before editing** — read each target file fully before making any edit.
+   Understand the surrounding context (imports, function signatures, callers).
+4. **Plan the fix** — state what file and function you will modify and what the
+   minimal change is. Then execute the edit.
+5. **Verify** — run the test suite or linter to confirm correctness.
+6. **Stop after resolving** — once the fix is made and verified, stop. Do not
+   add unrelated improvements.
+
+### Minimal Edit Rule
+Your patch should modify the FEWEST possible lines while correctly fixing the
+issue. Do not:
+- Refactor unrelated code
+- Add extra features or improvements
+- Reformat files or change whitespace
+- Add comments unless necessary for correctness
+- Change imports unless required by the fix
+
+If your first edit doesn't resolve the issue, make the NEXT-SMALLEST
+incremental change — do not rewrite entire functions unless the problem
+requires a structural change.
+
+### Verify Feedback Handling
+When a verify or test run returns errors:
+1. Read the specific error output carefully
+2. Identify whether the error is in YOUR edit or in pre-existing code
+3. If your edit caused the error — fix it directly with the minimal correction
+4. If the error is pre-existing — your task may be to fix just that specific
+   issue, not all lint warnings
+5. After 3 verify attempts without success, STOP and submit your best effort.
+   Do not iterate endlessly.
+
+### Budget Awareness
+You have a limited number of turns. Be decisive. If you are stuck after 3
+attempts at fixing the same issue, submit the best version you have. A partial
+fix that addresses the problem statement is better than no fix at all.
+
+"""
+
+
 WORKFLOW_PROMPT = """\
 
 ## Common Workflows
@@ -168,18 +219,23 @@ def build_system_prompt(
     plan_mode: bool = False,
     execution_mode: str = "tool",
     memory_hints: str | None = None,
+    swebench_mode: bool = False,
 ) -> str:
     """Assemble the full system prompt.
 
     Combines:
     1. Core agent prompt (role, guidelines, safety)
-    2. Project instructions from GODSPEED.md (if present)
-    3. Memory hints (user preferences and corrections)
-    4. Available tool descriptions (cached between calls)
-    5. Working directory context
-    6. Execution mode instructions (CodeAct vs tool-based)
+    2. SWE-bench task instructions (if swebench_mode=True)
+    3. Project instructions from GODSPEED.md (if present)
+    4. Memory hints (user preferences and corrections)
+    5. Available tool descriptions (cached between calls)
+    6. Working directory context
+    7. Execution mode instructions (CodeAct vs tool-based)
     """
     parts = [CORE_PROMPT, WORKFLOW_PROMPT, QUALITY_PROMPT]
+
+    if swebench_mode:
+        parts.append(SWEBENCH_TASK_PROMPT)
 
     if plan_mode:
         parts.append(PLAN_MODE_PROMPT)

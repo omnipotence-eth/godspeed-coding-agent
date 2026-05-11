@@ -11,6 +11,7 @@ fine-tuning frameworks:
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 from dataclasses import dataclass, field
@@ -245,6 +246,72 @@ def _to_chatml(
     return {"text": "\n".join(parts)}
 
 
+def _to_zaya_chatml(
+    messages: list[dict[str, Any]],
+    max_tool_output: int = 2000,
+) -> dict[str, Any]:
+    """Convert to ZAYA1-8B ChatML format with ``<zyphra_tool_call>`` tokens.
+
+    Produces training data in the exact format ZAYA1-8B was trained on,
+    using special tokens 101-104 from the Zyphra tokenizer.
+    """
+    parts: list[str] = []
+
+    for msg in messages:
+        role = msg.get("role", "")
+        if role == "meta":
+            continue
+
+        if role == "system":
+            parts.append(f"<|im_start|>system\n{msg.get('content', '')}<|im_end|>")
+
+        elif role == "user":
+            content = msg.get("content", "")
+            if isinstance(content, list):
+                text_parts = [
+                    block.get("text", "") for block in content if block.get("type") == "text"
+                ]
+                content = "\n".join(text_parts)
+            parts.append(f"<|im_start|>user\n{content}<|im_end|>")
+
+        elif role == "assistant":
+            content = msg.get("content", "")
+            tool_calls = msg.get("tool_calls")
+            thinking = msg.get("thinking", "")
+            body = content
+
+            if thinking:
+                body = (
+                    f"<think>\n{thinking}\n</think>\n\n{content}"
+                    if content
+                    else f"<think>\n{thinking}\n</think>"
+                )
+
+            if tool_calls:
+                tc_lines = []
+                for tc in tool_calls:
+                    name = tc.get("name", tc.get("function", {}).get("name", ""))
+                    args_raw = tc.get("arguments", tc.get("function", {}).get("arguments", {}))
+                    if isinstance(args_raw, str):
+                        with contextlib.suppress(json.JSONDecodeError):
+                            args_raw = json.loads(args_raw)
+                    tc_json = json.dumps({"name": name, "arguments": args_raw}, ensure_ascii=False)
+                    tc_lines.append(f"<zyphra_tool_call>{tc_json}</zyphra_tool_call>")
+                tc_body = "\n".join(tc_lines)
+                body = f"{body}\n{tc_body}" if body else tc_body
+
+            parts.append(f"<|im_start|>assistant\n{body}<|im_end|>")
+
+        elif role == "tool":
+            truncated = _truncate_content(msg.get("content", ""), max_tool_output)
+            parts.append(
+                f"<|im_start|>tool\n<zyphra_tool_response>"
+                f"{truncated}</zyphra_tool_response><|im_end|>"
+            )
+
+    return {"messages": parts}
+
+
 # ---------------------------------------------------------------------------
 # ShareGPT format
 # ---------------------------------------------------------------------------
@@ -307,6 +374,7 @@ _FORMAT_MAP = {
     "openai": _to_openai,
     "chatml": _to_chatml,
     "sharegpt": _to_sharegpt,
+    "zaya_chatml": _to_zaya_chatml,
 }
 
 SUPPORTED_FORMATS = frozenset(_FORMAT_MAP.keys())

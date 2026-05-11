@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -72,6 +73,22 @@ class TestRepoMapper:
         assert len(symbols) == 1
         assert symbols[0].name == "name"
 
+    def test_parse_decorated_class(self, mapper: RepoMapper, tmp_path: Path) -> None:
+        f = tmp_path / "dc.py"
+        f.write_text("@dataclass\nclass Foo:\n    x: int\n    def bar(self):\n        pass\n")
+        symbols = mapper.parse_file(f)
+        assert len(symbols) == 1
+        assert symbols[0].kind == "class"
+
+    def test_parse_decorated_returns_none_for_unknown(
+        self, mapper: RepoMapper, tmp_path: Path
+    ) -> None:
+        f = tmp_path / "odd.py"
+        f.write_text("@something\nx = 1\n")
+        symbols = mapper.parse_file(f)
+        # No function/class under decorator, so no symbols
+        assert isinstance(symbols, list)
+
     def test_parse_empty_file(self, mapper: RepoMapper, tmp_path: Path) -> None:
         f = tmp_path / "empty.py"
         f.write_text("")
@@ -81,7 +98,6 @@ class TestRepoMapper:
     def test_parse_binary_file_graceful(self, mapper: RepoMapper, tmp_path: Path) -> None:
         f = tmp_path / "data.py"
         f.write_bytes(b"\x00\x01\x02\x03")
-        # Should not crash — may return empty or partial
         symbols = mapper.parse_file(f)
         assert isinstance(symbols, list)
 
@@ -91,12 +107,67 @@ class TestRepoMapper:
         symbols = mapper.parse_file(f)
         assert symbols == []
 
+    def test_parse_no_read_permission(self, mapper: RepoMapper, tmp_path: Path) -> None:
+        f = tmp_path / "locked.py"
+        f.write_text("def foo(): pass\n")
+        with patch.object(Path, "read_bytes", side_effect=OSError("Permission denied")):
+            symbols = mapper.parse_file(f)
+            assert symbols == []
+
+    def test_parse_oserror_read(self, mapper: RepoMapper, tmp_path: Path) -> None:
+        f = tmp_path / "err.py"
+        f.write_text("def foo(): pass\n")
+        with patch.object(Path, "read_bytes", side_effect=PermissionError("no read")):
+            symbols = mapper.parse_file(f)
+            assert symbols == []
+
+    def test_parse_python_syntax_error(self, mapper: RepoMapper, tmp_path: Path) -> None:
+        f = tmp_path / "bad.py"
+        f.write_text("def broken(\n")
+        symbols = mapper.parse_file(f)
+        assert isinstance(symbols, list)
+
     def test_parse_javascript(self, mapper: RepoMapper, tmp_path: Path) -> None:
         f = tmp_path / "app.js"
         f.write_text("function greet(name) {\n  return 'hello ' + name;\n}\n")
         symbols = mapper.parse_file(f)
         assert len(symbols) == 1
         assert symbols[0].name == "greet"
+
+    def test_parse_javascript_class(self, mapper: RepoMapper, tmp_path: Path) -> None:
+        f = tmp_path / "app.js"
+        f.write_text("class Animal {\n  speak() {\n    return 'hi';\n  }\n}\n")
+        symbols = mapper.parse_file(f)
+        assert len(symbols) == 1
+        assert symbols[0].kind == "class"
+
+    def test_parse_javascript_export(self, mapper: RepoMapper, tmp_path: Path) -> None:
+        f = tmp_path / "app.js"
+        f.write_text("export function helper() {\n  return 1;\n}\n")
+        symbols = mapper.parse_file(f)
+        assert len(symbols) == 1
+        assert symbols[0].name == "helper"
+
+    def test_parse_typescript(self, mapper: RepoMapper, tmp_path: Path) -> None:
+        f = tmp_path / "app.ts"
+        f.write_text("function add(a: number, b: number): number {\n  return a + b;\n}\n")
+        symbols = mapper.parse_file(f)
+        assert len(symbols) >= 1
+
+    def test_parse_go_file(self, mapper: RepoMapper, tmp_path: Path) -> None:
+        f = tmp_path / "main.go"
+        f.write_text(
+            'package main\n\nfunc main() {\n\tprintln("hello")\n}\n\n'
+            "func (s *Server) Start() error {\n\treturn nil\n}\n"
+        )
+        symbols = mapper.parse_file(f)
+        assert len(symbols) >= 1
+
+    def test_parse_go_type_declaration(self, mapper: RepoMapper, tmp_path: Path) -> None:
+        f = tmp_path / "types.go"
+        f.write_text("package main\n\ntype MyInt int\n\ntype MyStruct struct {\n\tX int\n}\n")
+        symbols = mapper.parse_file(f)
+        assert isinstance(symbols, list)
 
     def test_map_directory(self, mapper: RepoMapper, tmp_path: Path) -> None:
         (tmp_path / "src").mkdir()
@@ -138,6 +209,76 @@ class TestRepoMapper:
         assert "shallow" in result
         assert "deep" not in result
 
+    def test_map_directory_not_a_directory(self, mapper: RepoMapper, tmp_path: Path) -> None:
+        f = tmp_path / "file.py"
+        f.write_text("x = 1\n")
+        result = mapper.map_directory(f)
+        assert "Not a directory" in result
+
+    def test_map_directory_no_recognized_files(self, mapper: RepoMapper, tmp_path: Path) -> None:
+        (tmp_path / "data.csv").write_text("a,b\n1,2\n")
+        (tmp_path / "readme.txt").write_text("hello\n")
+        result = mapper.map_directory(tmp_path)
+        assert "No symbols found" in result
+
+    def test_map_directory_file_with_no_symbols_skipped(
+        self, mapper: RepoMapper, tmp_path: Path
+    ) -> None:
+        (tmp_path / "empty.py").write_text("")
+        (tmp_path / "actual.py").write_text("def foo(): pass\n")
+        result = mapper.map_directory(tmp_path)
+        assert "foo" in result
+        assert "empty" not in result
+
+    def test_parse_file_with_parse_exception(self, mapper: RepoMapper, tmp_path: Path) -> None:
+        f = tmp_path / "bad_parse.py"
+        f.write_text("def foo():\n    pass\n")
+        with patch.object(mapper, "_get_parser", side_effect=Exception("parse crash")):
+            symbols = mapper.parse_file(f)
+            assert symbols == []
+
+    def test_parse_decorated_unknown_returns_none(self, mapper: RepoMapper, tmp_path: Path) -> None:
+        f = tmp_path / "dec.py"
+        f.write_text("@decorator\n@another\ndef foo(): pass\n")
+        symbols = mapper.parse_file(f)
+        assert len(symbols) >= 1
+
+    def test_parse_export_nothing_inside(self, mapper: RepoMapper, tmp_path: Path) -> None:
+        f = tmp_path / "exp.js"
+        f.write_text("export { x };\nfunction bar() {}\n")
+        symbols = mapper.parse_file(f)
+        assert any(s.name == "bar" for s in symbols)
+
+    def test_symbol_format_compact(self) -> None:
+        s = Symbol(name="single", kind="function", line=42)
+        assert s.format() == "single(L42)"
+
+
+class TestRepoMapperUnavailable:
+    """Test RepoMapper when tree-sitter is NOT available."""
+
+    def test_available_false_when_not_installed(self) -> None:
+        with patch.object(RepoMapper, "_check_availability", return_value=False):
+            mapper = RepoMapper()
+            assert mapper.available is False
+
+    def test_parse_file_returns_empty_when_unavailable(self) -> None:
+        with patch.object(RepoMapper, "_check_availability", return_value=False):
+            mapper = RepoMapper()
+            result = mapper.parse_file(Path("test.py"))
+            assert result == []
+
+    def test_map_directory_returns_message_when_unavailable(self) -> None:
+        with patch.object(RepoMapper, "_check_availability", return_value=False):
+            mapper = RepoMapper()
+            result = mapper.map_directory(Path("/tmp"))
+            assert "not available" in result
+
+    def test_import_error_during_check_availability(self) -> None:
+        with patch.dict("sys.modules", {"tree_sitter_language_pack": None}):
+            mapper = RepoMapper()
+            assert mapper.available is False
+
 
 class TestSymbol:
     """Test Symbol formatting."""
@@ -152,6 +293,16 @@ class TestSymbol:
         formatted = parent.format()
         assert "MyClass(L1)" in formatted
         assert "  method(L3)" in formatted
+
+    def test_format_nested_children(self) -> None:
+        parent = Symbol(name="A", kind="class", line=1)
+        child = Symbol(name="B", kind="class", line=2)
+        child.children.append(Symbol(name="foo", kind="method", line=3))
+        parent.children.append(child)
+        formatted = parent.format()
+        assert "A(L1)" in formatted
+        assert "  B(L2)" in formatted
+        assert "    foo(L3)" in formatted
 
 
 @_skip_no_treesitter

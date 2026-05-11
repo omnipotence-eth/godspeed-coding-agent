@@ -107,3 +107,39 @@ class TestGlobSearchTool:
         result = await tool.execute({"pattern": ""}, tool_context)
         assert result.is_error
         assert "required" in result.error.lower()
+
+    @pytest.mark.asyncio
+    async def test_search_path_is_file_not_dir(
+        self, tool: GlobSearchTool, tool_context: ToolContext
+    ) -> None:
+        _create_files(tool_context.cwd, ["src/main.py"])
+        result = await tool.execute({"pattern": "*.py", "path": "src/main.py"}, tool_context)
+        assert result.is_error
+        assert "not a directory" in result.error.lower()
+
+    @pytest.mark.asyncio
+    async def test_invalid_glob_pattern(
+        self, tool: GlobSearchTool, tool_context: ToolContext
+    ) -> None:
+        from unittest.mock import patch
+
+        with patch("pathlib.Path.glob", side_effect=ValueError("Invalid pattern")):
+            result = await tool.execute({"pattern": "badpattern"}, tool_context)
+        assert result.is_error
+        assert "Invalid" in result.error
+
+    @pytest.mark.asyncio
+    async def test_excludes_dot_git(self, tool: GlobSearchTool, tool_context: ToolContext) -> None:
+        _create_files(tool_context.cwd, ["app.py", ".git/config", ".git/HEAD"])
+        result = await tool.execute({"pattern": "**/*"}, tool_context)
+        assert not result.is_error
+        assert "app.py" in result.output
+        assert ".git" not in result.output
+
+    @pytest.mark.asyncio
+    async def test_path_outside_project_rejected(
+        self, tool: GlobSearchTool, tool_context: ToolContext
+    ) -> None:
+        result = await tool.execute({"pattern": "*.py", "path": "/etc"}, tool_context)
+        assert result.is_error
+        assert "within project" in result.error.lower()

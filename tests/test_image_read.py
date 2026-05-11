@@ -200,3 +200,16 @@ async def test_output_contains_size_kb(tool: ImageReadTool, tmp_path: Path) -> N
     assert not result.is_error
     # Output should contain size in KB format like "0.1KB"
     assert "KB)" in result.output
+
+
+@pytest.mark.asyncio
+async def test_oserror_reading_bytes(tool: ImageReadTool, tmp_path: Path) -> None:
+    img = tmp_path / "readonly.png"
+    img.write_bytes(MINIMAL_PNG)
+    ctx = _make_context(tmp_path)
+
+    with patch("pathlib.Path.read_bytes", side_effect=OSError("read error")):
+        result = await tool.execute({"file_path": "readonly.png"}, ctx)
+
+    assert result.is_error
+    assert "Failed to read" in result.error

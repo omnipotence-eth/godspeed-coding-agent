@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
+from unittest.mock import patch
 
 from godspeed.skills.dream import SkillDream
 
@@ -62,6 +63,56 @@ class TestDateNormalization:
         result = self._normalize("Yesterday is case insensitive")
         assert "Yesterday" not in result
 
+    def test_last_month(self) -> None:
+        result = self._normalize("Reviewed last month.")
+        assert "last month" not in result
+
+    def test_last_night(self) -> None:
+        result = self._normalize("Ran last night.")
+        assert "last night" not in result
+
+    def test_last_year(self) -> None:
+        result = self._normalize("Created last year.")
+        assert "last year" not in result
+
+    def test_5_months_ago(self) -> None:
+        result = self._normalize("Deployed 5 months ago.")
+        assert "months ago" not in result
+
+    def test_10_hours_ago_unchanged(self) -> None:
+        text = "Updated 10 hours ago."
+        result = self._normalize(text)
+        assert result == text  # hour is not handled, returns unchanged
+
+    def test_last_month(self) -> None:
+        result = self._normalize("Updated last month.")
+        assert "last month" not in result
+
+    def test_last_night(self) -> None:
+        result = self._normalize("Edited last night.")
+        assert "last night" not in result
+
+    def test_last_year(self) -> None:
+        result = self._normalize("Created last year.")
+        assert "last year" not in result
+
+    def test_5_months_ago(self) -> None:
+        result = self._normalize("Moved 5 months ago.")
+        assert "months ago" not in result
+
+    def test_10_hours_ago_unchanged(self) -> None:
+        text = "Modified 10 hours ago."
+        result = self._normalize(text)
+        assert result == text
+
+    def test_relative_dates_normalized_correctly(self) -> None:
+        result = self._normalize("Updated last week.")
+        assert "last week" not in result
+        result2 = self._normalize("Changed last month.")
+        assert "last month" not in result2
+        result3 = self._normalize("Old last year stuff.")
+        assert "last year" not in result3
+
 
 class TestDreamRun:
     """Test dream.run() consolidation pass."""
@@ -119,6 +170,23 @@ class TestDreamRun:
         assert lock.exists()
         assert lock.read_text().strip()
 
+    def test_non_existent_dir_returns_empty_stats(self, tmp_path: Path) -> None:
+        dream = SkillDream(base_dir=tmp_path)
+        non_existent = tmp_path / "does_not_exist"
+        stats = dream.run(non_existent)
+        assert stats == {"consolidated": 0, "pruned": 0, "dates_normalized": 0, "errors": 0}
+
+    def test_read_oserror_increments_errors(self, tmp_path: Path) -> None:
+        dream = SkillDream(base_dir=tmp_path)
+        skills_dir = tmp_path / "skills"
+        d = skills_dir / "test-skill"
+        d.mkdir(parents=True)
+        skill_md = d / "SKILL.md"
+        skill_md.write_text("---\nname: test\ndescription: T\ntrigger: t\n---\n\ncontent.")
+        with patch("pathlib.Path.read_text", side_effect=OSError("Simulated read error")):
+            stats = dream.run(skills_dir)
+            assert stats["errors"] >= 1
+
     def test_handles_os_error_gracefully(self, tmp_path: Path) -> None:
         dream = SkillDream(base_dir=tmp_path)
         skills_dir = tmp_path / "skills"
@@ -133,6 +201,42 @@ class TestDreamRun:
             assert stats["errors"] >= 0
         finally:
             skill_md.chmod(0o644)
+
+    def test_nonexistent_skills_dir_returns_empty_stats(self, tmp_path: Path) -> None:
+        dream = SkillDream(base_dir=tmp_path)
+        stats = dream.run(tmp_path / "definitely_does_not_exist")
+        assert stats["consolidated"] == 0
+        assert stats["pruned"] == 0
+        assert stats["dates_normalized"] == 0
+
+    def test_skill_with_no_date_changes_skipped(self, tmp_path: Path) -> None:
+        dream = SkillDream(base_dir=tmp_path)
+        skills_dir = tmp_path / "skills"
+        skill_dir = skills_dir / "clean-skill"
+        skill_dir.mkdir(parents=True)
+        skill_md = skill_dir / "SKILL.md"
+        original = (
+            "---\nname: clean-skill\ndescription: C\ntrigger: cs\n---\n\nNo relative dates here."
+        )
+        skill_md.write_text(original)
+
+        stats = dream.run(skills_dir)
+        assert stats["dates_normalized"] == 0
+        assert stats["errors"] == 0
+        assert skill_md.read_text() == original
+
+    def test_os_error_during_read_increments_errors(self, tmp_path: Path) -> None:
+        dream = SkillDream(base_dir=tmp_path)
+        skills_dir = tmp_path / "skills"
+        d = skills_dir / "erroring"
+        d.mkdir(parents=True)
+        skill_md = d / "SKILL.md"
+        skill_md.write_text("---\nname: e\ndescription: E\ntrigger: e\n---\n\nBody.")
+
+        with patch.object(Path, "read_text", side_effect=OSError("permission denied")):
+            stats = dream.run(skills_dir)
+            assert stats["errors"] == 1
+            assert stats["dates_normalized"] == 0
 
 
 class TestShouldRun:

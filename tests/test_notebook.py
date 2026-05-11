@@ -378,3 +378,402 @@ async def test_notebook_edit_not_found(tmp_path):
 
     assert result.is_error
     assert "not found" in result.error.lower()
+
+
+# ---------------------------------------------------------------------------
+# NotebookEditTool: additional edge cases
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_add_cell_raw_type(tmp_path):
+    """add_cell with cell_type='raw' creates a raw cell."""
+    from godspeed.tools.notebook import NotebookEditTool
+
+    nb = _make_notebook([_code_cell("first")])
+    path = tmp_path / "test.ipynb"
+    path.write_text(json.dumps(nb), encoding="utf-8")
+
+    tool = NotebookEditTool()
+    ctx = ToolContext(cwd=tmp_path, session_id="test")
+    result = await tool.execute(
+        {
+            "file_path": "test.ipynb",
+            "action": "add_cell",
+            "cell_index": 1,
+            "content": "raw content",
+            "cell_type": "raw",
+        },
+        ctx,
+    )
+
+    assert not result.is_error
+    updated = json.loads(path.read_text(encoding="utf-8"))
+    assert updated["cells"][1]["cell_type"] == "raw"
+    assert "execution_count" not in updated["cells"][1]
+
+
+@pytest.mark.asyncio
+async def test_invalid_action(tmp_path):
+    """Invalid action returns an error."""
+    from godspeed.tools.notebook import NotebookEditTool
+
+    nb = _make_notebook([_code_cell("first")])
+    path = tmp_path / "test.ipynb"
+    path.write_text(json.dumps(nb), encoding="utf-8")
+
+    tool = NotebookEditTool()
+    ctx = ToolContext(cwd=tmp_path, session_id="test")
+    result = await tool.execute(
+        {
+            "file_path": "test.ipynb",
+            "action": "invalid_action",
+        },
+        ctx,
+    )
+
+    assert result.is_error
+    assert "Invalid action" in result.error
+
+
+@pytest.mark.asyncio
+async def test_invalid_notebook_json(tmp_path):
+    """Invalid notebook JSON returns parse error."""
+    from godspeed.tools.notebook import NotebookEditTool
+
+    path = tmp_path / "bad.ipynb"
+    path.write_text("not valid json", encoding="utf-8")
+
+    tool = NotebookEditTool()
+    ctx = ToolContext(cwd=tmp_path, session_id="test")
+    result = await tool.execute(
+        {
+            "file_path": "bad.ipynb",
+            "action": "edit_cell",
+            "cell_index": 0,
+        },
+        ctx,
+    )
+
+    assert result.is_error
+    assert "parse" in result.error.lower() or "Failed" in result.error
+
+
+@pytest.mark.asyncio
+async def test_empty_file_path(tmp_path):
+    """Empty file_path returns error."""
+    from godspeed.tools.notebook import NotebookEditTool
+
+    tool = NotebookEditTool()
+    ctx = ToolContext(cwd=tmp_path, session_id="test")
+    result = await tool.execute(
+        {
+            "file_path": "",
+            "action": "edit_cell",
+        },
+        ctx,
+    )
+
+    assert result.is_error
+    assert "file_path" in result.error.lower()
+
+
+@pytest.mark.asyncio
+async def test_move_cell_missing_indices(tmp_path):
+    """move_cell missing cell_index or target_index returns error."""
+    from godspeed.tools.notebook import NotebookEditTool
+
+    nb = _make_notebook([_code_cell("a"), _code_cell("b")])
+    path = tmp_path / "test.ipynb"
+    path.write_text(json.dumps(nb), encoding="utf-8")
+
+    tool = NotebookEditTool()
+    ctx = ToolContext(cwd=tmp_path, session_id="test")
+
+    result = await tool.execute(
+        {
+            "file_path": "test.ipynb",
+            "action": "move_cell",
+            "cell_index": 0,
+        },
+        ctx,
+    )
+    assert result.is_error
+    assert "required" in result.error.lower()
+
+    result2 = await tool.execute(
+        {
+            "file_path": "test.ipynb",
+            "action": "move_cell",
+            "target_index": 0,
+        },
+        ctx,
+    )
+    assert result2.is_error
+    assert "required" in result2.error.lower()
+
+
+@pytest.mark.asyncio
+async def test_move_cell_target_out_of_range(tmp_path):
+    """move_cell with target_index out of range returns error."""
+    from godspeed.tools.notebook import NotebookEditTool
+
+    nb = _make_notebook([_code_cell("a"), _code_cell("b")])
+    path = tmp_path / "test.ipynb"
+    path.write_text(json.dumps(nb), encoding="utf-8")
+
+    tool = NotebookEditTool()
+    ctx = ToolContext(cwd=tmp_path, session_id="test")
+    result = await tool.execute(
+        {
+            "file_path": "test.ipynb",
+            "action": "move_cell",
+            "cell_index": 0,
+            "target_index": 99,
+        },
+        ctx,
+    )
+
+    assert result.is_error
+    assert "out of range" in result.error
+
+
+@pytest.mark.asyncio
+async def test_delete_cell_missing_index(tmp_path):
+    """delete_cell without cell_index returns error."""
+    from godspeed.tools.notebook import NotebookEditTool
+
+    nb = _make_notebook([_code_cell("a")])
+    path = tmp_path / "test.ipynb"
+    path.write_text(json.dumps(nb), encoding="utf-8")
+
+    tool = NotebookEditTool()
+    ctx = ToolContext(cwd=tmp_path, session_id="test")
+    result = await tool.execute(
+        {
+            "file_path": "test.ipynb",
+            "action": "delete_cell",
+        },
+        ctx,
+    )
+
+    assert result.is_error
+    assert "required" in result.error.lower()
+
+
+@pytest.mark.asyncio
+async def test_delete_cell_out_of_range(tmp_path):
+    """delete_cell with out-of-range index returns error."""
+    from godspeed.tools.notebook import NotebookEditTool
+
+    nb = _make_notebook([_code_cell("a")])
+    path = tmp_path / "test.ipynb"
+    path.write_text(json.dumps(nb), encoding="utf-8")
+
+    tool = NotebookEditTool()
+    ctx = ToolContext(cwd=tmp_path, session_id="test")
+    result = await tool.execute(
+        {
+            "file_path": "test.ipynb",
+            "action": "delete_cell",
+            "cell_index": 10,
+        },
+        ctx,
+    )
+
+    assert result.is_error
+    assert "out of range" in result.error
+
+
+@pytest.mark.asyncio
+async def test_edit_cell_missing_index(tmp_path):
+    """edit_cell without cell_index returns error."""
+    from godspeed.tools.notebook import NotebookEditTool
+
+    nb = _make_notebook([_code_cell("a")])
+    path = tmp_path / "test.ipynb"
+    path.write_text(json.dumps(nb), encoding="utf-8")
+
+    tool = NotebookEditTool()
+    ctx = ToolContext(cwd=tmp_path, session_id="test")
+    result = await tool.execute(
+        {
+            "file_path": "test.ipynb",
+            "action": "edit_cell",
+            "content": "new",
+        },
+        ctx,
+    )
+
+    assert result.is_error
+    assert "required" in result.error.lower()
+
+
+@pytest.mark.asyncio
+async def test_add_cell_code_with_empty_content(tmp_path):
+    """add_cell with code type and no content creates valid code cell."""
+    from godspeed.tools.notebook import NotebookEditTool
+
+    nb = _make_notebook([])
+    path = tmp_path / "test.ipynb"
+    path.write_text(json.dumps(nb), encoding="utf-8")
+
+    tool = NotebookEditTool()
+    ctx = ToolContext(cwd=tmp_path, session_id="test")
+    result = await tool.execute(
+        {
+            "file_path": "test.ipynb",
+            "action": "add_cell",
+            "cell_type": "code",
+        },
+        ctx,
+    )
+
+    assert not result.is_error
+    updated = json.loads(path.read_text(encoding="utf-8"))
+    assert updated["cells"][0]["cell_type"] == "code"
+    assert updated["cells"][0]["execution_count"] is None
+    assert updated["cells"][0]["outputs"] == []
+
+
+@pytest.mark.asyncio
+async def test_resolve_tool_path_value_error(tmp_path):
+    """resolve_tool_path ValueError propagates as ToolResult failure."""
+    from unittest.mock import patch
+
+    from godspeed.tools.notebook import NotebookEditTool
+
+    path = tmp_path / "test.ipynb"
+    path.write_text(json.dumps(_make_notebook([_code_cell("x")])), encoding="utf-8")
+
+    with patch(
+        "godspeed.tools.notebook.resolve_tool_path",
+        side_effect=ValueError("Access denied"),
+    ):
+        tool = NotebookEditTool()
+        ctx = ToolContext(cwd=tmp_path, session_id="test")
+        result = await tool.execute(
+            {"file_path": "test.ipynb", "action": "edit_cell", "cell_index": 0},
+            ctx,
+        )
+
+    assert result.is_error
+    assert "Access denied" in result.error
+
+
+@pytest.mark.asyncio
+async def test_notebook_metadata_and_tool_schema(tmp_path):
+    """Invalid notebook structure with missing cells key works gracefully."""
+    from godspeed.tools.notebook import NotebookEditTool
+
+    nb = {"nbformat": 4, "nbformat_minor": 5, "metadata": {}}
+    path = tmp_path / "test.ipynb"
+    path.write_text(json.dumps(nb), encoding="utf-8")
+
+    tool = NotebookEditTool()
+    ctx = ToolContext(cwd=tmp_path, session_id="test")
+    result = await tool.execute(
+        {
+            "file_path": "test.ipynb",
+            "action": "add_cell",
+            "content": "new cell",
+        },
+        ctx,
+    )
+
+    assert not result.is_error
+    updated = json.loads(path.read_text(encoding="utf-8"))
+    assert len(updated["cells"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_notebook_edit_tool_has_correct_metadata(tmp_path):
+    """NotebookEditTool has correct name, description, risk_level, and schema."""
+    from godspeed.tools.notebook import NotebookEditTool
+
+    tool = NotebookEditTool()
+    assert tool.name == "notebook_edit"
+    assert tool.risk_level == "low"
+    schema = tool.get_schema()
+    assert "file_path" in schema["properties"]
+    assert "action" in schema["properties"]
+    assert "cell_index" in schema["properties"]
+    assert schema["required"] == ["file_path", "action"]
+
+    # Test description property exists
+    assert isinstance(tool.description, str)
+    assert len(tool.description) > 0
+
+
+@pytest.mark.asyncio
+async def test_move_cell_source_out_of_range(tmp_path):
+    """move_cell with cell_index out of range returns error."""
+    from godspeed.tools.notebook import NotebookEditTool
+
+    nb = _make_notebook([_code_cell("a"), _code_cell("b")])
+    path = tmp_path / "test.ipynb"
+    path.write_text(json.dumps(nb), encoding="utf-8")
+
+    tool = NotebookEditTool()
+    ctx = ToolContext(cwd=tmp_path, session_id="test")
+    result = await tool.execute(
+        {
+            "file_path": "test.ipynb",
+            "action": "move_cell",
+            "cell_index": 99,
+            "target_index": 0,
+        },
+        ctx,
+    )
+
+    assert result.is_error
+    assert "out of range" in result.error
+
+
+@pytest.mark.asyncio
+async def test_edit_cell_on_empty_notebook(tmp_path):
+    """edit_cell on empty notebook returns out of range."""
+    from godspeed.tools.notebook import NotebookEditTool
+
+    nb = _make_notebook([])
+    path = tmp_path / "empty.ipynb"
+    path.write_text(json.dumps(nb), encoding="utf-8")
+
+    tool = NotebookEditTool()
+    ctx = ToolContext(cwd=tmp_path, session_id="test")
+    result = await tool.execute(
+        {
+            "file_path": "empty.ipynb",
+            "action": "edit_cell",
+            "cell_index": 0,
+            "content": "x",
+        },
+        ctx,
+    )
+
+    assert result.is_error
+    assert "out of range" in result.error
+
+
+@pytest.mark.asyncio
+async def test_unicode_decode_error(tmp_path):
+    """UnicodeDecodeError during notebook parse returns clear error."""
+    from godspeed.tools.notebook import NotebookEditTool
+
+    path = tmp_path / "bad.ipynb"
+    # Write invalid UTF-8
+    with open(str(path), "wb") as f:
+        f.write(b"\x80\x81\x82")
+
+    tool = NotebookEditTool()
+    ctx = ToolContext(cwd=tmp_path, session_id="test")
+    result = await tool.execute(
+        {
+            "file_path": "bad.ipynb",
+            "action": "edit_cell",
+            "cell_index": 0,
+        },
+        ctx,
+    )
+
+    assert result.is_error

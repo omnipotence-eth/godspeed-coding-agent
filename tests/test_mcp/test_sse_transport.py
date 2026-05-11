@@ -169,6 +169,295 @@ class TestMCPSSETransport:
         mock_http.aclose.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_sse_disconnect_when_not_connected(self) -> None:
+        client = MCPSSEClient(base_url="http://localhost:8080")
+        await client.disconnect()
+
+    @pytest.mark.asyncio
+    async def test_sse_connect_non_2xx_status(self) -> None:
+        client = MCPSSEClient(base_url="http://localhost:8080")
+        mock_http = AsyncMock(spec=httpx.AsyncClient)
+        mock_http.post = AsyncMock(return_value=_make_response({}, status_code=500))
+
+        with patch("godspeed.mcp.sse_transport.httpx.AsyncClient", return_value=mock_http):
+            await client.connect()
+
+        mock_http.post.assert_called_once_with("/initialize", json={})
+
+    @pytest.mark.asyncio
+    async def test_sse_connect_connection_error_raises(self) -> None:
+        client = MCPSSEClient(base_url="http://localhost:9999")
+        mock_http = AsyncMock(spec=httpx.AsyncClient)
+        mock_http.post = AsyncMock(side_effect=httpx.ConnectError("refused"))
+
+        with patch("godspeed.mcp.sse_transport.httpx.AsyncClient", return_value=mock_http):
+            with pytest.raises(httpx.ConnectError):
+                await client.connect()
+
+    @pytest.mark.asyncio
+    async def test_sse_connect_timeout_raises(self) -> None:
+        client = MCPSSEClient(base_url="http://localhost:9999")
+        mock_http = AsyncMock(spec=httpx.AsyncClient)
+        mock_http.post = AsyncMock(side_effect=httpx.TimeoutException("connect timeout"))
+
+        with patch("godspeed.mcp.sse_transport.httpx.AsyncClient", return_value=mock_http):
+            with pytest.raises(httpx.TimeoutException):
+                await client.connect()
+
+    @pytest.mark.asyncio
+    async def test_sse_call_tool_http_error(self) -> None:
+        client = MCPSSEClient(base_url="http://localhost:8080")
+        mock_http = AsyncMock(spec=httpx.AsyncClient)
+        mock_http.post = AsyncMock(
+            side_effect=[
+                _make_response({}),  # /initialize
+                _make_response({}, status_code=500),  # /tools/call — 500 error
+            ]
+        )
+
+        with patch("godspeed.mcp.sse_transport.httpx.AsyncClient", return_value=mock_http):
+            await client.connect()
+            result = await client.call_tool("bad_tool", {})
+
+        assert "Error" in result
+        assert "call failed" in result
+
+    @pytest.mark.asyncio
+    async def test_sse_call_tool_connection_error(self) -> None:
+        client = MCPSSEClient(base_url="http://localhost:8080")
+        mock_http = AsyncMock(spec=httpx.AsyncClient)
+        mock_http.post = AsyncMock(
+            side_effect=[
+                _make_response({}),
+                httpx.ConnectError("Connection refused"),
+            ]
+        )
+
+        with patch("godspeed.mcp.sse_transport.httpx.AsyncClient", return_value=mock_http):
+            await client.connect()
+            result = await client.call_tool("tool", {})
+
+        assert "Error" in result
+
+    @pytest.mark.asyncio
+    async def test_sse_call_tool_list_tools_timeout(self) -> None:
+        client = MCPSSEClient(base_url="http://localhost:8080")
+        mock_http = AsyncMock(spec=httpx.AsyncClient)
+        mock_http.post = AsyncMock(
+            side_effect=[
+                _make_response({}),
+                httpx.TimeoutException("list_tools timed out"),
+            ]
+        )
+
+        with patch("godspeed.mcp.sse_transport.httpx.AsyncClient", return_value=mock_http):
+            await client.connect()
+            tools = await client.list_tools()
+
+        assert tools == []
+
+    @pytest.mark.asyncio
+    async def test_sse_call_tool_with_non_dict_content_item(self) -> None:
+        call_response = {
+            "content": [
+                {"type": "text", "text": "Good result"},
+                "just a string, not a dict",
+                {"type": "text", "text": "Another result"},
+                12345,
+            ]
+        }
+
+        client = MCPSSEClient(base_url="http://localhost:8080")
+        mock_http = AsyncMock(spec=httpx.AsyncClient)
+        mock_http.post = AsyncMock(
+            side_effect=[
+                _make_response({}),
+                _make_response(call_response),
+            ]
+        )
+
+        with patch("godspeed.mcp.sse_transport.httpx.AsyncClient", return_value=mock_http):
+            await client.connect()
+            result = await client.call_tool("tool", {})
+
+        assert "Good result" in result
+        assert "Another result" in result
+
+    @pytest.mark.asyncio
+    async def test_sse_call_tool_with_empty_content_array(self) -> None:
+        call_response = {"content": []}
+
+        client = MCPSSEClient(base_url="http://localhost:8080")
+        mock_http = AsyncMock(spec=httpx.AsyncClient)
+        mock_http.post = AsyncMock(
+            side_effect=[
+                _make_response({}),
+                _make_response(call_response),
+            ]
+        )
+
+        with patch("godspeed.mcp.sse_transport.httpx.AsyncClient", return_value=mock_http):
+            await client.connect()
+            result = await client.call_tool("tool", {})
+
+        assert "content" in result
+
+    @pytest.mark.asyncio
+    async def test_sse_call_tool_content_without_text_key(self) -> None:
+        call_response = {
+            "content": [
+                {"type": "image", "data": "base64bytes"},
+            ]
+        }
+
+        client = MCPSSEClient(base_url="http://localhost:8080")
+        mock_http = AsyncMock(spec=httpx.AsyncClient)
+        mock_http.post = AsyncMock(
+            side_effect=[
+                _make_response({}),
+                _make_response(call_response),
+            ]
+        )
+
+        with patch("godspeed.mcp.sse_transport.httpx.AsyncClient", return_value=mock_http):
+            await client.connect()
+            result = await client.call_tool("tool", {})
+
+        assert "image" in result
+
+    @pytest.mark.asyncio
+    async def test_sse_response_body_too_large_without_header(self) -> None:
+        client = MCPSSEClient(base_url="http://localhost:8080")
+        mock_http = AsyncMock(spec=httpx.AsyncClient)
+
+        big_content = b"x" * 2_000_000
+        headers = {"content-type": "application/json"}
+        big_resp = httpx.Response(
+            status_code=200,
+            content=big_content,
+            headers=headers,
+            request=httpx.Request("POST", "http://test"),
+        )
+        mock_http.post = AsyncMock(
+            side_effect=[
+                _make_response({}),
+                big_resp,
+            ]
+        )
+
+        with patch("godspeed.mcp.sse_transport.httpx.AsyncClient", return_value=mock_http):
+            await client.connect()
+            tools = await client.list_tools()
+
+        assert tools == []
+
+    @pytest.mark.asyncio
+    async def test_sse_call_tool_invalid_json(self) -> None:
+        client = MCPSSEClient(base_url="http://localhost:8080")
+        mock_http = AsyncMock(spec=httpx.AsyncClient)
+        bad_resp = httpx.Response(
+            status_code=200,
+            content=b"not valid json at all !!!",
+            headers={"content-type": "text/plain"},
+            request=httpx.Request("POST", "http://test"),
+        )
+        mock_http.post = AsyncMock(
+            side_effect=[
+                _make_response({}),
+                bad_resp,
+            ]
+        )
+
+        with patch("godspeed.mcp.sse_transport.httpx.AsyncClient", return_value=mock_http):
+            await client.connect()
+            result = await client.call_tool("tool", {})
+
+        assert "invalid JSON" in result
+
+    @pytest.mark.asyncio
+    async def test_sse_list_tools_invalid_json(self) -> None:
+        client = MCPSSEClient(base_url="http://localhost:8080")
+        mock_http = AsyncMock(spec=httpx.AsyncClient)
+        bad_resp = httpx.Response(
+            status_code=200,
+            content=b"]]]broken json[[[",
+            headers={"content-type": "application/json"},
+            request=httpx.Request("POST", "http://test"),
+        )
+        mock_http.post = AsyncMock(
+            side_effect=[
+                _make_response({}),
+                bad_resp,
+            ]
+        )
+
+        with patch("godspeed.mcp.sse_transport.httpx.AsyncClient", return_value=mock_http):
+            await client.connect()
+            tools = await client.list_tools()
+
+        assert tools == []
+
+    @pytest.mark.asyncio
+    async def test_sse_base_url_trailing_slash_stripped(self) -> None:
+        client = MCPSSEClient(base_url="http://localhost:8080/")
+        assert client._base_url == "http://localhost:8080"
+
+    @pytest.mark.asyncio
+    async def test_sse_call_tool_response_too_large(self) -> None:
+        client = MCPSSEClient(base_url="http://localhost:8080")
+        mock_http = AsyncMock(spec=httpx.AsyncClient)
+        big_content = b"x" * 2_000_000
+        headers = {}
+        big_resp = httpx.Response(
+            status_code=200,
+            content=big_content,
+            headers=headers,
+            request=httpx.Request("POST", "http://test"),
+        )
+        mock_http.post = AsyncMock(
+            side_effect=[
+                _make_response({}),
+                big_resp,
+            ]
+        )
+
+        with patch("godspeed.mcp.sse_transport.httpx.AsyncClient", return_value=mock_http):
+            await client.connect()
+            result = await client.call_tool("big_tool", {})
+
+        assert "Error" in result
+
+    def test_validate_response_size_body_too_large(self) -> None:
+        from godspeed.mcp.sse_transport import MCPSSEClient
+
+        big_content = b"x" * 2_000_000
+        headers = {}
+        resp = httpx.Response(
+            status_code=200,
+            content=big_content,
+            headers=headers,
+            request=httpx.Request("POST", "http://test"),
+        )
+
+        with pytest.raises(ValueError, match="too large"):
+            MCPSSEClient._validate_response_size(resp)
+
+    def test_validate_response_size_content_length_too_large(self) -> None:
+        from godspeed.mcp.sse_transport import MCPSSEClient
+
+        small_body = b'{"ok": true}'
+        headers = {"content-length": str(2_000_000)}
+        resp = httpx.Response(
+            status_code=200,
+            content=small_body,
+            headers=headers,
+            request=httpx.Request("POST", "http://test"),
+        )
+
+        with pytest.raises(ValueError, match="too large"):
+            MCPSSEClient._validate_response_size(resp)
+
+    @pytest.mark.asyncio
     async def test_sse_call_tool_not_connected(self) -> None:
         """Call tool before connecting returns error string."""
         client = MCPSSEClient(base_url="http://localhost:8080")

@@ -216,3 +216,236 @@ class TestStockPriceToolExecute:
         ):
             result = await tool.execute({"ticker": "AAPL"}, MagicMock())
         assert result.is_error is True
+
+
+class TestStockPriceAdditionalMetrics:
+    """Tests covering additional metrics branches not covered by basic tests."""
+
+    @pytest.mark.asyncio
+    async def test_regular_market_price(self):
+        """Cover regularMarketPrice metric (separate from currentPrice)."""
+        tool = StockPriceTool()
+        mock_info = {"longName": "Test Corp", "regularMarketPrice": 101.50}
+        mock_ticker = MagicMock()
+        mock_ticker.info = mock_info
+        with patch("yfinance.Ticker", return_value=mock_ticker):
+            result = await tool.execute({"ticker": "AAPL"}, MagicMock())
+        assert not result.is_error
+        assert "Market:" in result.output
+
+    @pytest.mark.asyncio
+    async def test_previous_close(self):
+        tool = StockPriceTool()
+        mock_info = {"longName": "Test Corp", "previousClose": 99.50}
+        mock_ticker = MagicMock()
+        mock_ticker.info = mock_info
+        with patch("yfinance.Ticker", return_value=mock_ticker):
+            result = await tool.execute({"ticker": "AAPL"}, MagicMock())
+        assert not result.is_error
+        assert "Prev Close:" in result.output
+
+    @pytest.mark.asyncio
+    async def test_open_price(self):
+        tool = StockPriceTool()
+        mock_info = {"longName": "Test Corp", "open": 100.25}
+        mock_ticker = MagicMock()
+        mock_ticker.info = mock_info
+        with patch("yfinance.Ticker", return_value=mock_ticker):
+            result = await tool.execute({"ticker": "AAPL"}, MagicMock())
+        assert not result.is_error
+        assert "Open:" in result.output
+
+    @pytest.mark.asyncio
+    async def test_day_high_low(self):
+        """Cover dayHigh + dayLow (both must be present)."""
+        tool = StockPriceTool()
+        mock_info = {"longName": "Test Corp", "dayHigh": 105.0, "dayLow": 95.0}
+        mock_ticker = MagicMock()
+        mock_ticker.info = mock_info
+        with patch("yfinance.Ticker", return_value=mock_ticker):
+            result = await tool.execute({"ticker": "AAPL"}, MagicMock())
+        assert not result.is_error
+        assert "Day:" in result.output
+
+    @pytest.mark.asyncio
+    async def test_volume_below_thousand(self):
+        """Volume < 1,000 formats with comma separator."""
+        tool = StockPriceTool()
+        mock_info = {"longName": "Test Corp", "currentPrice": 100.0, "volume": 500}
+        mock_ticker = MagicMock()
+        mock_ticker.info = mock_info
+        with patch("yfinance.Ticker", return_value=mock_ticker):
+            result = await tool.execute({"ticker": "AAPL"}, MagicMock())
+        assert not result.is_error
+        assert "Vol: 500" in result.output
+
+    @pytest.mark.asyncio
+    async def test_market_cap_billions(self):
+        tool = StockPriceTool()
+        mock_info = {"longName": "Test Corp", "currentPrice": 100.0, "marketCap": 5e9}
+        mock_ticker = MagicMock()
+        mock_ticker.info = mock_info
+        with patch("yfinance.Ticker", return_value=mock_ticker):
+            result = await tool.execute({"ticker": "AAPL"}, MagicMock())
+        assert not result.is_error
+        assert "MCap:" in result.output
+        assert "B" in result.output
+
+    @pytest.mark.asyncio
+    async def test_market_cap_millions(self):
+        tool = StockPriceTool()
+        mock_info = {"longName": "Test Corp", "currentPrice": 100.0, "marketCap": 500e6}
+        mock_ticker = MagicMock()
+        mock_ticker.info = mock_info
+        with patch("yfinance.Ticker", return_value=mock_ticker):
+            result = await tool.execute({"ticker": "AAPL"}, MagicMock())
+        assert not result.is_error
+        assert "MCap:" in result.output
+        assert "M" in result.output
+
+    @pytest.mark.asyncio
+    async def test_market_cap_below_million(self):
+        """Market cap below 1e6 — no MCap line added."""
+        tool = StockPriceTool()
+        mock_info = {"longName": "Test Corp", "currentPrice": 100.0, "marketCap": 500000}
+        mock_ticker = MagicMock()
+        mock_ticker.info = mock_info
+        with patch("yfinance.Ticker", return_value=mock_ticker):
+            result = await tool.execute({"ticker": "AAPL"}, MagicMock())
+        assert not result.is_error
+        assert "MCap:" not in result.output
+
+    @pytest.mark.asyncio
+    async def test_sector_and_industry(self):
+        """Cover sector + industry formatting in company name."""
+        tool = StockPriceTool()
+        mock_info = {
+            "longName": "Test Corp",
+            "sector": "Technology",
+            "industry": "Software",
+            "currentPrice": 100.0,
+        }
+        mock_ticker = MagicMock()
+        mock_ticker.info = mock_info
+        with patch("yfinance.Ticker", return_value=mock_ticker):
+            result = await tool.execute({"ticker": "AAPL"}, MagicMock())
+        assert not result.is_error
+        assert "Technology" in result.output
+        assert "Software" in result.output
+
+    @pytest.mark.asyncio
+    async def test_sector_only_no_industry(self):
+        """Sector present but no industry — still formats name."""
+        tool = StockPriceTool()
+        mock_info = {
+            "longName": "Test Corp",
+            "sector": "Technology",
+            "currentPrice": 100.0,
+        }
+        mock_ticker = MagicMock()
+        mock_ticker.info = mock_info
+        with patch("yfinance.Ticker", return_value=mock_ticker):
+            result = await tool.execute({"ticker": "AAPL"}, MagicMock())
+        assert not result.is_error
+        assert "Technology" in result.output
+
+    @pytest.mark.asyncio
+    async def test_short_name_fallback(self):
+        """Fallback to shortName when longName is missing."""
+        tool = StockPriceTool()
+        mock_info = {"shortName": "ShortCo", "currentPrice": 100.0}
+        mock_ticker = MagicMock()
+        mock_ticker.info = mock_info
+        with patch("yfinance.Ticker", return_value=mock_ticker):
+            result = await tool.execute({"ticker": "AAPL"}, MagicMock())
+        assert not result.is_error
+        assert "ShortCo" in result.output
+
+
+class TestStockPriceHistorical:
+    """Tests for historical OHLCV data display."""
+
+    @pytest.mark.asyncio
+    async def test_historical_data_with_volume_millions(self):
+        """Historical rows with volume >= 1,000,000 display in M format."""
+        tool = StockPriceTool()
+        mock_info = {"longName": "Test Corp", "currentPrice": 100.0}
+        mock_ticker = MagicMock()
+        mock_ticker.info = mock_info
+
+        mock_date = MagicMock()
+        mock_date.strftime.return_value = "2026-05-09"
+        mock_row = MagicMock()
+        mock_row.__getitem__.side_effect = lambda k: {
+            "Open": 150.0,
+            "High": 155.0,
+            "Low": 149.0,
+            "Close": 152.0,
+            "Volume": 2_500_000,
+        }[k]
+
+        mock_hist = MagicMock()
+        mock_hist.empty = False
+        mock_hist.tail.return_value.iterrows.return_value = [(mock_date, mock_row)]
+        mock_ticker.history.return_value = mock_hist
+
+        with patch("yfinance.Ticker", return_value=mock_ticker):
+            result = await tool.execute({"ticker": "AAPL"}, MagicMock())
+        assert not result.is_error
+        assert "Historical" in result.output
+        assert "2026-05-09" in result.output
+        assert "2.5M" in result.output
+
+    @pytest.mark.asyncio
+    async def test_historical_data_with_volume_thousands(self):
+        """Historical rows with volume between 1K-1M display in K format via raw number."""
+        tool = StockPriceTool()
+        mock_info = {"longName": "Test Corp", "currentPrice": 100.0}
+        mock_ticker = MagicMock()
+        mock_ticker.info = mock_info
+
+        mock_date = MagicMock()
+        mock_date.strftime.return_value = "2026-05-09"
+        mock_row = MagicMock()
+        # Volume 10,000 — the historical formatting checks >= 1_000_000, so this
+        # falls through to the raw comma-formatted number path.
+        mock_row.__getitem__.side_effect = lambda k: {
+            "Open": 150.0,
+            "High": 155.0,
+            "Low": 149.0,
+            "Close": 152.0,
+            "Volume": 10_000,
+        }[k]
+
+        mock_hist = MagicMock()
+        mock_hist.empty = False
+        mock_hist.tail.return_value.iterrows.return_value = [(mock_date, mock_row)]
+        mock_ticker.history.return_value = mock_hist
+
+        with patch("yfinance.Ticker", return_value=mock_ticker):
+            result = await tool.execute({"ticker": "AAPL"}, MagicMock())
+        assert not result.is_error
+        assert "Historical" in result.output
+
+    @pytest.mark.asyncio
+    async def test_no_data_all_symbols(self):
+        """When all symbols produce no data, return helpful message."""
+        tool = StockPriceTool()
+        mock_info: dict = {}
+        mock_ticker = MagicMock()
+        mock_ticker.info = mock_info
+        mock_hist = MagicMock()
+        mock_hist.empty = True
+        mock_ticker.history.return_value = mock_hist
+        with patch("yfinance.Ticker", return_value=mock_ticker):
+            result = await tool.execute({"ticker": "GHOST"}, MagicMock())
+        assert not result.is_error
+        assert "GHOST" in result.output
+
+    @pytest.mark.asyncio
+    async def test_fetch_stock_data_empty_symbols(self):
+        """Direct call to _fetch_stock_data with empty symbols list."""
+        tool = StockPriceTool()
+        result = await tool._fetch_stock_data([], "5d")
+        assert not result.is_error
+        assert "No data found" in result.output

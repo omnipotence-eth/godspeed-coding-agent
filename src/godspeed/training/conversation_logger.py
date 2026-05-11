@@ -66,6 +66,7 @@ class ConversationLogger:
         tool_name: str,
         content: str,
         is_error: bool = False,
+        is_dangerous: bool = False,
     ) -> None:
         """Log a tool execution result."""
         self._step += 1
@@ -76,6 +77,7 @@ class ConversationLogger:
                 "name": tool_name,
                 "content": content,
                 "is_error": is_error,
+                "dangerous_command": is_dangerous,
                 "step": self._step,
             }
         )

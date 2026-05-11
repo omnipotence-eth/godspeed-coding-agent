@@ -207,7 +207,7 @@ drivers:
     provider: openai
     context_window: 131072
     prompt_profile: thinking
-    tool_call_format: openai
+    tool_call_format: zaya_xml
     cost_per_mtok_in: 0.0
     cost_per_mtok_out: 0.0
     known_ceilings:
@@ -222,4 +222,4 @@ drivers:
       ifbench: 52.56
       eqbench: 72.95
       bfcl_v4: 39.22
-    notes: "Zyphra ZAYA1-8B NF4 via transformers + bitsandbytes. 0.7B active / 8.4B total params, MoE (16 experts, top-1). ~7.2GB VRAM loaded. Requires Zyphra transformers fork. Thinking profile with <think> tags. No GGUF yet (llama.cpp #22776)."
+    notes: "Zyphra ZAYA1-8B NF4 via transformers + bitsandbytes. 0.7B active / 8.4B total params, MoE (16 experts, top-1). ~7.2GB VRAM loaded. Requires Zyphra transformers fork. Thinking profile with <think> tags. Tool calls use <zyphra_tool_call> XML format (tokens 101-104). Parsed by zaya_xml_parser.py shim."

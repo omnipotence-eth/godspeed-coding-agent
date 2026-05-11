@@ -2,8 +2,60 @@
 
 from __future__ import annotations
 
-from godspeed.security.permissions import ALLOW, ASK, DENY, PermissionEngine
+from unittest.mock import patch
+
+import pytest
+
+from godspeed.security.permissions import (
+    ALLOW,
+    ASK,
+    DENY,
+    PermissionDecision,
+    PermissionEngine,
+    _extract_tool_prefix,
+)
 from godspeed.tools.base import RiskLevel, ToolCall
+
+
+class TestPermissionDecision:
+    """Test PermissionDecision value object."""
+
+    def test_eq_with_string(self) -> None:
+        d = PermissionDecision(ALLOW, "reason")
+        assert d == ALLOW
+        assert d == "allow"
+
+    def test_eq_with_decision(self) -> None:
+        d1 = PermissionDecision(ALLOW, "r1")
+        d2 = PermissionDecision(ALLOW, "r2")
+        assert d1 == d2
+
+    def test_eq_not_implemented(self) -> None:
+        d = PermissionDecision(ALLOW)
+        assert d.__eq__(42) is NotImplemented
+
+    def test_repr(self) -> None:
+        d = PermissionDecision(ALLOW, "test reason")
+        r = repr(d)
+        assert "PermissionDecision" in r
+        assert "allow" in r
+        assert "test reason" in r
+
+
+class TestExtractToolPrefix:
+    """Test _extract_tool_prefix helper."""
+
+    def test_normal_pattern(self) -> None:
+        assert _extract_tool_prefix("Bash(rm *)") == "Bash"
+
+    def test_no_parens(self) -> None:
+        assert _extract_tool_prefix("FileRead") is None
+
+    def test_wildcard_tool(self) -> None:
+        assert _extract_tool_prefix("*(*)") is None
+
+    def test_wildcard_specific(self) -> None:
+        assert _extract_tool_prefix("*(rm *)") is None
 
 
 class TestDenyRules:
@@ -31,6 +83,11 @@ class TestDenyRules:
         engine = PermissionEngine(deny_patterns=["Bash(rm *)"])
         engine.grant_session_permission("Bash(*)")
         tc = ToolCall(tool_name="Bash", arguments={"command": "rm -rf /"})
+        assert engine.evaluate(tc) == DENY
+
+    def test_deny_wildcard_rule(self) -> None:
+        engine = PermissionEngine(deny_patterns=["*(*)"])
+        tc = ToolCall(tool_name="FileRead", arguments={"file_path": "test.py"})
         assert engine.evaluate(tc) == DENY
 
 
@@ -90,6 +147,39 @@ class TestDangerousCommands:
             decision = engine.evaluate(tc)
             assert decision == DENY, f"Bypass was not blocked: {command}"
 
+    def test_shell_with_empty_command_skips_dangerous_check(self) -> None:
+        engine = PermissionEngine()
+        tc = ToolCall(tool_name="shell", arguments={"command": ""})
+        result = engine.evaluate(tc)
+        assert result == ASK
+
+    def test_shell_with_non_string_command_key(self) -> None:
+        engine = PermissionEngine()
+        tc = ToolCall(tool_name="shell", arguments={"command": 12345})
+        result = engine.evaluate(tc)
+        assert result == ASK
+
+    def test_dangerous_detection_fail_closed(self) -> None:
+        engine = PermissionEngine()
+        tc = ToolCall(tool_name="shell", arguments={"command": "something"})
+        with patch(
+            "godspeed.security.permissions.detect_dangerous_command",
+            side_effect=RuntimeError("simulated crash"),
+        ):
+            result = engine.evaluate(tc)
+        assert result == DENY
+        assert "fail closed" in result.reason.lower()
+
+    def test_plan_mode_blocks_destructive(self) -> None:
+        engine = PermissionEngine(
+            tool_risk_levels={"nuke": RiskLevel.DESTRUCTIVE},
+        )
+        engine.plan_mode = True
+        tc = ToolCall(tool_name="nuke", arguments={})
+        result = engine.evaluate(tc)
+        assert result == DENY
+        assert "plan mode" in result.reason.lower()
+
 
 class TestAllowRules:
     """Allow rules — grant access to specific patterns."""
@@ -105,6 +195,11 @@ class TestAllowRules:
         # Should fall through to risk-level default
         result = engine.evaluate(tc)
         assert result != DENY  # Not denied, but may be ASK or ALLOW
+
+    def test_allow_wildcard_rule(self) -> None:
+        engine = PermissionEngine(allow_patterns=["*(*)"])
+        tc = ToolCall(tool_name="FileRead", arguments={"file_path": "test.py"})
+        assert engine.evaluate(tc) == ALLOW
 
 
 class TestSessionGrants:
@@ -123,6 +218,21 @@ class TestSessionGrants:
         tc = ToolCall(tool_name="Bash", arguments={"command": "npm install"})
         # Should fall back to risk-level default (ASK or higher)
         assert engine.evaluate(tc) != ALLOW or engine.evaluate(tc) == ASK
+
+    def test_grant_tool_session_permission(self) -> None:
+        engine = PermissionEngine()
+        engine.grant_tool_session_permission("Bash")
+        tc = ToolCall(tool_name="Bash", arguments={"command": "any command"})
+        assert engine.evaluate(tc) == ALLOW
+
+    def test_session_grants_property(self) -> None:
+        engine = PermissionEngine()
+        engine.grant_session_permission("Bash(npm *)")
+        engine.grant_session_permission("Bash(make *)")
+        grants = engine.session_grants
+        assert "Bash(npm *)" in grants
+        assert "Bash(make *)" in grants
+        assert isinstance(grants, dict)
 
 
 class TestRiskLevelDefaults:
@@ -162,6 +272,73 @@ class TestAskRules:
         tc = ToolCall(tool_name="Bash", arguments={"command": "echo hello"})
         assert engine.evaluate(tc) == ASK
 
+    def test_ask_wildcard_rule(self) -> None:
+        engine = PermissionEngine(ask_patterns=["*(*)"])
+        tc = ToolCall(tool_name="unknown_tool", arguments={})
+        assert engine.evaluate(tc) == ASK
+
+    def test_ask_rule_does_not_override_allow(self) -> None:
+        engine = PermissionEngine(
+            allow_patterns=["Bash(git *)"],
+            ask_patterns=["Bash(*)"],
+        )
+        tc = ToolCall(tool_name="Bash", arguments={"command": "git log"})
+        assert engine.evaluate(tc) == ALLOW
+
+    def test_ask_rule_no_match_skips(self) -> None:
+        engine = PermissionEngine(ask_patterns=["Bash(*)"])
+        tc = ToolCall(tool_name="FileRead", arguments={"file_path": "test.py"})
+        result = engine.evaluate(tc)
+        assert result == ASK
+
+    def test_ask_rule_mismatch_tool_iterates(self) -> None:
+        engine = PermissionEngine(
+            ask_patterns=["Bash(npm *)", "Bash(git *)"],
+            tool_risk_levels={"Bash": RiskLevel.HIGH},
+        )
+        tc = ToolCall(tool_name="Bash", arguments={"command": "make test"})
+        result = engine.evaluate(tc)
+        assert result == ASK
+
+    def test_shell_command_non_dict_arguments(self) -> None:
+        engine = PermissionEngine()
+        tc = ToolCall.model_construct(tool_name="shell", arguments="echo hello")
+        result = engine.evaluate(tc)
+        assert result == ASK
+
+
+class TestAddRule:
+    """Test runtime rule addition."""
+
+    def test_add_allow_rule(self) -> None:
+        engine = PermissionEngine()
+        engine.add_rule("Bash(git *)", "allow")
+        tc = ToolCall(tool_name="Bash", arguments={"command": "git status"})
+        assert engine.evaluate(tc) == ALLOW
+
+    def test_add_deny_rule(self) -> None:
+        engine = PermissionEngine()
+        engine.add_rule("Bash(rm *)", "deny")
+        tc = ToolCall(tool_name="Bash", arguments={"command": "rm -rf /"})
+        assert engine.evaluate(tc) == DENY
+
+    def test_add_ask_rule(self) -> None:
+        engine = PermissionEngine()
+        engine.add_rule("Bash(*)", "ask")
+        tc = ToolCall(tool_name="Bash", arguments={"command": "echo hi"})
+        assert engine.evaluate(tc) == ASK
+
+    def test_add_rule_invalid_action(self) -> None:
+        engine = PermissionEngine()
+        with pytest.raises(ValueError, match="action must be"):
+            engine.add_rule("Bash(*)", "nonexistent")
+
+    def test_add_rule_case_insensitive(self) -> None:
+        engine = PermissionEngine()
+        engine.add_rule("Bash(git *)", "ALLOW")
+        tc = ToolCall(tool_name="Bash", arguments={"command": "git status"})
+        assert engine.evaluate(tc) == ALLOW
+
 
 class TestEvaluationOrder:
     """Verify the strict deny > dangerous > session > allow > ask > default order."""
@@ -191,6 +368,25 @@ class TestEvaluationOrder:
         )
         tc = ToolCall(tool_name="Bash", arguments={"command": "git log"})
         assert engine.evaluate(tc) == ALLOW
+
+    def test_empty_rules_all_asks(self) -> None:
+        engine = PermissionEngine()
+        tc = ToolCall(tool_name="shell", arguments={"command": "echo hi"})
+        assert engine.evaluate(tc) == ASK
+
+    def test_only_deny_rules(self) -> None:
+        engine = PermissionEngine(deny_patterns=["Bash(rm *)"])
+        tc_safe = ToolCall(tool_name="Bash", arguments={"command": "echo hi"})
+        tc_bad = ToolCall(tool_name="Bash", arguments={"command": "rm -rf /"})
+        assert engine.evaluate(tc_safe) == ASK
+        assert engine.evaluate(tc_bad) == DENY
+
+    def test_only_allow_rules(self) -> None:
+        engine = PermissionEngine(allow_patterns=["Bash(echo *)"])
+        tc_matched = ToolCall(tool_name="Bash", arguments={"command": "echo hi"})
+        tc_unmatched = ToolCall(tool_name="Bash", arguments={"command": "npm install"})
+        assert engine.evaluate(tc_matched) == ALLOW
+        assert engine.evaluate(tc_unmatched) == ASK
 
 
 class TestSessionGrantExpiry:
@@ -228,6 +424,32 @@ class TestSessionGrantExpiry:
 
         assert engine.evaluate(tc_npm) != ALLOW or engine.evaluate(tc_npm) == ASK
         assert engine.evaluate(tc_make) == ALLOW
+
+    def test_session_grant_copies_are_thread_safe(self) -> None:
+        engine = PermissionEngine()
+        engine.grant_session_permission("Bash(echo *)")
+        copy1 = engine.session_grants
+        copy2 = engine.session_grants
+        assert copy1 == copy2
+        assert copy1 is not copy2  # Different dict objects (deep copy)
+
+    def test_deny_rules_property(self) -> None:
+        engine = PermissionEngine(deny_patterns=["Bash(*)"])
+        rules = engine.deny_rules
+        assert len(rules) == 1
+        assert rules[0].pattern == "Bash(*)"
+
+    def test_allow_rules_property(self) -> None:
+        engine = PermissionEngine(allow_patterns=["Bash(*)"])
+        rules = engine.allow_rules
+        assert len(rules) == 1
+        assert rules[0].pattern == "Bash(*)"
+
+    def test_ask_rules_property(self) -> None:
+        engine = PermissionEngine(ask_patterns=["Bash(*)"])
+        rules = engine.ask_rules
+        assert len(rules) == 1
+        assert rules[0].pattern == "Bash(*)"
 
 
 class TestPlanMode:

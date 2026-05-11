@@ -99,3 +99,26 @@ class TestCodeSearchTool:
         tool = CodeSearchTool(index)
         await tool.execute({"query": "test", "top_k": 3}, context)
         index.search.assert_called_once_with("test", top_k=3)
+
+    @pytest.mark.asyncio()
+    async def test_truncated_content(self, context: ToolContext) -> None:
+        from godspeed.context.codebase_index import SearchResult
+
+        index = MagicMock()
+        index.is_available = True
+        index.is_building = False
+        long_content = "\n".join(f"line {i}" for i in range(20))
+        index.search.return_value = [
+            SearchResult(
+                file_path="src/long.py",
+                start_line=1,
+                end_line=20,
+                content=long_content,
+                score=0.88,
+            ),
+        ]
+        tool = CodeSearchTool(index)
+        result = await tool.execute({"query": "long function"}, context)
+        assert not result.is_error
+        assert "long.py" in result.output
+        assert "more lines" in result.output

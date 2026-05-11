@@ -132,8 +132,10 @@ class LLMClient:
         router: ModelRouter | None = None,
         thinking_budget: int = 0,
         max_cost_usd: float = 0.0,
+        reasoning_effort: str = "",
     ) -> None:
         self.model = model
+        self.reasoning_effort = reasoning_effort
         # Cache lowercased model name to avoid repeated .lower() calls
         self._model_lower = model.lower()
         self.fallback_models = fallback_models or []
@@ -762,6 +764,18 @@ class LLMClient:
             from godspeed.llm.qwen3_coder_parser import extract_qwen3_coder_tool_calls
 
             parsed = extract_qwen3_coder_tool_calls(content_text)
+            if parsed:
+                tool_calls = parsed
+                content_text = ""
+
+        # ZAYA1-8B emits <zyphra_tool_call>{"name":"...","arguments":{...}}</zyphra_tool_call>
+        # XML blocks. The vLLM zaya_xml parser extracts these server-side, but
+        # when running locally via transformers or Ollama-style endpoints that
+        # don't recognise the format, the tool calls end up in content.
+        if not tool_calls and content_text:
+            from godspeed.llm.zaya_xml_parser import extract_zaya_tool_calls
+
+            parsed = extract_zaya_tool_calls(content_text)
             if parsed:
                 tool_calls = parsed
                 content_text = ""

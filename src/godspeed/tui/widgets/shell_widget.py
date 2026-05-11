@@ -11,6 +11,7 @@ import contextlib
 import logging
 import os
 import subprocess
+import sys
 from typing import ClassVar
 
 from textual.widgets import RichLog
@@ -66,17 +67,18 @@ class ShellWidget(RichLog):
                     dimensions=(80, 24),
                 )
             else:
-                self._proc = subprocess.Popen(
-                    [_SHELL],
-                    stdin=subprocess.PIPE,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                    cwd=self._cwd,
-                    text=True,
-                    bufsize=1,
-                    universal_newlines=True,
-                    creationflags=subprocess.CREATE_NO_WINDOW,
-                )
+                kwargs = {
+                    "stdin": subprocess.PIPE,
+                    "stdout": subprocess.PIPE,
+                    "stderr": subprocess.STDOUT,
+                    "cwd": self._cwd,
+                    "text": True,
+                    "bufsize": 1,
+                    "universal_newlines": True,
+                }
+                if sys.platform == "win32":
+                    kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+                self._proc = subprocess.Popen([_SHELL], **kwargs)
             self._running = True
             self._reader_task = asyncio.create_task(self._read_output())
         except Exception as exc:

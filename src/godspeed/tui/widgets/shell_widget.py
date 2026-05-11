@@ -67,7 +67,7 @@ class ShellWidget(RichLog):
                     dimensions=(80, 24),
                 )
             else:
-                kwargs = {
+                kwargs: dict[str, object] = {
                     "stdin": subprocess.PIPE,
                     "stdout": subprocess.PIPE,
                     "stderr": subprocess.STDOUT,
@@ -78,7 +78,7 @@ class ShellWidget(RichLog):
                 }
                 if sys.platform == "win32":
                     kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
-                self._proc = subprocess.Popen([_SHELL], **kwargs)
+                self._proc = subprocess.Popen([_SHELL], **kwargs)  # type: ignore[call-overload]
             self._running = True
             self._reader_task = asyncio.create_task(self._read_output())
         except Exception as exc:

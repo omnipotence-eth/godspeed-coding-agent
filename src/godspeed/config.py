@@ -271,6 +271,9 @@ class GodspeedSettings(BaseSettings):
     # Cost budget — hard limit on session spend (0 = unlimited)
     max_cost_usd: float = 0.0
 
+    # Reasoning effort — for reasoning-capable models (o1, o3, o4-mini, etc.)
+    reasoning_effort: str = ""  # "", "low", "medium", "high"
+
     # Architect mode — two-model pipeline (plan then execute)
     architect_model: str = ""  # model for planning phase; empty = use main model
 

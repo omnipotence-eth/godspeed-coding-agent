@@ -132,8 +132,10 @@ class LLMClient:
         router: ModelRouter | None = None,
         thinking_budget: int = 0,
         max_cost_usd: float = 0.0,
+        reasoning_effort: str = "",
     ) -> None:
         self.model = model
+        self.reasoning_effort = reasoning_effort
         # Cache lowercased model name to avoid repeated .lower() calls
         self._model_lower = model.lower()
         self.fallback_models = fallback_models or []

@@ -62,3 +62,24 @@ def test_project_instructions_still_render(tmp_path: Path) -> None:
     assert "Project Instructions" in prompt
     assert "ALWAYS use uv" in prompt
     assert str(tmp_path) in prompt
+
+
+def test_codeact_execution_mode_appended() -> None:
+    prompt = build_system_prompt(tools=[_StubTool()], execution_mode="codeact")
+    assert "CodeAct Execution Mode Active" in prompt
+
+
+def test_memory_hints_appended() -> None:
+    prompt = build_system_prompt(
+        tools=[_StubTool()],
+        memory_hints="User prefers double quotes.",
+    )
+    assert "Memory" in prompt
+    assert "double quotes" in prompt
+
+
+def test_tool_description_caching() -> None:
+    prompt1 = build_system_prompt(tools=[_StubTool()])
+    prompt2 = build_system_prompt(tools=[_StubTool()])
+    assert prompt1 == prompt2
+    assert "stub" in prompt2

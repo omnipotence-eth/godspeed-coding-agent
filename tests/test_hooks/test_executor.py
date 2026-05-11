@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from unittest.mock import patch
 
 from godspeed.hooks import HookEvent
 from godspeed.hooks.config import HookDefinition
@@ -310,3 +311,95 @@ class TestFireMethod:
         ]
         # Should have 33 events (including the new ones)
         assert len(events) >= 27
+
+
+class TestNeedsShell:
+    """Tests for _needs_shell shell metacharacter detection."""
+
+    def test_pipe_needs_shell(self) -> None:
+        from godspeed.hooks.executor import _needs_shell
+
+        assert _needs_shell("echo hello | grep world") is True
+
+    def test_no_metachars_does_not_need_shell(self) -> None:
+        from godspeed.hooks.executor import _needs_shell
+
+        assert _needs_shell("echo hello world") is False
+
+    def test_semicolon_needs_shell(self) -> None:
+        from godspeed.hooks.executor import _needs_shell
+
+        assert _needs_shell("ls; pwd") is True
+
+    def test_ampersand_needs_shell(self) -> None:
+        from godspeed.hooks.executor import _needs_shell
+
+        assert _needs_shell("ls &") is True
+
+    def test_redirect_needs_shell(self) -> None:
+        from godspeed.hooks.executor import _needs_shell
+
+        assert _needs_shell("echo hi > out.txt") is True
+        assert _needs_shell("echo hi < in.txt") is True
+
+
+class TestExecuteNonWindows:
+    """Tests for _execute on non-Windows platform (shlex.split path)."""
+
+    def test_execute_on_posix_uses_shlex(self, tmp_path: Path) -> None:
+        with patch("sys.platform", "linux"):
+            hook = HookDefinition(
+                event="pre_tool_call",
+                command=_py_cmd("print('hello from linux')"),
+            )
+            executor = _make_executor([hook], tmp_path)
+            result = executor.fire(HookEvent.PRE_TOOL_CALL, tool_name="shell")
+            assert result is None
+
+
+class TestExecuteValueError:
+    """Tests for ValueError handling in _execute (e.g., bad command args)."""
+
+    def test_valueerror_returns_1(self, tmp_path: Path) -> None:
+        hook = HookDefinition(
+            event="pre_tool_call",
+            command=_py_cmd("print('ok')"),
+        )
+        executor = _make_executor([hook], tmp_path)
+        with patch("subprocess.run", side_effect=ValueError("Bad args")):
+            result = executor.fire(HookEvent.PRE_TOOL_CALL, tool_name="shell")
+            assert result is False
+
+
+class TestExecuteOSError:
+    """Tests for OSError handling in _execute."""
+
+    def test_oserror_returns_1(self, tmp_path: Path) -> None:
+        hook = HookDefinition(
+            event="pre_tool_call",
+            command=_py_cmd("print('ok')"),
+        )
+        executor = _make_executor([hook], tmp_path)
+        with patch("subprocess.run", side_effect=OSError("Exec not found")):
+            result = executor.fire(HookEvent.PRE_TOOL_CALL, tool_name="shell")
+            assert result is False
+
+
+class TestExecuteStdoutStderr:
+    """Tests for stdout/stderr logging in _execute."""
+
+    def test_stdout_logged_on_success(self, tmp_path: Path) -> None:
+        hook = HookDefinition(
+            event="pre_tool_call",
+            command=_py_cmd("print('hello stdout')"),
+        )
+        executor = _make_executor([hook], tmp_path)
+        executor.fire(HookEvent.PRE_TOOL_CALL, tool_name="shell")
+
+    def test_stderr_logged_on_error(self, tmp_path: Path) -> None:
+        hook = HookDefinition(
+            event="pre_tool_call",
+            command=_py_cmd("import sys; print('error text', file=sys.stderr)"),
+        )
+        executor = _make_executor([hook], tmp_path)
+        executor.fire(HookEvent.PRE_TOOL_CALL, tool_name="shell")

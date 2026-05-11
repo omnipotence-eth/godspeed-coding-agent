@@ -151,3 +151,28 @@ def test_all_profiles_have_preamble_entries() -> None:
 
 def test_plan_style_keys_are_subset_of_preamble_keys() -> None:
     assert set(PROFILE_PLAN_STYLE.keys()) <= set(PROFILE_PREAMBLES.keys())
+
+
+# ---------------------------------------------------------------------------
+# Additional error paths
+# ---------------------------------------------------------------------------
+
+
+def test_yaml_not_installed_falls_back_to_empty_catalog() -> None:
+    with patch.dict("sys.modules", {"yaml": None}):
+        with patch("godspeed.agent.prompt_profiles._load_catalog", wraps=_load_catalog) as wrapped:
+            wrapped.cache_clear()
+            result = _load_catalog()
+    assert result == {}
+
+
+def test_drivers_not_a_dict_falls_back(tmp_path: Path) -> None:
+    fake = tmp_path / "not_dict.yaml"
+    fake.write_text(
+        "version: 1\ndrivers:\n  - list_item\n  - another\n",
+        encoding="utf-8",
+    )
+    with patch("godspeed.agent.prompt_profiles._CATALOG_PATH", fake):
+        _load_catalog.cache_clear()
+        result = _load_catalog()
+    assert result == {}

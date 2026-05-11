@@ -184,3 +184,150 @@ class TestIsLowMemory:
     def test_boundary_6gb(self) -> None:
         with patch("godspeed.evolution.hardware._get_cached_vram", return_value=6000):
             assert is_low_memory() is False
+
+
+# ---------------------------------------------------------------------------
+# Test: detect_vram_mb Jetson fallback path (line 89-91)
+# ---------------------------------------------------------------------------
+
+
+class TestDetectVramJetson:
+    def test_jetson_path_after_nvidia_smi_fails(self) -> None:
+        with (
+            patch("godspeed.evolution.hardware.shutil.which", return_value=None),
+            patch("godspeed.evolution.hardware._detect_jetson", return_value=4800),
+        ):
+            assert detect_vram_mb() == 4800
+
+
+# ---------------------------------------------------------------------------
+# Test: _detect_nvidia_smi with float value (line 119)
+# ---------------------------------------------------------------------------
+
+
+class TestDetectNvidiaSmiDecimal:
+    def test_parses_float_output_as_int(self) -> None:
+        with (
+            patch("godspeed.evolution.hardware.shutil.which", return_value="/usr/bin/nvidia-smi"),
+            patch("godspeed.evolution.hardware.subprocess.run") as mock_run,
+        ):
+            mock_run.return_value.returncode = 0
+            mock_run.return_value.stdout = "8192.7\n"
+            assert detect_vram_mb() == 8192
+
+    def test_value_error_on_non_numeric(self) -> None:
+        with (
+            patch("godspeed.evolution.hardware.shutil.which", return_value="/usr/bin/nvidia-smi"),
+            patch("godspeed.evolution.hardware.subprocess.run") as mock_run,
+            patch("godspeed.evolution.hardware._detect_jetson", return_value=None),
+        ):
+            mock_run.return_value.returncode = 0
+            mock_run.return_value.stdout = "not_a_number\n"
+            assert detect_vram_mb() is None
+
+
+# ---------------------------------------------------------------------------
+# Test: scan_machine with cpu_count returning None
+# ---------------------------------------------------------------------------
+
+
+class TestScanMachineCpuFallback:
+    def test_cpu_count_none_falls_back_to_one(self) -> None:
+        with (
+            patch("godspeed.evolution.hardware._get_cached_vram", return_value=8000),
+            patch("godspeed.evolution.hardware._detect_gpu_name", return_value="Test GPU"),
+            patch("psutil.virtual_memory") as mock_mem,
+        ):
+            from unittest.mock import MagicMock
+
+            mock_mem.return_value = MagicMock(total=16 * 1024**3)
+            with patch("os.cpu_count", return_value=None):
+                specs = hw_module.scan_machine()
+                assert specs.cpu_cores == 1
+                assert specs.platform is not None
+                assert specs.ram_gb >= 15
+
+
+# ---------------------------------------------------------------------------
+# Test: recommend_models_for_machine — CPU mode budget calculation
+# ---------------------------------------------------------------------------
+
+
+class TestRecommendModelsCpuMode:
+    def test_cpu_mode_budget_calculation(self) -> None:
+        from godspeed.evolution.hardware import MachineSpecs, recommend_models_for_machine
+
+        specs = MachineSpecs(platform="linux", vram_mb=None, ram_gb=8.0, cpu_cores=4, gpu_name="")
+        recs = recommend_models_for_machine(specs)
+        # CPU budget = int(8.0 * 1024 * 0.6) = 4915 MB → should get fallback (1500)
+        # and maybe fast_alt (3000)
+        assert recs["fast"] is not None
+        assert recs["cloud"] is not None
+        assert recs["frontier"] is not None
+
+    def test_zero_vram_cpu_mode_budget(self) -> None:
+        from godspeed.evolution.hardware import MachineSpecs, recommend_models_for_machine
+
+        specs = MachineSpecs(platform="linux", vram_mb=0, ram_gb=32.0, cpu_cores=8, gpu_name="")
+        recs = recommend_models_for_machine(specs)
+        assert recs["fast"] is not None
+        assert "balanced" in recs
+
+    def test_cpu_mode_low_ram_only_fallback(self) -> None:
+        from godspeed.evolution.hardware import MachineSpecs, recommend_models_for_machine
+
+        specs = MachineSpecs(platform="linux", vram_mb=0, ram_gb=1.0, cpu_cores=2, gpu_name="")
+        recs = recommend_models_for_machine(specs)
+        # Budget = int(1.0 * 1024 * 0.6) = 614 MB — below 1500 fallback minimum
+        # So only the initial selected_fast (ollama/qwen2.5:1.5b) persists
+        assert recs["fast"] is not None
+        assert recs["fast"] == "ollama/qwen2.5:1.5b"
+
+
+# ---------------------------------------------------------------------------
+# Test: format_machine_report — no specs calls scan_machine
+# ---------------------------------------------------------------------------
+
+
+class TestFormatMachineReportEdgeCases:
+    def test_format_with_none_vram_and_empty_gpu(self) -> None:
+        from godspeed.evolution.hardware import MachineSpecs, format_machine_report
+
+        specs = MachineSpecs(platform="linux", vram_mb=None, ram_gb=4.0, cpu_cores=2, gpu_name="")
+        report = format_machine_report(specs)
+        assert "GODSPEED MACHINE SCAN" in report
+        assert "CPU-only mode" in report
+
+    def test_format_with_zero_vram_shows_0_gb(self) -> None:
+        from godspeed.evolution.hardware import MachineSpecs, format_machine_report
+
+        specs = MachineSpecs(
+            platform="windows", vram_mb=0, ram_gb=16.0, cpu_cores=8, gpu_name="NVIDIA RTX"
+        )
+        report = format_machine_report(specs)
+        assert "GODSPEED MACHINE SCAN" in report
+
+    def test_format_with_none_specs_calls_scan(self) -> None:
+        from godspeed.evolution.hardware import format_machine_report
+
+        with patch("godspeed.evolution.hardware.scan_machine") as mock_scan:
+            from godspeed.evolution.hardware import MachineSpecs
+
+            mock_scan.return_value = MachineSpecs(
+                platform="darwin", vram_mb=None, ram_gb=32.0, cpu_cores=10, gpu_name="M3"
+            )
+            report = format_machine_report()
+            assert "GODSPEED MACHINE SCAN" in report
+            assert "darwin" in report
+            mock_scan.assert_called_once()
+
+    def test_format_report_unix_platform(self) -> None:
+        from godspeed.evolution.hardware import MachineSpecs, format_machine_report
+
+        specs = MachineSpecs(
+            platform="linux", vram_mb=12000, ram_gb=64.0, cpu_cores=16, gpu_name="A100"
+        )
+        report = format_machine_report(specs)
+        assert "RECOMMENDED MODELS" in report
+        assert "--preset" in report
+        assert "✓" in report

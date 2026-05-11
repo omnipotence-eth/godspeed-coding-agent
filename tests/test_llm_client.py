@@ -671,3 +671,669 @@ class TestLLMClientConnectionError:
             response = await client.chat([{"role": "user", "content": "test"}])
 
         assert response.content == "fallback ok"
+
+
+class TestLLMClientStreaming:
+    """Tests for the streaming chat path."""
+
+    @pytest.mark.asyncio
+    async def test_stream_chat_basic(self) -> None:
+        client = LLMClient(model="ollama/qwen3:4b")
+        messages = [{"role": "user", "content": "hello"}]
+
+        class FakeStream:
+            def __init__(self):
+                self._chunks = [
+                    ChatResponse(content="Hello", tool_calls=[], finish_reason=None),
+                    ChatResponse(content=" there", tool_calls=[], finish_reason=None),
+                    ChatResponse(content="", tool_calls=[], finish_reason="stop"),
+                ]
+                self._idx = 0
+
+            def __aiter__(self):
+                return self
+
+            async def __anext__(self):
+                if self._idx >= len(self._chunks):
+                    raise StopAsyncIteration
+                chunk = self._chunks[self._idx]
+                self._idx += 1
+                return chunk
+
+        async def _mock_inner(self, msgs, tools=None, **kw):
+            async for c in FakeStream():
+                yield c
+
+        client._stream_chat_inner = _mock_inner.__get__(client)
+        chunks = []
+        async for chunk in client.stream_chat(messages):
+            chunks.append(chunk)
+
+        assert len(chunks) >= 2
+        assert chunks[-1].finish_reason == "stop"
+
+    @pytest.mark.asyncio
+    async def test_stream_fails_falls_back_to_batch(self) -> None:
+        client = LLMClient(model="ollama/qwen3:4b")
+        messages = [{"role": "user", "content": "hello"}]
+
+        async def failing_stream(self, msgs, tools=None, **kw):
+            raise RuntimeError("stream failed")
+            yield
+
+        client._stream_chat_inner = failing_stream.__get__(client)
+        with patch.object(client, "chat") as mock_chat:
+            mock_chat.return_value = ChatResponse(
+                content="batch fallback", tool_calls=[], finish_reason="stop"
+            )
+            chunks = []
+            async for chunk in client.stream_chat(messages):
+                chunks.append(chunk)
+
+        assert len(chunks) == 1
+        assert chunks[0].content == "batch fallback"
+
+    @pytest.mark.asyncio
+    async def test_stream_inner_basic(self) -> None:
+        client = LLMClient(model="ollama/qwen3:4b")
+
+        class MockStream:
+            async def __aiter__(self):
+                for i in range(3):
+                    delta = SimpleNamespace(content=f"chunk{i}", tool_calls=None)
+                    choice = SimpleNamespace(delta=delta, finish_reason=None)
+                    yield SimpleNamespace(choices=[choice])
+                final_delta = SimpleNamespace(content="", tool_calls=None)
+                final_choice = SimpleNamespace(delta=final_delta, finish_reason="stop")
+                yield SimpleNamespace(choices=[final_choice])
+
+        with patch("godspeed.llm.client._get_litellm") as mock_litellm:
+            mock_litellm.return_value.acompletion = AsyncMock(return_value=MockStream())
+            chunks = []
+            async for chunk in client._stream_chat_inner(
+                [{"role": "user", "content": "hello"}], None
+            ):
+                chunks.append(chunk)
+
+        assert len(chunks) >= 3
+
+    @pytest.mark.asyncio
+    async def test_stream_inner_no_finish_reason(self) -> None:
+        client = LLMClient(model="ollama/qwen3:4b")
+
+        class MockStream:
+            async def __aiter__(self):
+                delta = SimpleNamespace(content="partial", tool_calls=None)
+                choice = SimpleNamespace(delta=delta, finish_reason=None)
+                yield SimpleNamespace(choices=[choice])
+
+        with patch("godspeed.llm.client._get_litellm") as mock_litellm:
+            mock_litellm.return_value.acompletion = AsyncMock(return_value=MockStream())
+            chunks = []
+            async for chunk in client._stream_chat_inner(
+                [{"role": "user", "content": "hello"}], None
+            ):
+                chunks.append(chunk)
+
+        assert len(chunks) >= 1
+        assert chunks[-1].finish_reason == "incomplete"
+
+    @pytest.mark.asyncio
+    async def test_stream_inner_error(self) -> None:
+        client = LLMClient(model="ollama/qwen3:4b")
+
+        with patch("godspeed.llm.client._get_litellm") as mock_litellm:
+            mock_litellm.return_value.acompletion = AsyncMock(
+                side_effect=RuntimeError("stream error")
+            )
+            with pytest.raises(RuntimeError, match="stream error"):
+                async for _chunk in client._stream_chat_inner(
+                    [{"role": "user", "content": "hello"}], None
+                ):
+                    pass
+
+    @pytest.mark.asyncio
+    async def test_stream_inner_thinking_budget(self) -> None:
+        client = LLMClient(model="claude-sonnet-4-20250514", thinking_budget=500)
+
+        class MockStream:
+            async def __aiter__(self):
+                delta = SimpleNamespace(content="ok", tool_calls=None)
+                choice = SimpleNamespace(delta=delta, finish_reason="stop")
+                yield SimpleNamespace(choices=[choice])
+
+        with patch("godspeed.llm.client._get_litellm") as mock_litellm:
+            mock_litellm.return_value.acompletion = AsyncMock(return_value=MockStream())
+            chunks = []
+            async for chunk in client._stream_chat_inner(
+                [{"role": "user", "content": "think"}], None
+            ):
+                chunks.append(chunk)
+
+        call_kwargs = mock_litellm.return_value.acompletion.call_args[1]
+        assert call_kwargs["thinking"]["budget_tokens"] == 500
+
+    @pytest.mark.asyncio
+    async def test_stream_inner_qwen_thinking(self) -> None:
+        client = LLMClient(model="qwen3.6-4b", thinking_budget=500)
+
+        class MockStream:
+            async def __aiter__(self):
+                delta = SimpleNamespace(content="ok", tool_calls=None)
+                choice = SimpleNamespace(delta=delta, finish_reason="stop")
+                yield SimpleNamespace(choices=[choice])
+
+        with patch("godspeed.llm.client._get_litellm") as mock_litellm:
+            mock_litellm.return_value.acompletion = AsyncMock(return_value=MockStream())
+            chunks = []
+            async for chunk in client._stream_chat_inner(
+                [{"role": "user", "content": "think"}], None
+            ):
+                chunks.append(chunk)
+
+        call_kwargs = mock_litellm.return_value.acompletion.call_args[1]
+        assert call_kwargs["extra_body"]["thinking"] is True
+
+    @pytest.mark.asyncio
+    async def test_stream_inner_with_tools(self) -> None:
+        client = LLMClient(model="ollama/qwen3:4b")
+        tools = [{"type": "function", "function": {"name": "file_read"}}]
+
+        class MockStream:
+            async def __aiter__(self):
+                tc_delta = SimpleNamespace(
+                    index=0,
+                    id="call_1",
+                    function=SimpleNamespace(name="file_read", arguments='{"file_path":'),
+                )
+                yield SimpleNamespace(
+                    choices=[
+                        SimpleNamespace(
+                            delta=SimpleNamespace(content=None, tool_calls=[tc_delta]),
+                            finish_reason=None,
+                        )
+                    ]
+                )
+                tc_delta2 = SimpleNamespace(
+                    index=0,
+                    id=None,
+                    function=SimpleNamespace(name=None, arguments='"x.py"}'),
+                )
+                yield SimpleNamespace(
+                    choices=[
+                        SimpleNamespace(
+                            delta=SimpleNamespace(content=None, tool_calls=[tc_delta2]),
+                            finish_reason=None,
+                        )
+                    ]
+                )
+                yield SimpleNamespace(
+                    choices=[
+                        SimpleNamespace(
+                            delta=SimpleNamespace(content="", tool_calls=None),
+                            finish_reason="tool_calls",
+                        )
+                    ]
+                )
+
+        with patch("godspeed.llm.client._get_litellm") as mock_litellm:
+            mock_litellm.return_value.acompletion = AsyncMock(return_value=MockStream())
+            chunks = []
+            async for chunk in client._stream_chat_inner(
+                [{"role": "user", "content": "read x"}], tools
+            ):
+                chunks.append(chunk)
+
+        final_chunk = chunks[-1]
+        assert final_chunk.finish_reason == "tool_calls"
+        assert len(final_chunk.tool_calls) > 0
+
+    @pytest.mark.asyncio
+    async def test_stream_inner_no_tool_calling_support(self) -> None:
+        client = LLMClient(model="ollama/phi4:latest")
+        tools = [{"type": "function", "function": {"name": "file_read"}}]
+
+        class MockStream:
+            async def __aiter__(self):
+                delta = SimpleNamespace(content="no tools", tool_calls=None)
+                choice = SimpleNamespace(delta=delta, finish_reason="stop")
+                yield SimpleNamespace(choices=[choice])
+
+        with patch("godspeed.llm.client._get_litellm") as mock_litellm:
+            mock_litellm.return_value.acompletion = AsyncMock(return_value=MockStream())
+            chunks = []
+            async for chunk in client._stream_chat_inner(
+                [{"role": "user", "content": "read"}], tools
+            ):
+                chunks.append(chunk)
+
+        call_kwargs = mock_litellm.return_value.acompletion.call_args[1]
+        assert "tools" not in call_kwargs
+
+    @pytest.mark.asyncio
+    async def test_stream_inner_skip_empty_choices(self) -> None:
+        client = LLMClient(model="ollama/qwen3:4b")
+
+        class MockStream:
+            async def __aiter__(self):
+                yield SimpleNamespace(choices=[])
+                delta = SimpleNamespace(content="ok", tool_calls=None)
+                choice = SimpleNamespace(delta=delta, finish_reason="stop")
+                yield SimpleNamespace(choices=[choice])
+
+        with patch("godspeed.llm.client._get_litellm") as mock_litellm:
+            mock_litellm.return_value.acompletion = AsyncMock(return_value=MockStream())
+            chunks = []
+            async for chunk in client._stream_chat_inner(
+                [{"role": "user", "content": "hello"}], None
+            ):
+                chunks.append(chunk)
+
+        assert len(chunks) >= 1
+
+
+class TestLLMClientDeepSeek:
+    """Tests for the DeepSeek direct API path."""
+
+    @pytest.mark.asyncio
+    async def test_deepseek_model_routes_to_direct(self) -> None:
+        client = LLMClient(model="deepseek-v4-pro")
+        mock_resp = SimpleNamespace(
+            choices=[
+                SimpleNamespace(
+                    message=SimpleNamespace(content="ok", tool_calls=None, reasoning_content=""),
+                    finish_reason="stop",
+                )
+            ],
+            usage=SimpleNamespace(prompt_tokens=10, completion_tokens=20),
+        )
+
+        mock_openai = MagicMock()
+        mock_openai.chat = MagicMock()
+        mock_openai.chat.completions = MagicMock()
+        mock_openai.chat.completions.create = MagicMock(return_value=mock_resp)
+
+        with patch("openai.OpenAI", return_value=mock_openai):
+            with patch.dict("os.environ", {"DEEPSEEK_API_KEY": "sk-test"}, clear=False):
+                response = await client._call(
+                    "deepseek-v4-pro",
+                    [{"role": "user", "content": "hello"}],
+                    None,
+                )
+
+        assert response.content == "ok"
+
+    @pytest.mark.asyncio
+    async def test_deepseek_with_tools(self) -> None:
+        client = LLMClient(model="deepseek-v4-pro")
+        tc_item = SimpleNamespace(
+            id="call_1",
+            function=SimpleNamespace(name="file_read", arguments='{"path": "x.py"}'),
+        )
+        mock_resp = SimpleNamespace(
+            choices=[
+                SimpleNamespace(
+                    message=SimpleNamespace(
+                        content="", tool_calls=[tc_item], reasoning_content=None
+                    ),
+                    finish_reason="tool_calls",
+                )
+            ],
+            usage=SimpleNamespace(prompt_tokens=5, completion_tokens=15),
+        )
+
+        mock_openai = MagicMock()
+        mock_openai.chat = MagicMock()
+        mock_openai.chat.completions = MagicMock()
+        mock_openai.chat.completions.create = MagicMock(return_value=mock_resp)
+
+        with patch("openai.OpenAI", return_value=mock_openai):
+            with patch.dict("os.environ", {"DEEPSEEK_API_KEY": "sk-test"}, clear=False):
+                response = await client._call(
+                    "deepseek-v4-pro",
+                    [{"role": "user", "content": "read x"}],
+                    [{"type": "function", "function": {"name": "file_read"}}],
+                )
+
+        assert response.has_tool_calls
+        assert response.tool_calls[0]["function"]["name"] == "file_read"
+
+    @pytest.mark.asyncio
+    async def test_deepseek_no_api_key(self) -> None:
+        client = LLMClient(model="deepseek-v4-pro")
+
+        with patch.dict("os.environ", {}, clear=True):
+            with pytest.raises(RuntimeError, match="DEEPSEEK_API_KEY"):
+                await client._call(
+                    "deepseek-v4-pro",
+                    [{"role": "user", "content": "hello"}],
+                    None,
+                )
+
+    @pytest.mark.asyncio
+    async def test_deepseek_message_restructuring(self) -> None:
+        client = LLMClient(model="deepseek-v4-pro")
+        mock_resp = SimpleNamespace(
+            choices=[
+                SimpleNamespace(
+                    message=SimpleNamespace(content="ok", tool_calls=None, reasoning_content=None),
+                    finish_reason="stop",
+                )
+            ],
+            usage=SimpleNamespace(prompt_tokens=10, completion_tokens=10),
+        )
+
+        mock_openai = MagicMock()
+        mock_openai.chat = MagicMock()
+        mock_openai.chat.completions = MagicMock()
+        mock_openai.chat.completions.create = MagicMock(return_value=mock_resp)
+
+        messages = [
+            {"role": "user", "content": "do stuff"},
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [
+                    {
+                        "id": "t1",
+                        "type": "function",
+                        "function": {"name": "read", "arguments": "{}"},
+                    },
+                    {
+                        "id": "t2",
+                        "type": "function",
+                        "function": {"name": "grep", "arguments": "{}"},
+                    },
+                ],
+            },
+            {"role": "tool", "tool_call_id": "t1", "content": "result1"},
+            {"role": "tool", "tool_call_id": "t2", "content": "result2"},
+        ]
+
+        with patch("openai.OpenAI", return_value=mock_openai):
+            with patch.dict("os.environ", {"DEEPSEEK_API_KEY": "sk-test"}, clear=False):
+                response = await client._call("deepseek-v4-pro", messages, None)
+
+        assert response.content == "ok"
+
+    @pytest.mark.asyncio
+    async def test_deepseek_with_reasoning_content_stripping(self) -> None:
+        client = LLMClient(model="deepseek-v4-pro")
+        mock_resp = SimpleNamespace(
+            choices=[
+                SimpleNamespace(
+                    message=SimpleNamespace(content="ok", tool_calls=None, reasoning_content=None),
+                    finish_reason="stop",
+                )
+            ],
+            usage=SimpleNamespace(prompt_tokens=5, completion_tokens=10),
+        )
+
+        mock_openai = MagicMock()
+        mock_openai.chat = MagicMock()
+        mock_openai.chat.completions = MagicMock()
+        mock_openai.chat.completions.create = MagicMock(return_value=mock_resp)
+
+        messages = [
+            {"role": "user", "content": "hello"},
+            {"role": "assistant", "content": "hi", "reasoning_content": "I should reply nicely."},
+        ]
+
+        with patch("openai.OpenAI", return_value=mock_openai):
+            with patch.dict("os.environ", {"DEEPSEEK_API_KEY": "sk-test"}, clear=False):
+                response = await client._call("deepseek-v4-pro", messages, None)
+
+        assert response.content == "ok"
+
+
+class TestLLMClientCallExtended:
+    """Extended tests for the _call method."""
+
+    @pytest.mark.asyncio
+    async def test_call_with_unsupported_tools_model(self) -> None:
+        client = LLMClient(model="ollama/phi4:latest")
+        mock_resp = _mock_response(content="text response")
+
+        with patch("godspeed.llm.client._get_litellm") as mock_litellm:
+            mock_litellm.return_value.acompletion = AsyncMock(return_value=mock_resp)
+            response = await client._call(
+                "ollama/phi4:latest",
+                [{"role": "user", "content": "run cmd"}],
+                [{"type": "function", "function": {"name": "shell"}}],
+            )
+
+        assert response.content == "text response"
+        call_kwargs = mock_litellm.return_value.acompletion.call_args[1]
+        assert "tools" not in call_kwargs
+
+    @pytest.mark.asyncio
+    async def test_call_with_thinking(self) -> None:
+        client = LLMClient(model="claude-sonnet-4-20250514", thinking_budget=2000)
+        mock_resp = _mock_response(content="thoughtful")
+
+        with patch("godspeed.llm.client._get_litellm") as mock_litellm:
+            mock_litellm.return_value.acompletion = AsyncMock(return_value=mock_resp)
+            response = await client._call(
+                "claude-sonnet-4-20250514",
+                [{"role": "user", "content": "think deep"}],
+                None,
+            )
+
+        assert response.content == "thoughtful"
+        call_kwargs = mock_litellm.return_value.acompletion.call_args[1]
+        assert call_kwargs["thinking"]["budget_tokens"] == 2000
+        assert call_kwargs["thinking"]["type"] == "enabled"
+
+    @pytest.mark.asyncio
+    async def test_call_with_qwen_thinking(self) -> None:
+        client = LLMClient(model="qwen3.6-4b", thinking_budget=1000)
+        mock_resp = _mock_response(content="reasoned")
+
+        with patch("godspeed.llm.client._get_litellm") as mock_litellm:
+            mock_litellm.return_value.acompletion = AsyncMock(return_value=mock_resp)
+            response = await client._call(
+                "qwen3.6-4b",
+                [{"role": "user", "content": "think"}],
+                None,
+            )
+
+        assert response.content == "reasoned"
+        call_kwargs = mock_litellm.return_value.acompletion.call_args[1]
+        assert call_kwargs["extra_body"]["thinking"] is True
+        assert call_kwargs["extra_body"]["thinking_budget"] == 1000
+
+    @pytest.mark.asyncio
+    async def test_call_no_usage_data(self) -> None:
+        client = LLMClient(model="ollama/qwen3:4b")
+        mock_resp = SimpleNamespace(
+            choices=[
+                SimpleNamespace(
+                    message=SimpleNamespace(content="hi", tool_calls=[], thinking=None),
+                    finish_reason="stop",
+                )
+            ],
+            usage=None,
+        )
+
+        with patch("godspeed.llm.client._get_litellm") as mock_litellm:
+            mock_litellm.return_value.acompletion = AsyncMock(return_value=mock_resp)
+            response = await client._call(
+                "ollama_chat/qwen3:4b",
+                [{"role": "user", "content": "hi"}],
+                None,
+            )
+
+        assert response.usage == {}
+
+    @pytest.mark.asyncio
+    async def test_call_budget_check_after_cost(self) -> None:
+        client = LLMClient(model="claude-sonnet-4-20250514", max_cost_usd=0.001)
+        mock_resp = SimpleNamespace(
+            choices=[
+                SimpleNamespace(
+                    message=SimpleNamespace(content="costly", tool_calls=[], thinking=None),
+                    finish_reason="stop",
+                )
+            ],
+            usage=SimpleNamespace(prompt_tokens=100000, completion_tokens=50000),
+        )
+
+        with patch("godspeed.llm.client._get_litellm") as mock_litellm:
+            mock_litellm.return_value.acompletion = AsyncMock(return_value=mock_resp)
+            with pytest.raises(RuntimeError, match="Budget exceeded"):
+                await client._call(
+                    "claude-sonnet-4-20250514",
+                    [{"role": "user", "content": "expensive"}],
+                    None,
+                )
+
+    @pytest.mark.asyncio
+    async def test_deepseek_prefix_route(self) -> None:
+        client = LLMClient(model="llamacpp/qwen2.5-coder")
+        mock_resp = SimpleNamespace(
+            choices=[
+                SimpleNamespace(
+                    message=SimpleNamespace(
+                        content="deepseek ok", tool_calls=None, reasoning_content=""
+                    ),
+                    finish_reason="stop",
+                )
+            ],
+            usage=SimpleNamespace(prompt_tokens=5, completion_tokens=10),
+        )
+        mock_openai = MagicMock()
+        mock_openai.chat = MagicMock()
+        mock_openai.chat.completions = MagicMock()
+        mock_openai.chat.completions.create = MagicMock(return_value=mock_resp)
+
+        with patch("openai.OpenAI", return_value=mock_openai):
+            with patch.dict("os.environ", {"DEEPSEEK_API_KEY": "sk-test"}, clear=False):
+                response = await client._call(
+                    "deepseek/deepseek-chat",
+                    [{"role": "user", "content": "hello"}],
+                    None,
+                )
+
+        assert response.content == "deepseek ok"
+
+    @pytest.mark.asyncio
+    async def test_chat_with_routing_preserves_model_on_error(self) -> None:
+        router = ModelRouter({"plan": "claude-sonnet"})
+        client = LLMClient(model="ollama/qwen3:4b", router=router)
+
+        with patch("godspeed.llm.client._get_litellm") as mock_litellm:
+            mock_litellm.return_value.acompletion = AsyncMock(
+                side_effect=RuntimeError("generic error")
+            )
+            with pytest.raises(RuntimeError, match="All models failed"):
+                await client.chat(
+                    [{"role": "user", "content": "plan"}],
+                    task_type="plan",
+                )
+
+        assert client.model == "ollama/qwen3:4b"
+        assert client._model_lower == "ollama/qwen3:4b"
+
+    @pytest.mark.asyncio
+    async def test_chat_with_fallback_chain_build_error(self) -> None:
+        client = LLMClient(model="openai/qwen2.5-coder", fallback_models=[])
+
+        with patch("godspeed.llm.client._get_litellm") as mock_litellm:
+            mock_litellm.return_value.acompletion = AsyncMock(
+                side_effect=ConnectionError("Connect call failed")
+            )
+            with pytest.raises(RuntimeError, match=r"llama.cpp"):
+                await client.chat([{"role": "user", "content": "test"}])
+
+    @pytest.mark.asyncio
+    async def test_chat_raises_on_all_models_connection_error(self) -> None:
+        client = LLMClient(model="ollama/missing-model")
+        with patch("godspeed.llm.client._get_litellm") as mock_litellm:
+            mock_litellm.return_value.acompletion = AsyncMock(
+                side_effect=ConnectionError("Connection refused")
+            )
+            with pytest.raises(RuntimeError, match="ollama serve"):
+                await client.chat([{"role": "user", "content": "test"}])
+
+
+class TestLLMClientPromptCaching:
+    """Additional prompt caching edges."""
+
+    def test_supports_prompt_caching(self) -> None:
+        assert LLMClient._supports_prompt_caching("claude-sonnet") is True
+        assert LLMClient._supports_prompt_caching("anthropic/claude-haiku") is True
+        assert LLMClient._supports_prompt_caching("deepseek-chat") is True
+        assert LLMClient._supports_prompt_caching("gpt-4o") is False
+        assert LLMClient._supports_prompt_caching("ollama/qwen3") is False
+
+    def test_apply_prompt_caching_short_messages(self) -> None:
+        messages = [{"role": "user", "content": "hi"}]
+        result = LLMClient._apply_prompt_caching("claude-sonnet", messages)
+        assert result == messages
+
+    def test_apply_prompt_caching_empty_content(self) -> None:
+        messages = [
+            {"role": "user", "content": ""},
+            {"role": "assistant", "content": "reply"},
+            {"role": "user", "content": "query"},
+        ]
+        result = LLMClient._apply_prompt_caching("claude-sonnet", messages)
+        assert result[0].get("content") == ""
+
+    def test_apply_prompt_caching_not_supported(self) -> None:
+        messages = [
+            {"role": "system", "content": "You are helpful."},
+            {"role": "user", "content": "Query"},
+        ]
+        result = LLMClient._apply_prompt_caching("gpt-4o", messages)
+        assert result == messages
+
+
+class TestLLMClientTokenTracking:
+    """Token and cost tracking during LLM calls."""
+
+    @pytest.mark.asyncio
+    async def test_chat_tracks_tokens_correctly(self) -> None:
+        client = LLMClient(model="ollama/qwen3:4b")
+        assert client.total_input_tokens == 0
+        assert client.total_output_tokens == 0
+        assert client.total_cost_usd == 0.0
+
+        mock_resp1 = _mock_response(input_tokens=50, output_tokens=30)
+        mock_resp2 = _mock_response(input_tokens=20, output_tokens=10)
+
+        with patch("godspeed.llm.client._get_litellm") as mock_litellm:
+            mock_litellm.return_value.acompletion = AsyncMock(side_effect=[mock_resp1, mock_resp2])
+            await client.chat([{"role": "user", "content": "hi"}])
+            await client.chat([{"role": "user", "content": "again"}])
+
+        assert client.total_input_tokens == 70
+        assert client.total_output_tokens == 40
+
+    @pytest.mark.asyncio
+    async def test_chat_cost_tracking(self) -> None:
+        client = LLMClient(model="claude-sonnet-4-20250514")
+        assert client.total_cost_usd == 0.0
+
+        mock_resp = _mock_response(input_tokens=100, output_tokens=50)
+        with patch("godspeed.llm.client._get_litellm") as mock_litellm:
+            mock_litellm.return_value.acompletion = AsyncMock(return_value=mock_resp)
+            await client.chat([{"role": "user", "content": "hi"}])
+
+        assert client.total_cost_usd > 0.0
+
+    @pytest.mark.asyncio
+    async def test_supports_thinking_detection(self) -> None:
+        client = LLMClient(model="qwen3.6-4b")
+        assert client._supports_thinking() is True
+        assert client._supports_thinking("qwen3.6-8b") is True
+        assert client._supports_thinking("qwen3-4b") is True
+        assert client._supports_thinking("claude-sonnet") is False
+        assert client._supports_thinking("gpt-4o") is False
+
+    def test_is_anthropic_variants(self) -> None:
+        client = LLMClient(model="claude-sonnet-4-20250514")
+        assert client._is_anthropic_model() is True
+        assert client._is_anthropic_model("anthropic/claude-opus") is True
+        client2 = LLMClient(model="gpt-4o")
+        assert client2._is_anthropic_model() is False

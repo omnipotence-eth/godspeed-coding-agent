@@ -397,7 +397,7 @@ class TestDiffReviewerGate:
     async def test_no_reviewer_preserves_baseline(
         self, tool: FileEditTool, tool_context: ToolContext
     ) -> None:
-        """diff_reviewer=None → headless / CI default → write proceeds."""
+        """diff_reviewer=None -> headless / CI default -> write proceeds."""
         f = tool_context.cwd / "ok.py"
         f.write_text("x = 1\n", encoding="utf-8")
         assert tool_context.diff_reviewer is None
@@ -430,3 +430,65 @@ class TestDiffReviewerGate:
         )
         assert result.is_error
         assert f.read_text(encoding="utf-8") == "x = 1\n"
+
+
+class TestFileEditValidation:
+    """Edge case validation tests."""
+
+    @pytest.mark.asyncio
+    async def test_empty_file_path(self, tool: FileEditTool, tool_context: ToolContext) -> None:
+        result = await tool.execute(
+            {"file_path": "", "old_string": "a", "new_string": "b"},
+            tool_context,
+        )
+        assert result.is_error
+        assert "non-empty" in result.error.lower()
+
+    @pytest.mark.asyncio
+    async def test_empty_old_string(self, tool: FileEditTool, tool_context: ToolContext) -> None:
+        f = tool_context.cwd / "test.py"
+        f.write_text("hello\n")
+        result = await tool.execute(
+            {"file_path": "test.py", "old_string": "", "new_string": "b"},
+            tool_context,
+        )
+        assert result.is_error
+        assert "non-empty" in result.error.lower()
+
+    @pytest.mark.asyncio
+    async def test_new_string_not_string_type(
+        self, tool: FileEditTool, tool_context: ToolContext
+    ) -> None:
+        f = tool_context.cwd / "test.py"
+        f.write_text("hello\n")
+        result = await tool.execute(
+            {"file_path": "test.py", "old_string": "hello", "new_string": 123},
+            tool_context,
+        )
+        assert result.is_error
+        assert "new_string must be a string" in result.error
+
+    @pytest.mark.asyncio
+    async def test_binary_file_rejected(
+        self, tool: FileEditTool, tool_context: ToolContext
+    ) -> None:
+        f = tool_context.cwd / "data.bin"
+        f.write_bytes(b"\x80\x81\x82\x83")
+        result = await tool.execute(
+            {"file_path": "data.bin", "old_string": "a", "new_string": "b"},
+            tool_context,
+        )
+        assert result.is_error
+        assert "binary" in result.error.lower()
+
+
+class TestFuzzyFindEdgeCases:
+    """Edge cases for _fuzzy_find."""
+
+    def test_end_pos_clamped_to_content_length(self) -> None:
+        content = "line1\nline2\nline3"
+        search = "line2"
+        result = _fuzzy_find(content, search)
+        assert result is not None
+        start, end, ratio = result
+        assert end <= len(content)

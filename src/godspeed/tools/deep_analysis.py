@@ -115,8 +115,12 @@ class DeepAnalysisTool(Tool):
             return ToolResult.failure(f"deep_analysis failed: {exc}")
 
 
-async def _run_step(llm: Any, prompt: str, step_label: str) -> tuple[str, str]:
-    """Run one step of the analysis pipeline. Returns (prompt_text, response_content)."""
+async def _run_step(llm: Any, prompt: str, step_label: str) -> tuple[str, "str | ToolResult"]:
+    """Run one step of the analysis pipeline. Returns (prompt_text, response_content).
+
+    On success the second element is the response string. On failure it is a
+    ToolResult so the caller can propagate the error.
+    """
     logger.info("[deep_analysis] %s", step_label)
     messages = [{"role": "user", "content": prompt}]
     try:

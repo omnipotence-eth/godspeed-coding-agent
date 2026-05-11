@@ -766,6 +766,18 @@ class LLMClient:
                 tool_calls = parsed
                 content_text = ""
 
+        # ZAYA1-8B emits <zyphra_tool_call>{"name":"...","arguments":{...}}</zyphra_tool_call>
+        # XML blocks. The vLLM zaya_xml parser extracts these server-side, but
+        # when running locally via transformers or Ollama-style endpoints that
+        # don't recognise the format, the tool calls end up in content.
+        if not tool_calls and content_text:
+            from godspeed.llm.zaya_xml_parser import extract_zaya_tool_calls
+
+            parsed = extract_zaya_tool_calls(content_text)
+            if parsed:
+                tool_calls = parsed
+                content_text = ""
+
         # Many local models (Qwen2.5-Coder, DeepSeek via Ollama) wrap tool
         # calls in markdown JSON blocks instead of native tool_calls arrays.
         # Parse those when no structured calls were found.

@@ -431,6 +431,8 @@ class TestLoadYamlCached:
             _yaml_cache.clear()
 
     def test_mtime_invalidation(self, tmp_path: Path) -> None:
+        import time
+
         _yaml_cache.clear()
         try:
             f = tmp_path / "config.yaml"
@@ -438,6 +440,7 @@ class TestLoadYamlCached:
             r1 = _load_yaml_cached(f)
             assert r1 == {"key": 1}
 
+            time.sleep(0.02)
             f.write_text("key: 2\n")
             r2 = _load_yaml_cached(f)
             assert r2 == {"key": 2}

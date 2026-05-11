@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import sys
 import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -36,6 +37,7 @@ class TestResolveToolPath:
             with pytest.raises(ValueError, match=r"Access denied.*Windows absolute path"):
                 resolve_tool_path(r"C:\Users\test\file.txt", mock_cwd)
 
+    @pytest.mark.skipif(sys.platform != "win32", reason="WindowsPath only on Windows")
     def test_windows_drive_letter_path_on_windows_passes(self) -> None:
         with (
             patch("os.name", "nt"),

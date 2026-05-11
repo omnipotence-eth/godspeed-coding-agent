@@ -279,6 +279,8 @@ class TestWebFetchCache:
         import godspeed.tools.web_fetch as wf
 
         cache_dir = wf._cache_dir()
+        for existing in cache_dir.glob("*.json"):
+            existing.unlink(missing_ok=True)
         # Write one large entry and one small entry. Budget set so that after
         # evicting the large file only the small one remains and we hit break.
         _cache_write("https://example.com/large", "x" * 500)

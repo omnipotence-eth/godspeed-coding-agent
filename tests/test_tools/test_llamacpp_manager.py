@@ -442,6 +442,10 @@ class TestStartServerExtended:
                         )
         assert result is mock_proc
 
+    @pytest.mark.skipif(
+        not (Path.home() / ".llamacpp" / "models" / "qwen2.5-coder-14b-q4_K_M.gguf").exists(),
+        reason="Model file not available on CI",
+    )
     def test_start_with_cuda_bin_path(self) -> None:
         mock_proc = MagicMock()
         mock_proc.poll.return_value = None

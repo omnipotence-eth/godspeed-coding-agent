@@ -188,7 +188,8 @@ class AuditTrail:
                 os.fsync(self._file.fileno())
             except OSError:
                 logger.warning("Failed to fsync audit log during close")
-            self._file.close()
+            with contextlib.suppress(OSError):
+                self._file.close()
             self._file = None
 
     async def aclose(self) -> None:

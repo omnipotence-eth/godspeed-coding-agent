@@ -198,6 +198,8 @@ source = ["src/godspeed"]
 branch = true
 omit = [
     "src/godspeed/tui/",
+    "src/godspeed/lite/",
+    "src/godspeed/benchmarks/",
 ]
 
 [tool.coverage.report]

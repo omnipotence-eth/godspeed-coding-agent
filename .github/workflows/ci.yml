@@ -54,7 +54,7 @@ jobs:
       - run: uv run pytest --cov --cov-report=term-missing -q
 
   test-windows:
-    runs-on: windows-latest
+    runs-on: windows-2025-vs2026
     needs: [type-check, security]
     strategy:
       matrix:

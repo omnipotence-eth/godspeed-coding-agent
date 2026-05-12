@@ -366,7 +366,7 @@ class GodspeedLite:
                 timeout=30,
             )
             file_list = result.stdout[:10000]
-        except Exception:
+        except Exception:  # noqa: BLE001
             file_list = ""
 
         user_prompt = (

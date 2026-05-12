@@ -134,8 +134,8 @@ async def test_step_1_key_rotation():
 def test_step_2_nim_connectivity():
     banner("Step 2: NIM API Connectivity")
 
-    import urllib.request
     import ssl
+    import urllib.request
 
     keys_raw = os.environ.get("NVIDIA_NIM_API_KEYS", os.environ.get("NVIDIA_NIM_API_KEY", ""))
     keys = [k.strip() for k in keys_raw.split(",") if k.strip()]
@@ -180,8 +180,8 @@ async def test_step_3_lite_smoke():
 
     step("Importing GodspeedLite + NIMKeyManager")
     try:
-        from godspeed.lite.agent import GodspeedLite
         from godspeed.benchmarks.nim_key_rotation import NIMKeyManager
+        from godspeed.lite.agent import GodspeedLite
 
         nim_mgr = NIMKeyManager.from_env()
         ok(f"module loaded, {nim_mgr.key_count} NIM keys")
@@ -289,7 +289,6 @@ async def test_step_4_swebench_smoke():
     info("  This may take 1-2 minutes...")
 
     try:
-        import subprocess
         import tempfile
 
         from godspeed.lite.agent import GodspeedLite

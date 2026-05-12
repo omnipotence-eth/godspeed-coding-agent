@@ -95,6 +95,7 @@ index = [
 
 [project.scripts]
 godspeed = "godspeed.cli:main"
+godspeed-lite = "godspeed.lite.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/t-timms/godspeed-coding-agent"

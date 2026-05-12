@@ -56,6 +56,7 @@ jobs:
   test-windows:
     runs-on: windows-2025-vs2026
     needs: [type-check, security]
+    timeout-minutes: 12
     strategy:
       matrix:
         python-version: ["3.12"]

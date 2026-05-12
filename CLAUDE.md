@@ -63,8 +63,8 @@ uv run python -m godspeed
   New tools extend the `Tool` ABC.
 - **LLM layer** (`src/godspeed/llm/`) — LiteLLM wrapper with fallback chains,
   model routing by task type, token counting, cost tracking.
-- **TUI** (`src/godspeed/tui/`) — prompt-toolkit input + Rich output.
-  Slash commands defined in `tui/commands.py`.
+- **Godspeed Lite** (`src/godspeed/lite/`) — minimal bash-only agent for benchmarks (3 modes, model roulette)
+- **Benchmarks** (`src/godspeed/benchmarks/`) — NIM key rotation, pre-flight checks, SWE-bench runner
 
 ## Security Checklist for Changes
 

@@ -238,9 +238,8 @@ async def _run_one_instance(
             metrics["exit_reason"] = godspeed_payload.get("exit_reason")
             metrics["cost_usd"] = godspeed_payload.get("cost_usd", 0.0)
 
-            if nim_key_manager:
-                if api_key:
-                    await nim_key_manager.report_success(api_key)
+            if nim_key_manager and api_key:
+                await nim_key_manager.report_success(api_key)
 
         except TimeoutError:
             metrics["status"] = "timeout"

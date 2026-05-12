@@ -410,8 +410,6 @@ class GodspeedLite:
         )
 
         # Extract diff from response
-        import re
-
         diff_match = re.search(r"```diff\s*\n(.*?)\n```", content, re.DOTALL)
         if diff_match:
             diff_text = diff_match.group(1)

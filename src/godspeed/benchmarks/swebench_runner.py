@@ -239,7 +239,6 @@ async def _run_one_instance(
             metrics["cost_usd"] = godspeed_payload.get("cost_usd", 0.0)
 
             if nim_key_manager:
-                api_key = api_key
                 if api_key:
                     await nim_key_manager.report_success(api_key)
 
